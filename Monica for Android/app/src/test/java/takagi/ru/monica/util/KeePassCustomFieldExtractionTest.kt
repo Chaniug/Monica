@@ -34,4 +34,23 @@ class KeePassCustomFieldExtractionTest {
         assertTrue(fields[1].isProtected)
         assertEquals(1, fields[1].sortOrder)
     }
+
+    @Test
+    fun monicaPasswordCompatibilityFieldsAreNotDuplicatedAsCustomFields() {
+        val fields = extractKeePassCustomFieldsForPasswordEntry(
+            listOf(
+                KeePassRawStringField("Email", "user@example.com", isProtected = false),
+                KeePassRawStringField("Phone", "+10000000000", isProtected = false),
+                KeePassRawStringField("Address", "One Infinite Loop", isProtected = false),
+                KeePassRawStringField("Card Number", "4111111111111111", isProtected = true),
+                KeePassRawStringField("Card CVV", "123", isProtected = true),
+                KeePassRawStringField("SSO Provider", "Google", isProtected = false),
+                KeePassRawStringField("App Package Name", "com.example.app", isProtected = false),
+                KeePassRawStringField("Security question", "First pet?", isProtected = false)
+            )
+        )
+
+        assertEquals(1, fields.size)
+        assertEquals("Security question", fields.single().title)
+    }
 }

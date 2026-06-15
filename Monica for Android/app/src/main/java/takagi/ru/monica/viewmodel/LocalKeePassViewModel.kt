@@ -41,6 +41,7 @@ import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.attachments.AttachmentContainer
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
@@ -138,6 +139,7 @@ class LocalKeePassViewModel(
     }
 
     init {
+        AttachmentContainer.registerKeePassService(kdbxService)
         autoResolveWebDavConflictDatabases()
     }
 

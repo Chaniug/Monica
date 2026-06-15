@@ -3,6 +3,7 @@ package takagi.ru.monica.keepass
 import android.util.Log
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.utils.KeePassCustomFieldData
 
 class KeePassPasswordCreateExecutor(
     private val bridge: KeePassCompatibilityBridge?
@@ -12,7 +13,8 @@ class KeePassPasswordCreateExecutor(
         syncEntry: PasswordEntry,
         insertEntry: suspend (PasswordEntry) -> Long,
         rollbackEntry: suspend (Long) -> Unit,
-        resolvePassword: (PasswordEntry) -> String
+        resolvePassword: (PasswordEntry) -> String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
     ): Long? {
         val id = insertEntry(localEntry)
         val databaseId = syncEntry.keepassDatabaseId
@@ -35,7 +37,8 @@ class KeePassPasswordCreateExecutor(
         val syncResult = keepassBridge.upsertLegacyPasswordEntries(
             databaseId = databaseId,
             entries = listOf(syncEntry.copy(id = id)),
-            resolvePassword = resolvePassword
+            resolvePassword = resolvePassword,
+            customFieldsByEntryId = mapOf(id to customFields)
         )
         if (syncResult.isFailure) {
             rollbackEntry(id)

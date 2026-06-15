@@ -107,77 +107,102 @@ class AttachmentFacade(
      * 所有错误都会以 [AttachmentError] 形式抛出，调用方可以直接翻译成 UI 文案。
      */
     suspend fun addAttachment(request: UploadRequest): Attachment = withContext(Dispatchers.IO) {
-        // 1. Quota（仅本地/Bitwarden/KeePass 都一致地受 Plus 限制）
-        val existingCount = repository.countActive(request.parentPasswordId)
-        AttachmentQuotaPolicy.check(existingCount, request.isPlusActivated)?.let { throw it }
+        try {
+            // 1. Quota（仅本地/Bitwarden/KeePass 都一致地受 Plus 限制）
+            val existingCount = repository.countActive(request.parentPasswordId)
+            AttachmentQuotaPolicy.check(existingCount, request.isPlusActivated)?.let { throw it }
 
-        // 2. Size / 类型上限
-        val meta = AttachmentUriMetadata.resolve(context, request.uri)
-        if (meta.sizeBytes >= 0) {
-            val validation = AttachmentSizeValidator.validate(
-                sizeBytes = meta.sizeBytes,
-                source = request.source,
-                userAcceptedSoftLimit = request.kdbxSoftLimitAccepted
-            )
-            when (validation) {
-                is AttachmentSizeValidator.Result.Ok -> Unit
-                is AttachmentSizeValidator.Result.TooLarge ->
-                    throw AttachmentError.TooLarge(validation.limitBytes, validation.actualBytes)
-                is AttachmentSizeValidator.Result.NeedsConfirm -> {
-                    // KeePass 软上限：调用方未 opt-in 时阻断，UI 负责重新调用并置 kdbxSoftLimitAccepted=true
-                    throw AttachmentError.TooLarge(validation.softLimitBytes, validation.actualBytes)
+            // 2. Size / 类型上限
+            val meta = AttachmentUriMetadata.resolve(context, request.uri)
+            if (meta.sizeBytes >= 0) {
+                val validation = AttachmentSizeValidator.validate(
+                    sizeBytes = meta.sizeBytes,
+                    source = request.source,
+                    userAcceptedSoftLimit = request.kdbxSoftLimitAccepted
+                )
+                when (validation) {
+                    is AttachmentSizeValidator.Result.Ok -> Unit
+                    is AttachmentSizeValidator.Result.TooLarge ->
+                        throw AttachmentError.TooLarge(validation.limitBytes, validation.actualBytes)
+                    is AttachmentSizeValidator.Result.NeedsConfirm -> {
+                        // KeePass 软上限：调用方未 opt-in 时阻断，UI 负责重新调用并置 kdbxSoftLimitAccepted=true
+                        throw AttachmentError.TooLarge(validation.softLimitBytes, validation.actualBytes)
+                    }
                 }
             }
-        }
 
-        // 3. 按 source 分派
-        val attachment = when (request.source) {
-            AttachmentSource.LOCAL -> localExecutor.writeFromUri(
-                parentPasswordId = request.parentPasswordId,
-                sourceUri = request.uri,
-                fallbackFileName = meta.fileName
-            )
-            AttachmentSource.BITWARDEN -> {
-                if (!request.bitwardenPremium) throw AttachmentError.PremiumRequired
-                val bw = request.bitwardenContext ?: throw AttachmentError.IoError
-                if (!bw.isOnline) throw AttachmentError.Offline
-                val resolver = context.applicationContext.contentResolver
-                val input = resolver.openInputStream(request.uri) ?: throw AttachmentError.IoError
-                input.use { stream ->
-                    bitwardenExecutor.upload(
+            // 3. 按 source 分派
+            val attachment = when (request.source) {
+                AttachmentSource.LOCAL -> localExecutor.writeFromUri(
+                    parentPasswordId = request.parentPasswordId,
+                    sourceUri = request.uri,
+                    fallbackFileName = meta.fileName
+                )
+                AttachmentSource.BITWARDEN -> {
+                    if (!request.bitwardenPremium) throw AttachmentError.PremiumRequired
+                    val bw = request.bitwardenContext ?: throw AttachmentError.IoError
+                    if (!bw.isOnline) throw AttachmentError.Offline
+                    val resolver = context.applicationContext.contentResolver
+                    val input = resolver.openInputStream(request.uri) ?: throw AttachmentError.IoError
+                    input.use { stream ->
+                        bitwardenExecutor.upload(
+                            parentPasswordId = request.parentPasswordId,
+                            fileName = meta.fileName,
+                            mimeType = meta.mimeType,
+                            source = stream,
+                            sizeBytes = meta.sizeBytes.takeIf { it >= 0 } ?: 0L,
+                            ctx = BitwardenAttachmentExecutor.UploadContext(
+                                vaultApi = bw.vaultApi,
+                                httpClient = bw.httpClient,
+                                accessToken = bw.accessToken,
+                                cipherId = bw.cipherId,
+                                wrappingKey = bw.wrappingKey
+                            )
+                        )
+                    }
+                }
+                AttachmentSource.KEEPASS -> {
+                    val kp = request.keepassContext ?: throw AttachmentError.IoError
+                    val bytes = readAllBytes(request.uri)
+                    keepassExecutor.upload(
                         parentPasswordId = request.parentPasswordId,
+                        databaseId = kp.databaseId,
+                        entryUuid = kp.entryUuid,
                         fileName = meta.fileName,
                         mimeType = meta.mimeType,
-                        source = stream,
-                        sizeBytes = meta.sizeBytes.takeIf { it >= 0 } ?: 0L,
-                        ctx = BitwardenAttachmentExecutor.UploadContext(
-                            vaultApi = bw.vaultApi,
-                            httpClient = bw.httpClient,
-                            accessToken = bw.accessToken,
-                            cipherId = bw.cipherId,
-                            wrappingKey = bw.wrappingKey
-                        )
+                        sourceBytes = bytes
                     )
                 }
             }
-            AttachmentSource.KEEPASS -> {
-                val kp = request.keepassContext ?: throw AttachmentError.IoError
-                val bytes = readAllBytes(request.uri)
-                keepassExecutor.upload(
-                    parentPasswordId = request.parentPasswordId,
-                    databaseId = kp.databaseId,
-                    entryUuid = kp.entryUuid,
-                    fileName = meta.fileName,
-                    mimeType = meta.mimeType,
-                    sourceBytes = bytes
-                )
-            }
-        }
 
-        // 4. 持久化（executor 返回的 Attachment 已经是完整记录，Room 只负责 insert）
-        val id = repository.insert(attachment)
-        attachment.copy(id = id).also { saved ->
-            mirrorAttachmentToMdbx(saved)
+            // 4. 持久化（executor 返回的 Attachment 已经是完整记录，Room 只负责 insert）
+            val id = repository.insert(attachment)
+            attachment.copy(id = id).also { saved ->
+                AttachmentLogger.logOk(
+                    event = AttachmentLogger.Event.UPLOAD,
+                    attachmentId = id,
+                    source = saved.sourceEnum,
+                    extras = mapOf(
+                        "passwordId" to request.parentPasswordId,
+                        "keepassDatabaseId" to request.keepassContext?.databaseId,
+                        "keepassEntryUuidPresent" to !request.keepassContext?.entryUuid.isNullOrBlank()
+                    )
+                )
+                mirrorAttachmentToMdbx(saved)
+            }
+        } catch (e: Throwable) {
+            AttachmentLogger.logFailure(
+                event = AttachmentLogger.Event.UPLOAD,
+                attachmentId = null,
+                source = request.source,
+                error = e,
+                extras = mapOf(
+                    "passwordId" to request.parentPasswordId,
+                    "keepassDatabaseId" to request.keepassContext?.databaseId,
+                    "keepassEntryUuidPresent" to !request.keepassContext?.entryUuid.isNullOrBlank()
+                )
+            )
+            throw e
         }
     }
 

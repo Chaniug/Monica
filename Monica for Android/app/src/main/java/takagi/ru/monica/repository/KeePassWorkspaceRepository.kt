@@ -10,6 +10,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassDatabaseDiagnostics
 import takagi.ru.monica.utils.KeePassConflictResolutionResult
+import takagi.ru.monica.utils.KeePassCustomFieldData
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
@@ -140,25 +141,29 @@ class KeePassWorkspaceRepository(
         databaseId: Long,
         entries: List<PasswordEntry>,
         resolvePassword: (PasswordEntry) -> String,
-        forceSyncWrite: Boolean = false
+        forceSyncWrite: Boolean = false,
+        customFieldsByEntryId: Map<Long, List<KeePassCustomFieldData>> = emptyMap()
     ): Result<Int> {
         return service.addOrUpdatePasswordEntries(
             databaseId = databaseId,
             entries = entries,
             resolvePassword = resolvePassword,
-            forceSyncWrite = forceSyncWrite
+            forceSyncWrite = forceSyncWrite,
+            customFieldsByEntryId = customFieldsByEntryId
         )
     }
 
     suspend fun updatePasswordEntry(
         databaseId: Long,
         entry: PasswordEntry,
-        resolvePassword: (PasswordEntry) -> String
+        resolvePassword: (PasswordEntry) -> String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
     ): Result<Unit> {
         return service.updatePasswordEntry(
             databaseId = databaseId,
             entry = entry,
-            resolvePassword = resolvePassword
+            resolvePassword = resolvePassword,
+            customFields = customFields
         )
     }
 

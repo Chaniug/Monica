@@ -5,6 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.isLocalOnlyItem
@@ -68,6 +69,21 @@ class BackupContentPolicyTest {
         }
     }
 
+    @Test
+    fun localOnlyScopeExcludesExternalPasskeys() {
+        val passkeys = listOf(
+            passkey("local"),
+            passkey("keepass", keepassDatabaseId = 1L),
+            passkey("mdbx", mdbxDatabaseId = 2L),
+            passkey("bitwarden", bitwardenVaultId = 3L, bitwardenCipherId = "cipher")
+        )
+
+        val included = passkeys
+            .filter { BackupContentPolicy.shouldIncludePasskey(it, BackupContentScope.MONICA_LOCAL_ONLY) }
+
+        assertEquals(listOf("local"), included.map { it.rpName })
+    }
+
     private fun password(
         title: String,
         keepassDatabaseId: Long? = null,
@@ -113,6 +129,30 @@ class BackupContentPolicyTest {
             bitwardenVaultId = bitwardenVaultId,
             bitwardenCipherId = bitwardenCipherId,
             syncStatus = "SYNCED"
+        )
+    }
+
+    private fun passkey(
+        rpName: String,
+        keepassDatabaseId: Long? = null,
+        mdbxDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null,
+        bitwardenCipherId: String? = null
+    ): PasskeyEntry {
+        return PasskeyEntry(
+            credentialId = "$rpName-credential",
+            rpId = "$rpName.example.com",
+            rpName = rpName,
+            userId = "$rpName-user-id",
+            userName = "user@$rpName.example.com",
+            userDisplayName = "User",
+            publicKey = "public-key",
+            privateKeyAlias = "private-key",
+            keepassDatabaseId = keepassDatabaseId,
+            mdbxDatabaseId = mdbxDatabaseId,
+            bitwardenVaultId = bitwardenVaultId,
+            bitwardenCipherId = bitwardenCipherId,
+            syncStatus = if (bitwardenCipherId.isNullOrBlank()) "NONE" else "SYNCED"
         )
     }
 }

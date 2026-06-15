@@ -1442,6 +1442,17 @@ fun VaultV2Pane(
 			}
 		}
 	}
+	LaunchedEffect(selectedKeePassDatabaseId, keepassDatabases.map { it.id }) {
+		val databaseId = selectedKeePassDatabaseId ?: return@LaunchedEffect
+		if (keepassDatabases.none { it.id == databaseId }) {
+			state.updateStorageFilter(UnifiedCategoryFilterSelection.All)
+			return@LaunchedEffect
+		}
+		passwordViewModel.syncKeePassDatabaseForVisibleVault(databaseId)
+		bankCardViewModel.syncKeePassCards(databaseId)
+		documentViewModel.syncKeePassDocuments(databaseId)
+		noteViewModel.syncKeePassNotes(databaseId)
+	}
 	val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
 		bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
 	} == true
@@ -2356,11 +2367,17 @@ fun VaultV2Pane(
 							plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
 							plusBlurHazeStyle = plusBlurMenuHazeStyle
 						) {
-							if (selectedKeePassDatabaseId != null) {
+							selectedKeePassDatabaseId?.let { keepassDatabaseId ->
 								KeepassRefreshTopActionsMenuItem(
 									onClick = {
 										isTopActionsMenuExpanded = false
-										passwordViewModel.refreshKeePassFromSourceForCurrentContext()
+										passwordViewModel.syncKeePassDatabaseForVisibleVault(
+											databaseId = keepassDatabaseId,
+											forceRefresh = true
+										)
+										bankCardViewModel.syncKeePassCards(keepassDatabaseId)
+										documentViewModel.syncKeePassDocuments(keepassDatabaseId)
+										noteViewModel.syncKeePassNotes(keepassDatabaseId)
 									}
 								)
 							}

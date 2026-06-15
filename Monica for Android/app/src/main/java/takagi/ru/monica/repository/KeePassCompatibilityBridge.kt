@@ -4,6 +4,7 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.utils.KeePassCustomFieldData
 import takagi.ru.monica.utils.KeePassRestoreTarget
 
 class KeePassCompatibilityBridge(
@@ -14,12 +15,14 @@ class KeePassCompatibilityBridge(
         databaseId: Long,
         entries: List<PasswordEntry>,
         resolvePassword: (PasswordEntry) -> String,
-        forceSyncWrite: Boolean = false
+        forceSyncWrite: Boolean = false,
+        customFieldsByEntryId: Map<Long, List<KeePassCustomFieldData>> = emptyMap()
     ) = workspaceRepository.addOrUpdatePasswordEntries(
         databaseId = databaseId,
         entries = entries,
         resolvePassword = resolvePassword,
-        forceSyncWrite = forceSyncWrite
+        forceSyncWrite = forceSyncWrite,
+        customFieldsByEntryId = customFieldsByEntryId
     )
 
     suspend fun upsertLegacySecureItems(
@@ -87,8 +90,9 @@ class KeePassCompatibilityBridge(
     suspend fun updateLegacyPasswordEntry(
         databaseId: Long,
         entry: PasswordEntry,
-        resolvePassword: (PasswordEntry) -> String
-    ) = workspaceRepository.updatePasswordEntry(databaseId, entry, resolvePassword)
+        resolvePassword: (PasswordEntry) -> String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
+    ) = workspaceRepository.updatePasswordEntry(databaseId, entry, resolvePassword, customFields)
 
     suspend fun upsertLegacyPasskeys(
         databaseId: Long,

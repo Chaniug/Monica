@@ -80,7 +80,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
@@ -254,15 +253,13 @@ fun OneDriveBackupScreen(
 
     suspend fun loadCounts() {
         val database = PasswordDatabase.getDatabase(context)
-        val allPasswords = passwordRepository.getAllPasswordEntries().first()
-        val allSecureItems = secureItemRepository.getAllItems().first()
-        passwordCount = allPasswords.size
-        authenticatorCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
-        documentCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
-        bankCardCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
-        noteCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
+        passwordCount = passwordRepository.getLocalEntriesCount()
+        authenticatorCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.TOTP)
+        documentCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+        bankCardCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+        noteCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.NOTE)
         trashCount = passwordRepository.getLocalDeletedEntriesCount() + secureItemRepository.getLocalDeletedItemCount()
-        passkeyCount = withContext(Dispatchers.IO) { database.passkeyDao().getAllPasskeysSync().size }
+        passkeyCount = withContext(Dispatchers.IO) { database.passkeyDao().getLocalPasskeyCount() }
         localKeePassCount = withContext(Dispatchers.IO) { database.localKeePassDatabaseDao().getAllDatabasesSync().size }
     }
 
@@ -795,10 +792,10 @@ fun OneDriveBackupScreen(
                                 SyncDiagnostics.queued(taskId, targetLog, triggerLog)
                                 val startedAt = SyncDiagnostics.start(taskId, targetLog, triggerLog)
                                 try {
-                                    val allPasswords = passwordRepository.getAllPasswordEntries().first()
+                                    val localPasswords = passwordRepository.getAllLocalPasswordEntries()
                                     val securityManager = takagi.ru.monica.security.SecurityManager(context)
                                     val failedPasswordTitles = mutableListOf<String>()
-                                    val decryptedPasswords = allPasswords.map { entry ->
+                                    val decryptedPasswords = localPasswords.map { entry ->
                                         runCatching {
                                             entry.copy(password = securityManager.decryptData(entry.password))
                                         }.getOrElse { error ->
@@ -815,17 +812,17 @@ fun OneDriveBackupScreen(
                                             "有 ${failedPasswordTitles.size} 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
                                         )
                                     }
-                                    val allSecureItems = secureItemRepository.getAllItems().first()
+                                    val localSecureItems = secureItemRepository.getAllLocalItems()
                                     Log.i(
                                         ONEDRIVE_BACKUP_LOG_TAG,
-                                        "Creating OneDrive backup zip: passwords=${allPasswords.size}, " +
-                                            "secureItems=${allSecureItems.size}, scope=${BackupContentScope.ALL_OFFLINE}"
+                                        "Creating OneDrive backup zip: passwords=${localPasswords.size}, " +
+                                            "secureItems=${localSecureItems.size}, scope=${BackupContentScope.MONICA_LOCAL_ONLY}"
                                     )
                                     val (file, report) = webDavHelper.createBackupZip(
                                         passwords = decryptedPasswords,
-                                        secureItems = allSecureItems,
+                                        secureItems = localSecureItems,
                                         preferences = backupPreferences,
-                                        contentScope = BackupContentScope.ALL_OFFLINE
+                                        contentScope = BackupContentScope.MONICA_LOCAL_ONLY
                                     ).getOrThrow()
 
                                     Log.i(
@@ -846,7 +843,7 @@ fun OneDriveBackupScreen(
                                         target = targetLog,
                                         trigger = triggerLog,
                                         startedAt = startedAt,
-                                        detail = "passwords=${allPasswords.size} secureItems=${allSecureItems.size} warnings=${report.warnings.size} failures=${report.failedItems.size}"
+                                        detail = "passwords=${decryptedPasswords.size} secureItems=${localSecureItems.size} warnings=${report.warnings.size} failures=${report.failedItems.size}"
                                     )
                                     report
                                 } catch (error: Exception) {

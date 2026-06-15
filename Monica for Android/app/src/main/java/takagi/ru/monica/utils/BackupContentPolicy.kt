@@ -1,9 +1,11 @@
 package takagi.ru.monica.utils
 
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.isLocalOnlyPasskey
 import takagi.ru.monica.data.resolveOwnership
 
 enum class BackupContentScope {
@@ -25,6 +27,13 @@ object BackupContentPolicy {
             BackupContentScope.ALL_OFFLINE -> true
             BackupContentScope.MONICA_LOCAL_ONLY ->
                 item.isLocalOnlyItem() || isLikelyDetachedKeePassSecureItem(item)
+        }
+    }
+
+    fun shouldIncludePasskey(passkey: PasskeyEntry, scope: BackupContentScope): Boolean {
+        return when (scope) {
+            BackupContentScope.ALL_OFFLINE -> true
+            BackupContentScope.MONICA_LOCAL_ONLY -> passkey.isLocalOnlyPasskey()
         }
     }
 

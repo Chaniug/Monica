@@ -2943,8 +2943,11 @@ class MultiPasswordSaveRegressionGuardTest {
                 manualCreateBody.contains("merged_with_running_backup")
         )
         assertTrue(
-            "OneDrive backup should keep the existing all-offline backup scope and permanent upload behavior while moving scheduling into the coordinator.",
-            manualCreateBody.contains("contentScope = BackupContentScope.ALL_OFFLINE") &&
+            "OneDrive backup must use the same Monica-local backup scope as WebDAV, so cached external database rows are not included.",
+            manualCreateBody.contains("val localPasswords = passwordRepository.getAllLocalPasswordEntries()") &&
+                manualCreateBody.contains("val localSecureItems = secureItemRepository.getAllLocalItems()") &&
+                manualCreateBody.contains("contentScope = BackupContentScope.MONICA_LOCAL_ONLY") &&
+                !manualCreateBody.contains("contentScope = BackupContentScope.ALL_OFFLINE") &&
                 manualCreateBody.contains("backupHelper.uploadBackup(file, isPermanent = true).getOrThrow()") &&
                 manualCreateBody.contains("file.delete()")
         )
@@ -2952,6 +2955,12 @@ class MultiPasswordSaveRegressionGuardTest {
             "OneDrive screen manual backup must release its loading state after completed, skipped, blocked, canceled, or failed coordinator outcomes.",
             manualCreateBody.contains("finally") &&
                 manualCreateBody.contains("creatingBackup = false")
+        )
+        assertTrue(
+            "OneDrive backup counts must match the Monica-local backup scope rather than counting external database cache rows.",
+            oneDriveScreenSource.contains("passwordCount = passwordRepository.getLocalEntriesCount()") &&
+                oneDriveScreenSource.contains("authenticatorCount = secureItemRepository.getLocalItemCountByType") &&
+                oneDriveScreenSource.contains("passkeyDao().getLocalPasskeyCount()")
         )
     }
 

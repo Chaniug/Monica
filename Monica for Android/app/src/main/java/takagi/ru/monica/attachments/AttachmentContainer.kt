@@ -51,6 +51,7 @@ object AttachmentContainer {
     @Volatile private var mdbxVaultStoreCache: MdbxVaultStore? = null
 
     @Volatile private var keepassServiceOverride: KeePassKdbxService? = null
+    @Volatile private var defaultKeePassServiceCache: KeePassKdbxService? = null
 
     // ---------------------------------------------------------------- public API
 
@@ -132,7 +133,7 @@ object AttachmentContainer {
     /** 供业务层替换 [KeePassKdbxService]（例如测试或复用已有实例）。 */
     fun registerKeePassService(service: KeePassKdbxService) {
         keepassServiceOverride = service
-        // 重置已缓存的 keepass executor，下次调用时重建
+        // 新 executor 会直接使用 override；旧 executor 也通过 provider 动态读取 override。
         keepassExecutorCache = null
         keepassReconcilerCache = null
         facadeCache = null
@@ -176,19 +177,24 @@ object AttachmentContainer {
     private fun keepassExecutor(app: Context): KeePassAttachmentExecutor =
         keepassExecutorCache ?: synchronized(this) {
             keepassExecutorCache ?: run {
-                val db = PasswordDatabase.getDatabase(app)
-                val service = keepassServiceOverride
-                    ?: KeePassKdbxService(
-                        context = app,
-                        dao = db.localKeePassDatabaseDao(),
-                        securityManager = SecurityManager(app)
-                    )
                 KeePassAttachmentExecutor(
                     context = app,
-                    kdbxService = service,
+                    kdbxServiceProvider = { keepassService(app) },
                     storage = storage(app),
                     keyVault = keyVault(app)
                 ).also { keepassExecutorCache = it }
+            }
+        }
+
+    private fun keepassService(app: Context): KeePassKdbxService =
+        keepassServiceOverride ?: defaultKeePassServiceCache ?: synchronized(this) {
+            keepassServiceOverride ?: defaultKeePassServiceCache ?: run {
+                val db = PasswordDatabase.getDatabase(app)
+                KeePassKdbxService(
+                    context = app,
+                    dao = db.localKeePassDatabaseDao(),
+                    securityManager = SecurityManager(app)
+                ).also { defaultKeePassServiceCache = it }
             }
         }
 

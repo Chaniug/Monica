@@ -40,6 +40,7 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.utils.KeePassCustomFieldData
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.KeePassSecureItemData
@@ -1338,12 +1339,26 @@ class PasswordViewModel(
         syncKeePassDatabase(resolvedDatabaseId, forceRefresh = true)
     }
 
+    fun syncKeePassDatabaseForVisibleVault(databaseId: Long, forceRefresh: Boolean = false) {
+        KeePassKdbxService.markDatabaseActive(databaseId)
+        syncKeePassDatabase(databaseId, forceRefresh = forceRefresh)
+    }
+
     private suspend fun upsertKeePassEntries(databaseId: Long, entries: List<KeePassEntryData>) {
         val incomingEntries = entries.filter { shouldImportKeePassPasswordEntry(it) }
+        val activeBefore = repository.getPasswordEntriesByKeePassDatabaseSync(databaseId).size
+        val recycleIncomingCount = incomingEntries.count { it.isInRecycleBin }
         val incomingKeys = incomingEntries
             .asSequence()
             .map { buildKeePassSyncKey(it) }
             .toSet()
+        Log.i(
+            "PasswordViewModel",
+            "KeePass password upsert begin: databaseId=$databaseId, " +
+                "raw=${entries.size}, importable=${incomingEntries.size}, " +
+                "incomingRecycle=$recycleIncomingCount, activeBefore=$activeBefore, " +
+                "uniqueKeys=${incomingKeys.size}"
+        )
 
         incomingEntries.forEach { item ->
             val hasStableKeePassUuid = !item.entryUuid.isNullOrBlank()
@@ -1391,12 +1406,27 @@ class PasswordViewModel(
                     password = encryptedPassword,
                     website = item.url,
                     notes = item.notes,
+                    appPackageName = item.appPackageName,
+                    appName = item.appName,
+                    email = item.email,
+                    phone = item.phone,
+                    addressLine = item.addressLine,
+                    city = item.city,
+                    state = item.state,
+                    zipCode = item.zipCode,
+                    country = item.country,
+                    creditCardNumber = item.creditCardNumber,
+                    creditCardHolder = item.creditCardHolder,
+                    creditCardExpiry = item.creditCardExpiry,
+                    creditCardCVV = item.creditCardCVV,
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = item.groupPath,
                     keepassEntryUuid = item.entryUuid,
                     keepassGroupUuid = item.groupUuid,
                     sshKeyData = item.sshKeyData,
                     loginType = item.loginType,
+                    ssoProvider = item.ssoProvider,
+                    ssoRefEntryId = item.ssoRefEntryId,
                     wifiMetadata = item.wifiMetadata,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
@@ -1412,6 +1442,19 @@ class PasswordViewModel(
                     password = encryptedPassword,
                     website = item.url,
                     notes = item.notes,
+                    appPackageName = item.appPackageName,
+                    appName = item.appName,
+                    email = item.email,
+                    phone = item.phone,
+                    addressLine = item.addressLine,
+                    city = item.city,
+                    state = item.state,
+                    zipCode = item.zipCode,
+                    country = item.country,
+                    creditCardNumber = item.creditCardNumber,
+                    creditCardHolder = item.creditCardHolder,
+                    creditCardExpiry = item.creditCardExpiry,
+                    creditCardCVV = item.creditCardCVV,
                     createdAt = Date(),
                     updatedAt = Date(),
                     keepassDatabaseId = databaseId,
@@ -1420,6 +1463,8 @@ class PasswordViewModel(
                     keepassGroupUuid = item.groupUuid,
                     sshKeyData = item.sshKeyData,
                     loginType = item.loginType,
+                    ssoProvider = item.ssoProvider,
+                    ssoRefEntryId = item.ssoRefEntryId,
                     wifiMetadata = item.wifiMetadata,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) Date() else null
@@ -1429,7 +1474,15 @@ class PasswordViewModel(
             }
         }
 
-        reconcileKeePassEntries(databaseId, incomingKeys)
+        val staleCount = reconcileKeePassEntries(databaseId, incomingKeys)
+        val activeAfter = repository.getPasswordEntriesByKeePassDatabaseSync(databaseId).size
+        Log.i(
+            "PasswordViewModel",
+            "KeePass password upsert end: databaseId=$databaseId, " +
+                "raw=${entries.size}, importable=${incomingEntries.size}, " +
+                "incomingRecycle=$recycleIncomingCount, staleRemoved=$staleCount, " +
+                "activeBefore=$activeBefore, activeAfter=$activeAfter"
+        )
     }
 
     private suspend fun saveKeePassCustomFields(entryId: Long, item: KeePassEntryData) {
@@ -1444,6 +1497,38 @@ class PasswordViewModel(
             )
         }
         fieldRepository.saveFieldsForEntries(mapOf(entryId to fields))
+    }
+
+    private suspend fun resolveKeePassCustomFieldsForSync(
+        entryId: Long,
+        customFieldsOverride: List<CustomFieldDraft>?
+    ): List<KeePassCustomFieldData> {
+        customFieldsOverride?.let { drafts ->
+            return drafts
+                .filter { it.shouldPersist() }
+                .mapIndexed { index, field ->
+                    KeePassCustomFieldData(
+                        title = field.title,
+                        value = field.value,
+                        isProtected = field.isProtected,
+                        sortOrder = index
+                    )
+                }
+        }
+
+        if (entryId <= 0) return emptyList()
+        val fieldRepository = customFieldRepository ?: return emptyList()
+        return fieldRepository.getFieldsByEntryIdSync(entryId)
+            .filter { it.title.isNotBlank() && it.value.isNotBlank() }
+            .sortedWith(compareBy<CustomField> { it.sortOrder }.thenBy { it.id })
+            .mapIndexed { index, field ->
+                KeePassCustomFieldData(
+                    title = field.title,
+                    value = field.value,
+                    isProtected = field.isProtected,
+                    sortOrder = index
+                )
+            }
     }
 
     private suspend fun syncKeePassTotpEntries(
@@ -1552,9 +1637,9 @@ class PasswordViewModel(
         return buildKeePassSyncKey(entry.title, entry.username, entry.website, entry.keepassGroupPath)
     }
 
-    private suspend fun reconcileKeePassEntries(databaseId: Long, incomingKeys: Set<String>) {
+    private suspend fun reconcileKeePassEntries(databaseId: Long, incomingKeys: Set<String>): Int {
         val localEntries = repository.getPasswordEntriesByKeePassDatabaseSync(databaseId)
-        if (localEntries.isEmpty()) return
+        if (localEntries.isEmpty()) return 0
 
         val grouped = localEntries.groupBy { entry -> buildKeePassSyncKey(entry) }
 
@@ -1575,6 +1660,14 @@ class PasswordViewModel(
         }
 
         stale.forEach { repository.deletePasswordEntry(it) }
+        if (stale.isNotEmpty()) {
+            Log.i(
+                "PasswordViewModel",
+                "KeePass password reconcile removed stale active rows: databaseId=$databaseId, " +
+                    "localActive=${localEntries.size}, incomingKeys=${incomingKeys.size}, stale=${stale.size}"
+            )
+        }
+        return stale.size
     }
     
     fun updateSearchQuery(query: String) {
@@ -2101,7 +2194,8 @@ class PasswordViewModel(
         entry: PasswordEntry,
         includeDetailedLog: Boolean,
         skipCategoryBinding: Boolean = false,
-        passwordAlreadyEncrypted: Boolean = false
+        passwordAlreadyEncrypted: Boolean = false,
+        customFieldsOverride: List<CustomFieldDraft>? = null
     ): Long? {
         val boundEntry = (if (skipCategoryBinding) entry else applyCategoryBinding(entry)).let { candidate ->
             // 只在"纯 KeePass 新建"场景下补 entryUuid；若 candidate 同时绑定了 Bitwarden vault，
@@ -2142,7 +2236,11 @@ class PasswordViewModel(
             syncEntry = normalizedBoundEntry,
             insertEntry = repository::insertPasswordEntry,
             rollbackEntry = repository::deletePasswordEntryById,
-            resolvePassword = { it.password }
+            resolvePassword = { it.password },
+            customFields = resolveKeePassCustomFieldsForSync(
+                entryId = 0,
+                customFieldsOverride = customFieldsOverride
+            )
         ) ?: return null
         normalizedBoundEntry.bitwardenVaultId?.let { vaultId ->
             bitwardenRepository?.requestLocalMutationSync(vaultId)
@@ -2293,7 +2391,10 @@ class PasswordViewModel(
         }
     }
 
-    private suspend fun updatePasswordEntryInternal(entry: PasswordEntry): Boolean {
+    private suspend fun updatePasswordEntryInternal(
+        entry: PasswordEntry,
+        customFieldsOverride: List<CustomFieldDraft>? = null
+    ): Boolean {
         // 获取旧数据用于对比
         val oldEntry = repository.getPasswordEntryById(entry.id)
         
@@ -2333,7 +2434,11 @@ class PasswordViewModel(
         keepassPasswordUpdateExecutor.syncUpdatedEntry(
             existingEntry = oldEntry,
             updatedEntry = entryToUpdate,
-            resolvePassword = { it.password }
+            resolvePassword = { it.password },
+            customFields = resolveKeePassCustomFieldsForSync(
+                entryId = entryToUpdate.id,
+                customFieldsOverride = customFieldsOverride
+            )
         )
         entryToUpdate.bitwardenVaultId?.let { vaultId ->
             bitwardenRepository?.requestLocalMutationSync(vaultId)
@@ -2950,7 +3055,11 @@ class PasswordViewModel(
         return bridge.updateLegacyPasswordEntry(
             databaseId = databaseId,
             entry = entry.copy(keepassGroupPath = targetGroupPath),
-            resolvePassword = { resolvePlainPasswordForKeePass(it.password) }
+            resolvePassword = { resolvePlainPasswordForKeePass(it.password) },
+            customFields = resolveKeePassCustomFieldsForSync(
+                entryId = entry.id,
+                customFieldsOverride = null
+            )
         )
     }
 
@@ -3799,7 +3908,11 @@ class PasswordViewModel(
                     customIconValue = draftEntry.customIconValue,
                     customIconUpdatedAt = draftEntry.customIconUpdatedAt
                 ) ?: draftEntry
-                val updated = updatePasswordEntryInternal(updatedEntry)
+                val entryCustomFields = if (index == 0) customFields else emptyList()
+                val updated = updatePasswordEntryInternal(
+                    entry = updatedEntry,
+                    customFieldsOverride = entryCustomFields
+                )
                 if (!updated) {
                     Log.e(
                         "PasswordViewModel",
@@ -3815,10 +3928,12 @@ class PasswordViewModel(
                 if (newEntry.isPureMdbxCreateTarget()) {
                     pendingMdbxCreates += index to newEntry
                 } else {
+                    val entryCustomFields = if (index == 0) customFields else emptyList()
                     val newId = createPasswordEntryInternal(
                         entry = newEntry,
                         includeDetailedLog = false,
-                        skipCategoryBinding = skipCategoryBinding
+                        skipCategoryBinding = skipCategoryBinding,
+                        customFieldsOverride = entryCustomFields
                     )
                     if (newId == null) {
                         Log.e("PasswordViewModel", "saveGroupedPasswords aborted due to KeePass write failure")

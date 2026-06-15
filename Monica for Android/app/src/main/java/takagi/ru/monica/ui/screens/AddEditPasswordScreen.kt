@@ -1650,11 +1650,30 @@ fun AddEditPasswordScreen(
                     // 新建密码：把草稿附件挂到新 id 上再导航返回
                     if (!isEditing && pendingAttachmentDrafts.isNotEmpty()) {
                         coroutineScope.launch {
+                            val savedEntry = viewModel.getPasswordEntryById(firstPasswordId)
+                            val draftKeePassContext = savedEntry?.let { entry ->
+                                val databaseId = entry.keepassDatabaseId
+                                val entryUuid = entry.keepassEntryUuid?.takeIf { it.isNotBlank() }
+                                if (databaseId != null && entryUuid != null) {
+                                    AttachmentFacade.KeePassContext(
+                                        databaseId = databaseId,
+                                        entryUuid = entryUuid
+                                    )
+                                } else {
+                                    null
+                                }
+                            }
                             takagi.ru.monica.attachments.ui.flushPendingDraftsTo(
                                 context = context,
                                 passwordId = firstPasswordId,
                                 pendingDrafts = pendingAttachmentDrafts,
-                                isPlusActivated = settings.isPlusActivated
+                                isPlusActivated = settings.isPlusActivated,
+                                attachmentSource = if (draftKeePassContext != null) {
+                                    takagi.ru.monica.attachments.model.AttachmentSource.KEEPASS
+                                } else {
+                                    takagi.ru.monica.attachments.model.AttachmentSource.LOCAL
+                                },
+                                keepassContext = draftKeePassContext
                             )
                             onSaveCompleted?.invoke(firstPasswordId)
                             onNavigateBack()

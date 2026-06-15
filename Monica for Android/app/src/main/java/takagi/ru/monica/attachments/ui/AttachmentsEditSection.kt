@@ -257,6 +257,8 @@ suspend fun flushPendingDraftsTo(
     passwordId: Long,
     pendingDrafts: SnapshotStateList<AttachmentPendingDraft>,
     isPlusActivated: Boolean,
+    attachmentSource: AttachmentSource = AttachmentSource.LOCAL,
+    keepassContext: AttachmentFacade.KeePassContext? = null,
     kdbxSoftLimitAccepted: Boolean = true
 ): Int {
     if (passwordId <= 0 || pendingDrafts.isEmpty()) return 0
@@ -268,9 +270,10 @@ suspend fun flushPendingDraftsTo(
             facade.addAttachment(
                 AttachmentFacade.UploadRequest(
                     parentPasswordId = passwordId,
-                    source = AttachmentSource.LOCAL,
+                    source = attachmentSource,
                     uri = draft.uri,
                     isPlusActivated = isPlusActivated,
+                    keepassContext = keepassContext,
                     kdbxSoftLimitAccepted = kdbxSoftLimitAccepted
                 )
             )

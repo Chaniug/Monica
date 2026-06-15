@@ -77,6 +77,19 @@ data class KeePassEntryData(
     val password: String,
     val url: String,
     val notes: String,
+    val appPackageName: String = "",
+    val appName: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val addressLine: String = "",
+    val city: String = "",
+    val state: String = "",
+    val zipCode: String = "",
+    val country: String = "",
+    val creditCardNumber: String = "",
+    val creditCardHolder: String = "",
+    val creditCardExpiry: String = "",
+    val creditCardCVV: String = "",
     val sshKeyData: String = "",
     val monicaLocalId: Long?,
     val entryUuid: String?,
@@ -85,6 +98,8 @@ data class KeePassEntryData(
     val isInRecycleBin: Boolean,
     /** 取值 `PASSWORD` / `SSO` / `WIFI`；用于还原 [PasswordEntry.loginType]。 */
     val loginType: String = "PASSWORD",
+    val ssoProvider: String = "",
+    val ssoRefEntryId: Long? = null,
     /** [takagi.ru.monica.data.model.WifiData] 的 JSON，仅在 WIFI 条目上有值。 */
     val wifiMetadata: String = "",
     val customFields: List<KeePassCustomFieldData> = emptyList()
@@ -102,6 +117,13 @@ internal data class KeePassRawStringField(
     val value: String,
     val isProtected: Boolean
 )
+
+internal fun isLikelyKeePassRecycleBinPath(groupPath: String?): Boolean {
+    val recycleNames = setOf("recyclebin", "trash", "回收站")
+    return decodeKeePassPathSegments(groupPath).any { segment ->
+        segment.lowercase(Locale.ROOT).replace(" ", "") in recycleNames
+    }
+}
 
 data class KeePassGroupInfo(
     val name: String,
@@ -227,6 +249,17 @@ private fun isReservedKeePassPasswordFieldName(key: String): Boolean {
         "Password", "Pass", "pass", "pwd", "PWD", "密码", "口令",
         "URL", "Url", "Website", "URI",
         "Notes", "Note", "Comment",
+        "App Package Name", "AppPackageName", "MonicaAppPackageName",
+        "App Name", "AppName", "MonicaAppName",
+        "Email", "E-mail", "Mail",
+        "Phone", "Phone Number", "Telephone",
+        "Address", "Address Line",
+        "City", "State", "Province", "Postal Code", "PostalCode", "Zip Code", "ZipCode", "Country",
+        "Card Number", "CardNumber", "Credit Card Number", "CreditCardNumber",
+        "Card Holder", "CardHolder", "Credit Card Holder", "CreditCardHolder",
+        "Card Expiry", "CardExpiry", "Expiration Date", "Expiry Date",
+        "Card CVV", "CardCVV", "CVV", "CVC",
+        "SSO Provider", "SsoProvider", "MonicaSsoProvider", "MonicaSsoRefEntryId",
         "otp", "TOTP Seed", "TOTP Settings",
         "MonicaLocalId", "MonicaSecureItemId", "MonicaItemType", "MonicaItemData",
         "MonicaImagePaths", "MonicaIsFavorite",
@@ -291,6 +324,21 @@ class KeePassKdbxService(
         // 快速识别标志；与 PasswordEntry.loginType 对应，避免读回来时要解析 JSON
         // 才能判断是不是 WIFI 条目。值为 "WIFI"/"SSO"/"PASSWORD"。
         private const val FIELD_MONICA_LOGIN_TYPE = "MonicaLoginType"
+        private const val FIELD_APP_PACKAGE_NAME = "App Package Name"
+        private const val FIELD_APP_NAME = "App Name"
+        private const val FIELD_EMAIL = "Email"
+        private const val FIELD_PHONE = "Phone"
+        private const val FIELD_ADDRESS_LINE = "Address"
+        private const val FIELD_CITY = "City"
+        private const val FIELD_STATE = "State"
+        private const val FIELD_POSTAL_CODE = "Postal Code"
+        private const val FIELD_COUNTRY = "Country"
+        private const val FIELD_CARD_NUMBER = "Card Number"
+        private const val FIELD_CARD_HOLDER = "Card Holder"
+        private const val FIELD_CARD_EXPIRY = "Card Expiry"
+        private const val FIELD_CARD_CVV = "Card CVV"
+        private const val FIELD_SSO_PROVIDER = "SSO Provider"
+        private const val FIELD_MONICA_SSO_REF_ENTRY_ID = "MonicaSsoRefEntryId"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
         // 部分设备/ABI 下 decode 在不同工作线程切换时更易触发 native 崩溃，固定到单线程执行更稳。
@@ -866,7 +914,8 @@ class KeePassKdbxService(
         databaseId: Long,
         entries: List<PasswordEntry>,
         resolvePassword: (PasswordEntry) -> String,
-        forceSyncWrite: Boolean = false
+        forceSyncWrite: Boolean = false,
+        customFieldsByEntryId: Map<Long, List<KeePassCustomFieldData>> = emptyMap()
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
             val addedCount = mutateDatabase(
@@ -877,11 +926,12 @@ class KeePassKdbxService(
                 var addedCount = 0
                 entries.forEach { entry ->
                     val plainPassword = resolvePassword(entry)
-                    val updateResult = updateEntry(updatedDatabase, entry, plainPassword)
+                    val customFields = customFieldsByEntryId[entry.id].orEmpty()
+                    val updateResult = updateEntry(updatedDatabase, entry, plainPassword, customFields)
                     if (updateResult.second) {
                         updatedDatabase = updateResult.first
                     } else {
-                        val newEntry = buildEntry(entry, plainPassword)
+                        val newEntry = buildEntry(entry, plainPassword, customFields)
                         val updatedRoot = addEntryToGroupPath(
                             rootGroup = updatedDatabase.content.group,
                             groupPath = entry.keepassGroupPath,
@@ -910,14 +960,15 @@ class KeePassKdbxService(
     suspend fun updatePasswordEntry(
         databaseId: Long,
         entry: PasswordEntry,
-        resolvePassword: (PasswordEntry) -> String
+        resolvePassword: (PasswordEntry) -> String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             mutateDatabase(databaseId) { loaded ->
                 val plainPassword = resolvePassword(entry)
-                val updateResult = updateEntry(loaded.keePassDatabase, entry, plainPassword)
+                val updateResult = updateEntry(loaded.keePassDatabase, entry, plainPassword, customFields)
                 val updatedDatabase = if (updateResult.second) updateResult.first else {
-                    val newEntry = buildEntry(entry, plainPassword)
+                    val newEntry = buildEntry(entry, plainPassword, customFields)
                     val updatedRoot = addEntryToGroupPath(
                         rootGroup = loaded.keePassDatabase.content.group,
                         groupPath = entry.keepassGroupPath,
@@ -1039,19 +1090,22 @@ class KeePassKdbxService(
                 }
                 val hash = binaryData.hash
 
-                // 1. 先写二进制池（未映射时 put；已存在相同 hash 则复用）
-                val withBinary = oldDb.modifyBinaries { pool ->
-                    if (pool.containsKey(hash)) pool else pool + (hash to binaryData)
-                }
-                // 2. 手工替换 Entry.binaries；避开 kotpass 的 inline modifyEntry
+                // 1. 手工替换 Entry.binaries；避开 kotpass 的 inline modifyEntry
                 val newRef = BinaryReference(hash = hash, name = fileName)
                 val updatedEntry = existingEntry.copy(
                     binaries = existingEntry.binaries + newRef
                 )
+
+                // 2. 先更新 Entry 到 Group 树
                 val rootRewriter: (Group) -> Group = { root ->
                     updateEntryInGroup(root, targetUuid, updatedEntry)
                 }
-                val updatedDatabase = withBinary.modifyParentGroup(rootRewriter)
+                val dbWithUpdatedEntry = oldDb.modifyParentGroup(rootRewriter)
+
+                // 3. 再写二进制池（未映射时 put；已存在相同 hash 则复用）
+                val updatedDatabase = dbWithUpdatedEntry.modifyBinaries { pool ->
+                    if (pool.containsKey(hash)) pool else pool + (hash to binaryData)
+                }
 
                 val resultInfo = KeePassAttachmentInfo(
                     hashHex = hash.hex(),
@@ -1150,7 +1204,8 @@ class KeePassKdbxService(
         databaseId: Long,
         entry: PasswordEntry,
         resolvePassword: (PasswordEntry) -> String,
-        forceSyncWrite: Boolean = false
+        forceSyncWrite: Boolean = false,
+        customFields: List<KeePassCustomFieldData> = emptyList()
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             mutateDatabase(
@@ -1158,7 +1213,7 @@ class KeePassKdbxService(
                 forceSyncWrite = forceSyncWrite
             ) { loaded ->
                 val plainPassword = resolvePassword(entry)
-                val newEntry = buildEntry(entry, plainPassword)
+                val newEntry = buildEntry(entry, plainPassword, customFields)
                 val updatedRoot = addEntryToGroupPath(
                     rootGroup = loaded.keePassDatabase.content.group,
                     groupPath = entry.keepassGroupPath,
@@ -1681,11 +1736,34 @@ class KeePassKdbxService(
         }
     }
 
-    private fun buildEntry(entry: PasswordEntry, plainPassword: String): Entry {
+    private fun buildEntry(
+        entry: PasswordEntry,
+        plainPassword: String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
+    ): Entry {
         val base = Entry(
             uuid = parseUuid(entry.keepassEntryUuid) ?: UUID.randomUUID(),
-            fields = buildEntryFields(entry, plainPassword)
+            fields = buildEntryFields(entry, plainPassword, customFields)
         )
+        return applyPasswordEntryPresentation(base, entry)
+    }
+
+    private fun buildUpdatedEntry(
+        existingEntry: Entry,
+        entry: PasswordEntry,
+        plainPassword: String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
+    ): Entry {
+        val base = existingEntry.copy(
+            fields = buildEntryFields(entry, plainPassword, customFields)
+        )
+        return applyPasswordEntryPresentation(base, entry)
+    }
+
+    private fun applyPasswordEntryPresentation(
+        base: Entry,
+        entry: PasswordEntry
+    ): Entry {
         // WIFI 条目使用 IRCommunication 图标，与 keepass2android WLan 模板一致。
         return if (entry.isWifiEntry()) {
             base.copy(icon = app.keemobile.kotpass.constants.PredefinedIcon.IRCommunication)
@@ -1701,7 +1779,11 @@ class KeePassKdbxService(
         )
     }
 
-    private fun buildEntryFields(entry: PasswordEntry, plainPassword: String): EntryFields {
+    private fun buildEntryFields(
+        entry: PasswordEntry,
+        plainPassword: String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
+    ): EntryFields {
         val monicaId = if (entry.id > 0) entry.id.toString() else ""
         val pairs = mutableListOf<Pair<String, EntryValue>>(
             "Title" to EntryValue.Plain(entry.title),
@@ -1713,6 +1795,7 @@ class KeePassKdbxService(
         if (monicaId.isNotEmpty()) {
             pairs.add(FIELD_MONICA_LOCAL_ID to EntryValue.Plain(monicaId))
         }
+        appendPasswordCompatibilityFields(pairs, entry)
         // WIFI 条目：写入与 keepass2android WLan 模板兼容的标准字段（SSID + Password），
         // 并把 Monica 专属扩展 (安全类型、代理、IP 设置等) 塞到 MonicaWifiData JSON。
         // 这样其他 KeePass 客户端能读到 SSID/Password 基本信息，Monica 自己读回时
@@ -1756,7 +1839,66 @@ class KeePassKdbxService(
                 pairs += FIELD_MONICA_SSH_FORMAT to EntryValue.Plain(ssh.format)
             }
         }
+        appendKeePassCustomFields(pairs, customFields)
         return EntryFields.of(*pairs.toTypedArray())
+    }
+
+    private fun appendPasswordCompatibilityFields(
+        pairs: MutableList<Pair<String, EntryValue>>,
+        entry: PasswordEntry
+    ) {
+        fun addPlain(name: String, value: String) {
+            if (value.isNotBlank()) {
+                pairs += name to EntryValue.Plain(value)
+            }
+        }
+
+        fun addProtected(name: String, value: String) {
+            if (value.isNotBlank()) {
+                pairs += name to EntryValue.Encrypted(EncryptedValue.fromString(value))
+            }
+        }
+
+        addPlain(FIELD_APP_PACKAGE_NAME, entry.appPackageName)
+        addPlain(FIELD_APP_NAME, entry.appName)
+        addPlain(FIELD_EMAIL, entry.email)
+        addPlain(FIELD_PHONE, entry.phone)
+        addPlain(FIELD_ADDRESS_LINE, entry.addressLine)
+        addPlain(FIELD_CITY, entry.city)
+        addPlain(FIELD_STATE, entry.state)
+        addPlain(FIELD_POSTAL_CODE, entry.zipCode)
+        addPlain(FIELD_COUNTRY, entry.country)
+        addProtected(FIELD_CARD_NUMBER, entry.creditCardNumber)
+        addPlain(FIELD_CARD_HOLDER, entry.creditCardHolder)
+        addPlain(FIELD_CARD_EXPIRY, entry.creditCardExpiry)
+        addProtected(FIELD_CARD_CVV, entry.creditCardCVV)
+
+        if (entry.loginType.equals("SSO", ignoreCase = true)) {
+            pairs += FIELD_MONICA_LOGIN_TYPE to EntryValue.Plain("SSO")
+            addPlain(FIELD_SSO_PROVIDER, entry.ssoProvider)
+            entry.ssoRefEntryId?.let { addPlain(FIELD_MONICA_SSO_REF_ENTRY_ID, it.toString()) }
+        }
+    }
+
+    private fun appendKeePassCustomFields(
+        pairs: MutableList<Pair<String, EntryValue>>,
+        customFields: List<KeePassCustomFieldData>
+    ) {
+        val usedKeys = pairs.mapTo(mutableSetOf()) { it.first.trim().lowercase(Locale.ROOT) }
+        customFields
+            .asSequence()
+            .sortedWith(compareBy<KeePassCustomFieldData> { it.sortOrder }.thenBy { it.title })
+            .forEach { field ->
+                val key = field.title.trim()
+                if (key.isBlank() || field.value.isBlank() || key.startsWith("_etm_")) return@forEach
+                if (!usedKeys.add(key.lowercase(Locale.ROOT))) return@forEach
+                val value = if (field.isProtected) {
+                    EntryValue.Encrypted(EncryptedValue.fromString(field.value))
+                } else {
+                    EntryValue.Plain(field.value)
+                }
+                pairs += key to value
+            }
     }
 
     private fun buildPasskeyFields(
@@ -1836,11 +1978,17 @@ class KeePassKdbxService(
     private fun updateEntry(
         keePassDatabase: KeePassDatabase,
         entry: PasswordEntry,
-        plainPassword: String
+        plainPassword: String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
     ): Pair<KeePassDatabase, Boolean> {
         val resolutionContext = buildResolutionContext(keePassDatabase)
+        var firstMatchedEntry: Entry? = null
         val matcher: (Entry) -> Boolean = { existing ->
-            matchesPasswordEntry(existing, entry, resolutionContext)
+            val matches = matchesPasswordEntry(existing, entry, resolutionContext)
+            if (matches && firstMatchedEntry == null) {
+                firstMatchedEntry = existing
+            }
+            matches
         }
         val rootGroup = keePassDatabase.content.group
         val removeResult = removeEntryInGroup(rootGroup, matcher)
@@ -1849,7 +1997,9 @@ class KeePassKdbxService(
             return keePassDatabase to false
         }
 
-        val newEntry = buildEntry(entry, plainPassword)
+        val newEntry = firstMatchedEntry?.let { existing ->
+            buildUpdatedEntry(existing, entry, plainPassword, customFields)
+        } ?: buildEntry(entry, plainPassword, customFields)
         val updatedRoot = addEntryToGroupPath(
             rootGroup = removeResult.first,
             groupPath = entry.keepassGroupPath,
@@ -2304,6 +2454,70 @@ class KeePassKdbxService(
         val monicaLoginType = getFieldValue(entry, FIELD_MONICA_LOGIN_TYPE, resolutionContext)
         val monicaWifiJson = getFieldValue(entry, FIELD_MONICA_WIFI_DATA, resolutionContext)
         val ssidField = getFieldValue(entry, FIELD_WIFI_SSID, resolutionContext)
+        val appPackageName = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_APP_PACKAGE_NAME,
+            "AppPackageName",
+            "MonicaAppPackageName",
+            "AndroidAppPackageName",
+            "PackageName"
+        )
+        val appName = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_APP_NAME,
+            "AppName",
+            "MonicaAppName",
+            "Application",
+            "Application Name"
+        )
+        val email = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_EMAIL, "E-mail", "Mail")
+        val phone = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_PHONE, "Phone Number", "Telephone")
+        val addressLine = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_ADDRESS_LINE, "Address Line")
+        val city = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CITY)
+        val state = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_STATE, "Province")
+        val zipCode = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_POSTAL_CODE, "PostalCode", "Zip Code", "ZipCode")
+        val country = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_COUNTRY)
+        val creditCardNumber = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_CARD_NUMBER,
+            "CardNumber",
+            "Credit Card Number",
+            "CreditCardNumber"
+        )
+        val creditCardHolder = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_CARD_HOLDER,
+            "CardHolder",
+            "Credit Card Holder",
+            "CreditCardHolder"
+        )
+        val creditCardExpiry = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_CARD_EXPIRY,
+            "CardExpiry",
+            "Expiration Date",
+            "Expiry Date"
+        )
+        val creditCardCVV = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_CVV, "CardCVV", "CVV", "CVC")
+        val ssoProvider = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_SSO_PROVIDER,
+            "SsoProvider",
+            "MonicaSsoProvider"
+        )
+        val ssoRefEntryId = getFieldValueIgnoreCase(
+            entry,
+            resolutionContext,
+            FIELD_MONICA_SSO_REF_ENTRY_ID,
+            "SsoRefEntryId",
+            "MonicaSsoRefId"
+        ).toLongOrNull()
         val customFields = extractKeePassCustomFieldsForPasswordEntry(
             entry.fields.map { (key, value) ->
                 KeePassRawStringField(
@@ -2325,7 +2539,7 @@ class KeePassKdbxService(
                 val wifi = takagi.ru.monica.data.model.WifiData(ssid = ssidField)
                 "WIFI" to wifi.toJson()
             }
-            monicaLoginType.equals("SSO", ignoreCase = true) -> "SSO" to ""
+            monicaLoginType.equals("SSO", ignoreCase = true) || ssoProvider.isNotBlank() -> "SSO" to ""
             monicaLoginType.equals("SSH_KEY", ignoreCase = true) -> "SSH_KEY" to ""
             else -> "PASSWORD" to ""
         }
@@ -2335,6 +2549,19 @@ class KeePassKdbxService(
             password = password,
             url = url,
             notes = notes,
+            appPackageName = appPackageName,
+            appName = appName,
+            email = email,
+            phone = phone,
+            addressLine = addressLine,
+            city = city,
+            state = state,
+            zipCode = zipCode,
+            country = country,
+            creditCardNumber = creditCardNumber,
+            creditCardHolder = creditCardHolder,
+            creditCardExpiry = creditCardExpiry,
+            creditCardCVV = creditCardCVV,
             sshKeyData = sshKeyData,
             monicaLocalId = monicaId,
             entryUuid = entry.uuid.toString(),
@@ -2342,6 +2569,8 @@ class KeePassKdbxService(
             groupUuid = groupUuid?.toString(),
             isInRecycleBin = inRecycleBin,
             loginType = resolvedLoginType,
+            ssoProvider = ssoProvider,
+            ssoRefEntryId = ssoRefEntryId,
             wifiMetadata = resolvedWifiJson,
             customFields = customFields
         )
@@ -2570,13 +2799,7 @@ class KeePassKdbxService(
     }
 
     private fun isLikelyRecycleBinPath(groupPath: String?): Boolean {
-        if (groupPath.isNullOrBlank()) return false
-        val normalized = decodeKeePassPathForDisplay(groupPath)
-            .lowercase(Locale.ROOT)
-            .replace(" ", "")
-        return normalized.contains("recyclebin") ||
-            normalized.contains("trash") ||
-            normalized.contains("回收站")
+        return isLikelyKeePassRecycleBinPath(groupPath)
     }
 
     private fun resolveRecycleBinUuid(meta: Meta): UUID? {
@@ -2633,6 +2856,18 @@ class KeePassKdbxService(
         val standardFields = setOf(
             "Title", "UserName", "Password", "URL", "Notes",
             "Username", "User", "Login", "Url", "Website", "URI", "Note", "Comment",
+            FIELD_APP_PACKAGE_NAME, "AppPackageName", "MonicaAppPackageName",
+            FIELD_APP_NAME, "AppName", "MonicaAppName",
+            FIELD_EMAIL, "E-mail", "Mail",
+            FIELD_PHONE, "Phone Number", "Telephone",
+            FIELD_ADDRESS_LINE, "Address Line",
+            FIELD_CITY, FIELD_STATE, "Province", FIELD_POSTAL_CODE, "PostalCode", "Zip Code", "ZipCode",
+            FIELD_COUNTRY,
+            FIELD_CARD_NUMBER, "CardNumber", "Credit Card Number", "CreditCardNumber",
+            FIELD_CARD_HOLDER, "CardHolder", "Credit Card Holder", "CreditCardHolder",
+            FIELD_CARD_EXPIRY, "CardExpiry", "Expiration Date", "Expiry Date",
+            FIELD_CARD_CVV, "CardCVV", "CVV", "CVC",
+            FIELD_SSO_PROVIDER, "SsoProvider", "MonicaSsoProvider", FIELD_MONICA_SSO_REF_ENTRY_ID,
             "otp", "TOTP Seed", "TOTP Settings",
             FIELD_MONICA_LOCAL_ID, FIELD_MONICA_ITEM_ID,
             FIELD_MONICA_ITEM_TYPE, FIELD_MONICA_ITEM_DATA,

@@ -3,6 +3,7 @@ package takagi.ru.monica.keepass
 import android.util.Log
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.utils.KeePassCustomFieldData
 
 class KeePassPasswordUpdateExecutor(
     private val bridge: KeePassCompatibilityBridge?
@@ -10,7 +11,8 @@ class KeePassPasswordUpdateExecutor(
     suspend fun syncUpdatedEntry(
         existingEntry: PasswordEntry?,
         updatedEntry: PasswordEntry,
-        resolvePassword: (PasswordEntry) -> String
+        resolvePassword: (PasswordEntry) -> String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
     ) {
         val keepassBridge = bridge ?: return
         val oldKeepassId = existingEntry?.keepassDatabaseId
@@ -30,7 +32,8 @@ class KeePassPasswordUpdateExecutor(
             val updateResult = keepassBridge.updateLegacyPasswordEntry(
                 databaseId = newKeepassId,
                 entry = updatedEntry,
-                resolvePassword = resolvePassword
+                resolvePassword = resolvePassword,
+                customFields = customFields
             )
             if (updateResult.isFailure) {
                 Log.e(TAG, "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")

@@ -9,7 +9,9 @@ import takagi.ru.monica.attachments.model.AttachmentError
 import takagi.ru.monica.attachments.model.AttachmentSource
 import takagi.ru.monica.attachments.storage.AttachmentKeyVault
 import takagi.ru.monica.attachments.storage.AttachmentStorage
+import takagi.ru.monica.utils.KeePassErrorCode
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.KeePassOperationException
 import java.io.InputStream
 
 /**
@@ -30,10 +32,25 @@ import java.io.InputStream
  */
 class KeePassAttachmentExecutor(
     private val context: Context,
-    private val kdbxService: KeePassKdbxService,
+    private val kdbxServiceProvider: () -> KeePassKdbxService,
     private val storage: AttachmentStorage,
     private val keyVault: AttachmentKeyVault
 ) {
+    constructor(
+        context: Context,
+        kdbxService: KeePassKdbxService,
+        storage: AttachmentStorage,
+        keyVault: AttachmentKeyVault
+    ) : this(
+        context = context,
+        kdbxServiceProvider = { kdbxService },
+        storage = storage,
+        keyVault = keyVault
+    )
+
+    private val kdbxService: KeePassKdbxService
+        get() = kdbxServiceProvider()
+
 
     /**
      * 把明文字节写入 KeePass 数据库，并在 Monica 本地缓存一份 GCM 密文副本。
@@ -54,10 +71,6 @@ class KeePassAttachmentExecutor(
         mimeType: String,
         sourceBytes: ByteArray
     ): Attachment = withContext(Dispatchers.IO) {
-        if (!kdbxService.isDatabaseUnlocked(databaseId)) {
-            throw AttachmentError.KdbxLocked
-        }
-
         val kdbxInfo = try {
             kdbxService.addAttachmentToEntry(
                 databaseId = databaseId,
@@ -133,9 +146,6 @@ class KeePassAttachmentExecutor(
         databaseId: Long,
         entryUuid: String
     ): Attachment = withContext(Dispatchers.IO) {
-        if (!kdbxService.isDatabaseUnlocked(databaseId)) {
-            throw AttachmentError.KdbxLocked
-        }
         val ref = existing.keepassBinaryRef
             ?: throw AttachmentError.CryptoError
         val bytes = try {
@@ -171,9 +181,6 @@ class KeePassAttachmentExecutor(
         entryUuid: String,
         binaryHashHex: String
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!kdbxService.isDatabaseUnlocked(databaseId)) {
-            throw AttachmentError.KdbxLocked
-        }
         try {
             kdbxService.deleteAttachmentFromEntry(
                 databaseId = databaseId,
@@ -190,9 +197,6 @@ class KeePassAttachmentExecutor(
         databaseId: Long,
         entryUuid: String
     ): List<KeePassKdbxService.KeePassAttachmentInfo> = withContext(Dispatchers.IO) {
-        if (!kdbxService.isDatabaseUnlocked(databaseId)) {
-            throw AttachmentError.KdbxLocked
-        }
         try {
             kdbxService.readEntryAttachments(databaseId, entryUuid).getOrThrow()
         } catch (e: Throwable) {
@@ -205,8 +209,18 @@ class KeePassAttachmentExecutor(
     private fun mapKdbxFailure(e: Throwable): AttachmentError = when (e) {
         is AttachmentError -> e
         is OutOfMemoryError -> AttachmentError.KdbxCapacityExceeded
+        is KeePassOperationException -> if (e.code == KeePassErrorCode.INVALID_CREDENTIAL) {
+            AttachmentError.KdbxLocked
+        } else {
+            AttachmentError.IoError
+        }
         is IllegalStateException -> if (e.message?.contains("cap", ignoreCase = true) == true) {
             AttachmentError.KdbxCapacityExceeded
+        } else if (
+            e.message?.contains("credential", ignoreCase = true) == true ||
+            e.message?.contains("凭据") == true
+        ) {
+            AttachmentError.KdbxLocked
         } else {
             AttachmentError.IoError
         }

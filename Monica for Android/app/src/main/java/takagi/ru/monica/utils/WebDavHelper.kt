@@ -1449,7 +1449,18 @@ class WebDavHelper(
                 // 6.8 导出 Passkeys
                 if (preferences.includePasskeys) {
                     try {
-                        val passkeys = passkeyDao.getAllPasskeysSync()
+                        val passkeyCandidates = passkeyDao.getAllPasskeysSync()
+                        val passkeys = passkeyCandidates
+                            .filter { BackupContentPolicy.shouldIncludePasskey(it, contentScope) }
+                        val skippedExternalPasskeyCount = passkeyCandidates.size - passkeys.size
+                        if (skippedExternalPasskeyCount > 0) {
+                            warnings.add("已跳过 $skippedExternalPasskeyCount 条非 Monica 本地通行密钥")
+                        }
+                        android.util.Log.d(
+                            "WebDavHelper",
+                            "Backup passkey selection: scope=$contentScope, candidates=${passkeyCandidates.size}, " +
+                                "included=${passkeys.size}, skipped=$skippedExternalPasskeyCount"
+                        )
                         if (passkeys.isNotEmpty()) {
                             val json = Json { prettyPrint = false }
                             passkeys.forEach { passkey ->
