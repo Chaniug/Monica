@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-15T22:28:56.893Z",
+  "generatedAt": "2026-06-16T22:22:27.004Z",
   "range": {
-    "from": "2025-06-16",
-    "to": "2026-06-15"
+    "from": "2025-06-17",
+    "to": "2026-06-16"
   },
   "activity": [
-    {
-      "date": "2025-06-16",
-      "count": 0
-    },
     {
       "date": "2025-06-17",
       "count": 0
@@ -1465,10 +1461,41 @@
     },
     {
       "date": "2026-06-15",
+      "count": 3
+    },
+    {
+      "date": "2026-06-16",
       "count": 0
     }
   ],
   "latest": [
+    {
+      "sha": "58952cbb060878abed08a56fe5c5892bb6acdef5",
+      "shortSha": "58952cb",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-15T23:12:31Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/58952cbb060878abed08a56fe5c5892bb6acdef5"
+    },
+    {
+      "sha": "00c4a94d1174d231a772770e67d3cdccabe79d83",
+      "shortSha": "00c4a94",
+      "message": "feat(android): enhance KeePass data model with extended field support",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-15T23:11:37Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/00c4a94d1174d231a772770e67d3cdccabe79d83"
+    },
+    {
+      "sha": "13fee0570f712f77fb58e0df16d952b62adc9816",
+      "shortSha": "13fee05",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-15T22:28:57Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/13fee0570f712f77fb58e0df16d952b62adc9816"
+    },
     {
       "sha": "e7ced79dad6a7f692a3d03a1746588162c3f0568",
       "shortSha": "e7ced79",
@@ -1531,33 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
       "date": "2026-06-11T22:15:30Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/c1d4c3fa896b6e9d871d89e70b0647eada2eaf40"
-    },
-    {
-      "sha": "2df4443d4778a92cbc3a6d23c206a12f72fd4318",
-      "shortSha": "2df4443",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-11T03:59:39Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/2df4443d4778a92cbc3a6d23c206a12f72fd4318"
-    },
-    {
-      "sha": "302167bfa3b4fc6b135847b987ccb70b2910204c",
-      "shortSha": "302167b",
-      "message": "Update Monica Android app",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-11T03:58:50Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/302167bfa3b4fc6b135847b987ccb70b2910204c"
-    },
-    {
-      "sha": "86375bcc6c268badffd99986c9289842bcf6f881",
-      "shortSha": "86375bc",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-10T22:20:30Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/86375bcc6c268badffd99986c9289842bcf6f881"
     }
   ]
 }
