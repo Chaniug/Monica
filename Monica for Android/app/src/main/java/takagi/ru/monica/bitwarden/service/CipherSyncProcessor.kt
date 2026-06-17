@@ -43,6 +43,7 @@ class CipherSyncProcessor(
 ) {
     companion object {
         private const val TAG = "CipherSyncProcessor"
+        const val SKIP_REMOTE_UNCHANGED = "Remote unchanged"
         private val LEGACY_MONICA_FIELD_NAMES = setOf(
             "monicalocalid",
             "monicasecureitemid",
@@ -102,6 +103,65 @@ class CipherSyncProcessor(
         } else {
             "https://$trimmed"
         }
+    }
+
+    private fun hasSameRemoteRevision(localRevision: String?, remoteRevision: String?): Boolean {
+        return !localRevision.isNullOrBlank() && localRevision == remoteRevision
+    }
+
+    private fun shouldSkipPasswordRemoteSync(
+        existing: PasswordEntry,
+        cipher: CipherApiResponse,
+        serverDeletedAt: Date?,
+        serverArchivedAt: Date?,
+        allowSshKeySkip: Boolean = false
+    ): Boolean {
+        if (!hasSameRemoteRevision(existing.bitwardenRevisionDate, cipher.revisionDate)) return false
+        if (existing.bitwardenLocalModified) return false
+        if (existing.isDeleted || serverDeletedAt != null) return false
+        if (existing.bitwardenFolderId != cipher.folderId) return false
+        if (existing.isArchived != (serverArchivedAt != null)) return false
+        if (!allowSshKeySkip &&
+            existing.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true) &&
+            existing.sshKeyData.isNotBlank()
+        ) {
+            return false
+        }
+        return true
+    }
+
+    private fun shouldSkipSecureItemRemoteSync(
+        existing: SecureItem,
+        cipher: CipherApiResponse,
+        serverDeletedAt: Date?
+    ): Boolean {
+        if (!hasSameRemoteRevision(existing.bitwardenRevisionDate, cipher.revisionDate)) return false
+        if (existing.bitwardenLocalModified == true) return false
+        if (existing.isDeleted || serverDeletedAt != null) return false
+        if (existing.bitwardenFolderId != cipher.folderId) return false
+        if (!existing.syncStatus.equals("SYNCED", ignoreCase = true)) return false
+        return true
+    }
+
+    private suspend fun resolveLocalDirtySecureItem(
+        existing: SecureItem,
+        vault: BitwardenVault,
+        cipher: CipherApiResponse
+    ): CipherSyncResult? {
+        if (existing.bitwardenLocalModified != true) return null
+        if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
+            secureItemDao.update(
+                existing.copy(
+                    bitwardenVaultId = vault.id,
+                    bitwardenFolderId = cipher.folderId,
+                    updatedAt = Date()
+                )
+            )
+        }
+        if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+            return CipherSyncResult.Conflict
+        }
+        return CipherSyncResult.Skipped("Local changes pending upload")
     }
     
     private val database = PasswordDatabase.getDatabase(context)
@@ -176,9 +236,11 @@ class CipherSyncProcessor(
         serverArchivedAt: Date?
     ): CipherSyncResult {
         val passwordResult = syncPasswordCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
+        val passwordRemoteUnchanged =
+            passwordResult is CipherSyncResult.Skipped && passwordResult.reason == SKIP_REMOTE_UNCHANGED
         val supplementalResult = when {
             PasskeyMapper.isPasskeyCipher(cipher) -> {
-                syncPasskeyCipher(vault, cipher, symmetricKey)
+                syncPasskeyCipher(vault, cipher, symmetricKey, passwordRemoteUnchanged)
             }
             TotpMapper.isStandaloneTotpCipher(cipher) -> {
                 syncTotpCipher(vault, cipher, symmetricKey, serverDeletedAt)
@@ -213,6 +275,15 @@ class CipherSyncProcessor(
         // 先按 cipherId 收敛历史重复副本，避免“同一条目异常膨胀”。
         val existing = resolveCanonicalPasswordEntry(vault.id, cipher.id)
         val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
+        if (existing == null && hasPendingDelete && !isServerDeleted) {
+            return CipherSyncResult.Skipped("Pending local delete")
+        }
+        if (existing != null && hasPendingDelete && !isServerDeleted) {
+            return CipherSyncResult.Skipped("Local delete wins")
+        }
+        if (existing != null && shouldSkipPasswordRemoteSync(existing, cipher, serverDeletedAt, serverArchivedAt)) {
+            return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+        }
         
         // 解密字段
         val name = decryptString(cipher.name, symmetricKey) ?: "Untitled"
@@ -267,9 +338,6 @@ class CipherSyncProcessor(
         val storedTotp = encodeBitwardenTotpForLocalStorage(totp)
         
         if (existing == null) {
-            if (hasPendingDelete && !isServerDeleted) {
-                return CipherSyncResult.Skipped("Pending local delete")
-            }
             // 创建新条目（不吞并本地同名条目，保持数据源独立）
             val newEntry = PasswordEntry(
                 title = name,
@@ -307,9 +375,6 @@ class CipherSyncProcessor(
             passwordEntryDao.insert(newEntry)
             return CipherSyncResult.Added
         } else {
-            if (hasPendingDelete && !isServerDeleted) {
-                return CipherSyncResult.Skipped("Local delete wins")
-            }
             if (isServerDeleted) {
                 passwordEntryDao.update(
                     existing.copy(
@@ -391,8 +456,8 @@ class CipherSyncProcessor(
                 isFavorite = cipher.favorite == true,
                 isDeleted = false,
                 deletedAt = null,
-                isArchived = serverArchivedAt != null || existing.isArchived,
-                archivedAt = serverArchivedAt ?: existing.archivedAt,
+                isArchived = serverArchivedAt != null,
+                archivedAt = serverArchivedAt,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -557,6 +622,27 @@ class CipherSyncProcessor(
         serverArchivedAt: Date?
     ): CipherSyncResult {
         val sshKey = cipher.sshKey ?: return CipherSyncResult.Skipped("No SSH key data")
+        val isServerDeleted = serverDeletedAt != null
+        val existing = resolveCanonicalPasswordEntry(vault.id, cipher.id)
+        val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
+
+        if (existing == null && hasPendingDelete && !isServerDeleted) {
+            return CipherSyncResult.Skipped("Pending local delete")
+        }
+        if (existing != null && hasPendingDelete && !isServerDeleted) {
+            return CipherSyncResult.Skipped("Local delete wins")
+        }
+        if (existing != null && shouldSkipPasswordRemoteSync(
+                existing = existing,
+                cipher = cipher,
+                serverDeletedAt = serverDeletedAt,
+                serverArchivedAt = serverArchivedAt,
+                allowSshKeySkip = true
+            )
+        ) {
+            return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+        }
+
         val name = decryptString(cipher.name, symmetricKey) ?: "SSH Key"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
         val privateKey = decryptString(sshKey.privateKey, symmetricKey).orEmpty()
@@ -575,14 +661,7 @@ class CipherSyncProcessor(
             return CipherSyncResult.Skipped("Empty SSH key data")
         }
 
-        val isServerDeleted = serverDeletedAt != null
-        val existing = resolveCanonicalPasswordEntry(vault.id, cipher.id)
-        val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
-
         if (existing == null) {
-            if (hasPendingDelete && !isServerDeleted) {
-                return CipherSyncResult.Skipped("Pending local delete")
-            }
             passwordEntryDao.insert(
                 PasswordEntry(
                     title = name,
@@ -610,9 +689,6 @@ class CipherSyncProcessor(
             return CipherSyncResult.Added
         }
 
-        if (hasPendingDelete && !isServerDeleted) {
-            return CipherSyncResult.Skipped("Local delete wins")
-        }
         if (existing.bitwardenLocalModified) {
             if (existing.bitwardenRevisionDate != cipher.revisionDate) {
                 return CipherSyncResult.Conflict
@@ -632,8 +708,8 @@ class CipherSyncProcessor(
                 isFavorite = cipher.favorite == true,
                 isDeleted = isServerDeleted,
                 deletedAt = serverDeletedAt,
-                isArchived = serverArchivedAt != null || existing.isArchived,
-                archivedAt = serverArchivedAt ?: existing.archivedAt,
+                isArchived = serverArchivedAt != null,
+                archivedAt = serverArchivedAt,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -713,6 +789,14 @@ class CipherSyncProcessor(
     ): CipherSyncResult {
         val login = cipher.login ?: return CipherSyncResult.Skipped("No login data")
         val isServerDeleted = serverDeletedAt != null
+        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
+
+        if (existing != null && !isServerDeleted) {
+            resolveLocalDirtySecureItem(existing, vault, cipher)?.let { return it }
+            if (shouldSkipSecureItemRemoteSync(existing, cipher, serverDeletedAt)) {
+                return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+            }
+        }
         
         // 解密 TOTP 密钥
         val decryptedTotp = decryptString(login.totp, symmetricKey) ?: ""
@@ -729,9 +813,6 @@ class CipherSyncProcessor(
             fallbackIssuer = name,
             fallbackAccountName = account
         ) ?: return CipherSyncResult.Skipped("Invalid TOTP payload")
-        
-        // 查找本地是否存在
-        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建 TOTP 数据
         // 从已有条目解析图标字段，同步时保留用户手动设置的图标
@@ -789,22 +870,6 @@ class CipherSyncProcessor(
                 )
                 return CipherSyncResult.Updated
             }
-            if (existing.bitwardenLocalModified == true) {
-                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
-                    secureItemDao.update(
-                        existing.copy(
-                            bitwardenVaultId = vault.id,
-                            bitwardenFolderId = cipher.folderId,
-                            updatedAt = Date()
-                        )
-                    )
-                }
-                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
-                    return CipherSyncResult.Conflict
-                }
-                return CipherSyncResult.Skipped("Local changes pending upload")
-            }
-            
             val updated = existing.copy(
                 title = name,
                 notes = notes,
@@ -838,11 +903,16 @@ class CipherSyncProcessor(
         if (hasPendingDelete && !isServerDeleted) {
             return CipherSyncResult.Skipped("Pending local delete")
         }
+        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
+        if (existing != null && !isServerDeleted) {
+            resolveLocalDirtySecureItem(existing, vault, cipher)?.let { return it }
+            if (shouldSkipSecureItemRemoteSync(existing, cipher, serverDeletedAt)) {
+                return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+            }
+        }
 
         val name = decryptString(cipher.name, symmetricKey) ?: "Note"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
-        
-        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建笔记数据
         val noteData = NoteData(content = notes)
@@ -887,22 +957,6 @@ class CipherSyncProcessor(
                 )
                 return CipherSyncResult.Updated
             }
-            if (existing.bitwardenLocalModified == true) {
-                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
-                    secureItemDao.update(
-                        existing.copy(
-                            bitwardenVaultId = vault.id,
-                            bitwardenFolderId = cipher.folderId,
-                            updatedAt = Date()
-                        )
-                    )
-                }
-                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
-                    return CipherSyncResult.Conflict
-                }
-                return CipherSyncResult.Skipped("Local changes pending upload")
-            }
-            
             val updated = existing.copy(
                 title = name,
                 notes = notes,
@@ -950,6 +1004,12 @@ class CipherSyncProcessor(
             decryptedFields.any { isLegacyCardCleanupFieldName(it.name) }
         
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
+        if (existing != null && !isServerDeleted) {
+            resolveLocalDirtySecureItem(existing, vault, cipher)?.let { return it }
+            if (!hasLegacyCardFields && shouldSkipSecureItemRemoteSync(existing, cipher, serverDeletedAt)) {
+                return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+            }
+        }
         val existingCardData = existing?.let {
             CardWalletDataCodec.parseBankCardData(it.itemData) { encrypted ->
                 securityManager.decryptData(encrypted)
@@ -1024,22 +1084,6 @@ class CipherSyncProcessor(
                 )
                 return CipherSyncResult.Updated
             }
-            if (existing.bitwardenLocalModified == true) {
-                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
-                    secureItemDao.update(
-                        existing.copy(
-                            bitwardenVaultId = vault.id,
-                            bitwardenFolderId = cipher.folderId,
-                            updatedAt = Date()
-                        )
-                    )
-                }
-                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
-                    return CipherSyncResult.Conflict
-                }
-                return CipherSyncResult.Skipped("Local changes pending upload")
-            }
-            
             val updated = existing.copy(
                 title = name,
                 notes = notes,
@@ -1097,6 +1141,12 @@ class CipherSyncProcessor(
         }
         
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
+        if (existing != null && !isServerDeleted) {
+            resolveLocalDirtySecureItem(existing, vault, cipher)?.let { return it }
+            if (shouldSkipSecureItemRemoteSync(existing, cipher, serverDeletedAt)) {
+                return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+            }
+        }
         
         val docData = DocumentData(
             documentType = resolvedDocumentType,
@@ -1170,22 +1220,6 @@ class CipherSyncProcessor(
                 )
                 return CipherSyncResult.Updated
             }
-            if (existing.bitwardenLocalModified == true) {
-                if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
-                    secureItemDao.update(
-                        existing.copy(
-                            bitwardenVaultId = vault.id,
-                            bitwardenFolderId = cipher.folderId,
-                            updatedAt = Date()
-                        )
-                    )
-                }
-                if (existing.bitwardenRevisionDate != cipher.revisionDate) {
-                    return CipherSyncResult.Conflict
-                }
-                return CipherSyncResult.Skipped("Local changes pending upload")
-            }
-            
             val updated = existing.copy(
                 title = name,
                 notes = notes,
@@ -1211,11 +1245,18 @@ class CipherSyncProcessor(
     private suspend fun syncPasskeyCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        remoteUnchanged: Boolean
     ): CipherSyncResult {
         val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
         if (hasPendingDelete) {
             return CipherSyncResult.Skipped("Pending local delete")
+        }
+        if (remoteUnchanged) {
+            val existingPasskeys = passkeyDao.getAllByBitwardenCipherIdInVault(vault.id, cipher.id)
+            if (existingPasskeys.isNotEmpty() && existingPasskeys.all { it.syncStatus == "SYNCED" }) {
+                return CipherSyncResult.Skipped(SKIP_REMOTE_UNCHANGED)
+            }
         }
 
         val login = cipher.login

@@ -271,6 +271,12 @@ class BitwardenSyncService(
         var conflictsDetected = 0
         var skippedDueToLocalDirty = 0
         var sendsSynced = 0
+        val forensicsCollector: ((BitwardenSyncForensicsSummary) -> Unit)? =
+            if (forensicsSession.enabled) {
+                { summary -> BitwardenSyncForensicsLogger.recordCipher(forensicsSession, summary) }
+            } else {
+                null
+            }
         val activeServerCipherIds = response.ciphers
             .asSequence()
             .filter { it.deletedDate == null }
@@ -281,9 +287,16 @@ class BitwardenSyncService(
             // 1. 同步文件夹
             response.folders.forEach { folderApi ->
                 try {
+                    val existingFolder = folderDao.getFolderByBitwardenId(folderApi.id)
+                    if (existingFolder != null &&
+                        existingFolder.revisionDate == folderApi.revisionDate &&
+                        existingFolder.encryptedName == folderApi.name
+                    ) {
+                        return@forEach
+                    }
+
                     val decryptedName = decryptFolderName(folderApi.name, symmetricKey)
 
-                    val existingFolder = folderDao.getFolderByBitwardenId(folderApi.id)
                     if (existingFolder == null) {
                         // 新文件夹
                         folderDao.upsert(
@@ -320,9 +333,7 @@ class BitwardenSyncService(
                         vault = vault,
                         cipher = cipherApi,
                         symmetricKey = symmetricKey,
-                        forensicsCollector = { summary ->
-                            BitwardenSyncForensicsLogger.recordCipher(forensicsSession, summary)
-                        }
+                        forensicsCollector = forensicsCollector
                     )
                     when (result) {
                         is CipherSyncResult.Added -> ciphersAdded++
@@ -338,19 +349,27 @@ class BitwardenSyncService(
                         }
                     }
                     // 附件元数据对齐：仅对已有本地 PasswordEntry 的 cipher 执行
-                    runCatching {
-                        val localEntry = passwordEntryDao.getByBitwardenCipherIdInVault(
-                            vaultId = vault.id,
-                            cipherId = cipherApi.id
-                        )
-                        if (localEntry != null) {
-                            attachmentReconciler.reconcile(
-                                passwordId = localEntry.id,
-                                remoteAttachments = cipherApi.attachments
+                    val remoteUnchanged =
+                        result is CipherSyncResult.Skipped &&
+                            result.reason == CipherSyncProcessor.SKIP_REMOTE_UNCHANGED
+                    val shouldReconcileAttachments =
+                        cipherApi.attachments != null &&
+                            (!remoteUnchanged || cipherApi.attachments.isNotEmpty())
+                    if (shouldReconcileAttachments) {
+                        runCatching {
+                            val localEntry = passwordEntryDao.getByBitwardenCipherIdInVault(
+                                vaultId = vault.id,
+                                cipherId = cipherApi.id
                             )
+                            if (localEntry != null) {
+                                attachmentReconciler.reconcile(
+                                    passwordId = localEntry.id,
+                                    remoteAttachments = cipherApi.attachments
+                                )
+                            }
+                        }.onFailure { err ->
+                            android.util.Log.w(TAG, "Attachment reconcile failed for ${cipherApi.id}: ${err.message}")
                         }
-                    }.onFailure { err ->
-                        android.util.Log.w(TAG, "Attachment reconcile failed for ${cipherApi.id}: ${err.message}")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w(TAG, "Failed to sync cipher ${cipherApi.id}: ${e.message}")
