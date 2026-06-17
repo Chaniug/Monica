@@ -612,6 +612,7 @@ class KeePassKdbxViewModel {
                             val standardFields = setOf(
                                 "Title", "UserName", "Password", "URL", "Notes",
                                 "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType",
+                                "MonicaItemData", "MonicaSecureItemId", "MonicaImagePaths", "MonicaIsFavorite",
                                 "MonicaSshAlgorithm", "MonicaSshKeySize", "MonicaSshPublicKey",
                                 "MonicaSshPrivateKey", "MonicaSshFingerprint", "MonicaSshComment", "MonicaSshFormat",
                                 // WIFI 互通字段：已映射到 loginType/wifiMetadata，不再作为自定义字段导入
@@ -876,7 +877,8 @@ class KeePassKdbxViewModel {
 
         val standardFields = setOf(
             "Title", "UserName", "Password", "URL", "Notes",
-            "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
+            "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType",
+            "MonicaItemData", "MonicaSecureItemId", "MonicaImagePaths", "MonicaIsFavorite"
         )
         entry.fields.forEach { (key, value) ->
             if (key in standardFields || key.startsWith("_etm_")) return@forEach
@@ -926,7 +928,8 @@ class KeePassKdbxViewModel {
 
         val standardFields = setOf(
             "Title", "UserName", "Password", "URL", "Notes",
-            "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
+            "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType",
+            "MonicaItemData", "MonicaSecureItemId", "MonicaImagePaths", "MonicaIsFavorite"
         )
         return entry.fields.any { (key, value) ->
             key !in standardFields && runCatching { value.content.isNotBlank() }.getOrDefault(false)

@@ -21,6 +21,7 @@ import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.security.SecurityManager
@@ -42,6 +43,46 @@ class CipherSyncProcessor(
 ) {
     companion object {
         private const val TAG = "CipherSyncProcessor"
+        private val LEGACY_MONICA_FIELD_NAMES = setOf(
+            "monicalocalid",
+            "monicasecureitemid",
+            "monicaitemtype",
+            "monicaitemdata",
+            "monicaimagepaths",
+            "monicaisfavorite"
+        )
+        private val LEGACY_CARD_FIELD_NAMES = setOf(
+            "monica_bank_name",
+            "monica_card_type",
+            "monica_billing_address",
+            "monica_nickname",
+            "monica_valid_from_month",
+            "monica_valid_from_year",
+            "monica_pin",
+            "monica_iban",
+            "monica_swift_bic",
+            "monica_routing_number",
+            "monica_account_number",
+            "monica_branch_code",
+            "monica_currency",
+            "monica_customer_service_phone"
+        )
+        private val READABLE_CARD_FIELD_NAMES = setOf(
+            "bank name",
+            "card type",
+            "billing address",
+            "nickname",
+            "valid from month",
+            "valid from year",
+            "pin",
+            "iban",
+            "swift/bic",
+            "routing number",
+            "account number",
+            "branch code",
+            "currency",
+            "customer service phone"
+        )
     }
 
     private data class ParsedLoginUris(
@@ -905,8 +946,16 @@ class CipherSyncProcessor(
         val brand = decryptString(card.brand, symmetricKey) ?: ""
         val decryptedFields = decryptCustomFields(cipher.fields, symmetricKey)
         val fieldMap = decryptedFields.associate { it.name to it.value }
+        val hasLegacyCardFields = !isServerDeleted &&
+            decryptedFields.any { isLegacyCardCleanupFieldName(it.name) }
         
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
+        val existingCardData = existing?.let {
+            CardWalletDataCodec.parseBankCardData(it.itemData) { encrypted ->
+                securityManager.decryptData(encrypted)
+            }
+        }
+        val remoteBillingAddress = fieldMap.valueByNames("Billing Address", "monica_billing_address")
         
         val cardData = BankCardData(
             cardNumber = cardNumber,
@@ -914,21 +963,21 @@ class CipherSyncProcessor(
             expiryMonth = expMonth,
             expiryYear = expYear,
             cvv = cvv,
-            bankName = fieldMap["monica_bank_name"].orEmpty(),
-            cardType = parseCardType(fieldMap["monica_card_type"]),
-            billingAddress = fieldMap["monica_billing_address"].orEmpty(),
+            bankName = fieldMap.valueByNames("Bank Name", "monica_bank_name"),
+            cardType = parseCardType(fieldMap.valueByNames("Card Type", "monica_card_type")),
+            billingAddress = resolveSyncedCardBillingAddress(existingCardData, remoteBillingAddress),
             brand = brand,
-            nickname = fieldMap["monica_nickname"].orEmpty(),
-            validFromMonth = fieldMap["monica_valid_from_month"].orEmpty(),
-            validFromYear = fieldMap["monica_valid_from_year"].orEmpty(),
-            pin = fieldMap["monica_pin"].orEmpty(),
-            iban = fieldMap["monica_iban"].orEmpty(),
-            swiftBic = fieldMap["monica_swift_bic"].orEmpty(),
-            routingNumber = fieldMap["monica_routing_number"].orEmpty(),
-            accountNumber = fieldMap["monica_account_number"].orEmpty(),
-            branchCode = fieldMap["monica_branch_code"].orEmpty(),
-            currency = fieldMap["monica_currency"].orEmpty(),
-            customerServicePhone = fieldMap["monica_customer_service_phone"].orEmpty(),
+            nickname = fieldMap.valueByNames("Nickname", "monica_nickname"),
+            validFromMonth = fieldMap.valueByNames("Valid From Month", "monica_valid_from_month"),
+            validFromYear = fieldMap.valueByNames("Valid From Year", "monica_valid_from_year"),
+            pin = fieldMap.valueByNames("PIN", "monica_pin"),
+            iban = fieldMap.valueByNames("IBAN", "monica_iban"),
+            swiftBic = fieldMap.valueByNames("SWIFT/BIC", "monica_swift_bic"),
+            routingNumber = fieldMap.valueByNames("Routing Number", "monica_routing_number"),
+            accountNumber = fieldMap.valueByNames("Account Number", "monica_account_number"),
+            branchCode = fieldMap.valueByNames("Branch Code", "monica_branch_code"),
+            currency = fieldMap.valueByNames("Currency", "monica_currency"),
+            customerServicePhone = fieldMap.valueByNames("Customer Service Phone", "monica_customer_service_phone"),
             customFields = decryptedFields.toCardCustomFields()
         )
         val itemData = encodeSecureItemDataForLocalStorage(
@@ -948,7 +997,8 @@ class CipherSyncProcessor(
                 bitwardenCipherId = cipher.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                syncStatus = "SYNCED",
+                bitwardenLocalModified = hasLegacyCardFields,
+                syncStatus = if (hasLegacyCardFields) "PENDING" else "SYNCED",
                 isDeleted = isServerDeleted,
                 deletedAt = serverDeletedAt
             )
@@ -1001,8 +1051,8 @@ class CipherSyncProcessor(
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                bitwardenLocalModified = false,
-                syncStatus = "SYNCED"
+                bitwardenLocalModified = hasLegacyCardFields,
+                syncStatus = if (hasLegacyCardFields) "PENDING" else "SYNCED"
             )
             secureItemDao.update(updated)
             return CipherSyncResult.Updated
@@ -1563,6 +1613,55 @@ class CipherSyncProcessor(
         }
     }
 
+    private fun Map<String, String>.valueByNames(vararg names: String): String {
+        names.forEach { name ->
+            get(name)?.let { return it }
+        }
+        val normalized = entries.associate { normalizeFieldName(it.key) to it.value }
+        names.forEach { name ->
+            normalized[normalizeFieldName(name)]?.let { return it }
+        }
+        return ""
+    }
+
+    private fun resolveSyncedCardBillingAddress(
+        existingCardData: BankCardData?,
+        remoteBillingAddress: String
+    ): String {
+        if (remoteBillingAddress.isBlank()) return ""
+        val existingRaw = existingCardData?.billingAddress.orEmpty()
+        if (existingRaw.isBlank()) return remoteBillingAddress
+        val existingDisplay = formatBankCardBillingAddressForExternal(existingRaw)
+        return if (existingDisplay.isNotBlank() && existingDisplay == remoteBillingAddress) {
+            existingRaw
+        } else {
+            remoteBillingAddress
+        }
+    }
+
+    private fun formatBankCardBillingAddressForExternal(raw: String): String {
+        return CardWalletDataCodec.parseBillingAddress(raw)
+            .formatForDisplay()
+            .ifBlank { raw }
+    }
+
+    private fun isInternalOrStructuredCardFieldName(name: String): Boolean {
+        val normalized = normalizeFieldName(name)
+        return normalized in LEGACY_MONICA_FIELD_NAMES ||
+            normalized in LEGACY_CARD_FIELD_NAMES ||
+            normalized in READABLE_CARD_FIELD_NAMES
+    }
+
+    private fun isLegacyCardCleanupFieldName(name: String): Boolean {
+        val normalized = normalizeFieldName(name)
+        return normalized in LEGACY_MONICA_FIELD_NAMES ||
+            normalized in LEGACY_CARD_FIELD_NAMES
+    }
+
+    private fun normalizeFieldName(name: String): String {
+        return name.trim().lowercase()
+    }
+
     private fun decryptCustomFields(
         fields: List<CipherFieldApiData>?,
         key: SymmetricCryptoKey
@@ -1646,23 +1745,8 @@ class CipherSyncProcessor(
     )
 
     private fun List<DecryptedCustomField>.toCardCustomFields(): List<SecureCustomField> {
-        val reserved = setOf(
-            "monica_bank_name",
-            "monica_card_type",
-            "monica_billing_address",
-            "monica_nickname",
-            "monica_valid_from_month",
-            "monica_valid_from_year",
-            "monica_pin",
-            "monica_iban",
-            "monica_swift_bic",
-            "monica_routing_number",
-            "monica_account_number",
-            "monica_branch_code",
-            "monica_currency",
-            "monica_customer_service_phone"
-        )
-        return filterNot { it.name in reserved }
+        val reserved = LEGACY_MONICA_FIELD_NAMES + LEGACY_CARD_FIELD_NAMES + READABLE_CARD_FIELD_NAMES
+        return filterNot { normalizeFieldName(it.name) in reserved }
             .map { it.toSecureCustomField() }
     }
 

@@ -45,10 +45,16 @@ import takagi.ru.monica.data.isRemoteSource
 import takagi.ru.monica.data.resolvedActiveFilePath
 import takagi.ru.monica.data.resolvedActiveStorageLocation
 import takagi.ru.monica.data.model.OtpType
+import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardType
+import takagi.ru.monica.data.model.CardWalletDataCodec
+import takagi.ru.monica.data.model.SecureCustomField
+import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
 import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
 import takagi.ru.monica.notes.domain.NoteContentCodec
@@ -259,6 +265,10 @@ private fun isReservedKeePassPasswordFieldName(key: String): Boolean {
         "Card Holder", "CardHolder", "Credit Card Holder", "CreditCardHolder",
         "Card Expiry", "CardExpiry", "Expiration Date", "Expiry Date",
         "Card CVV", "CardCVV", "CVV", "CVC",
+        "Expiry Month", "Expiry Year", "Bank Name", "Card Type", "Billing Address",
+        "Brand", "Nickname", "Valid From Month", "Valid From Year", "PIN",
+        "IBAN", "SWIFT/BIC", "Routing Number", "Account Number", "Branch Code",
+        "Currency", "Customer Service Phone",
         "SSO Provider", "SsoProvider", "MonicaSsoProvider", "MonicaSsoRefEntryId",
         "otp", "TOTP Seed", "TOTP Settings",
         "MonicaLocalId", "MonicaSecureItemId", "MonicaItemType", "MonicaItemData",
@@ -301,6 +311,21 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_ITEM_DATA = "MonicaItemData"
         private const val FIELD_MONICA_IMAGE_PATHS = "MonicaImagePaths"
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
+        private const val FIELD_BANK_NAME = "Bank Name"
+        private const val FIELD_CARD_TYPE = "Card Type"
+        private const val FIELD_BILLING_ADDRESS = "Billing Address"
+        private const val FIELD_BRAND = "Brand"
+        private const val FIELD_NICKNAME = "Nickname"
+        private const val FIELD_VALID_FROM_MONTH = "Valid From Month"
+        private const val FIELD_VALID_FROM_YEAR = "Valid From Year"
+        private const val FIELD_PIN = "PIN"
+        private const val FIELD_IBAN = "IBAN"
+        private const val FIELD_SWIFT_BIC = "SWIFT/BIC"
+        private const val FIELD_ROUTING_NUMBER = "Routing Number"
+        private const val FIELD_ACCOUNT_NUMBER = "Account Number"
+        private const val FIELD_BRANCH_CODE = "Branch Code"
+        private const val FIELD_CURRENCY = "Currency"
+        private const val FIELD_CUSTOMER_SERVICE_PHONE = "Customer Service Phone"
         private const val FIELD_MONICA_PASSKEY_CREDENTIAL_ID = "MonicaPasskeyCredentialId"
         private const val FIELD_MONICA_PASSKEY_DATA = "MonicaPasskeyData"
         private const val FIELD_MONICA_PASSKEY_MODE = "MonicaPasskeyMode"
@@ -1952,14 +1977,84 @@ class KeePassKdbxService(
             "URL" to EntryValue.Plain(""),
             "Notes" to EntryValue.Plain(noteForExternal),
             FIELD_MONICA_ITEM_TYPE to EntryValue.Plain(item.itemType.name),
-            FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(portableItemData)),
             FIELD_MONICA_IMAGE_PATHS to EntryValue.Plain(item.imagePaths),
             FIELD_MONICA_IS_FAVORITE to EntryValue.Plain(item.isFavorite.toString())
         )
+        if (item.itemType == ItemType.BANK_CARD) {
+            CardWalletDataCodec.parseBankCardData(portableItemData)?.let { cardData ->
+                appendBankCardFields(pairs, cardData)
+            }
+        } else {
+            pairs += FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(portableItemData))
+        }
         if (monicaId.isNotEmpty()) {
             pairs.add(FIELD_MONICA_ITEM_ID to EntryValue.Plain(monicaId))
         }
         return EntryFields.of(*pairs.toTypedArray())
+    }
+
+    private fun appendBankCardFields(
+        pairs: MutableList<Pair<String, EntryValue>>,
+        cardData: BankCardData
+    ) {
+        fun addPlain(name: String, value: String) {
+            if (value.isNotBlank()) {
+                pairs += name to EntryValue.Plain(value)
+            }
+        }
+
+        fun addProtected(name: String, value: String) {
+            if (value.isNotBlank()) {
+                pairs += name to EntryValue.Encrypted(EncryptedValue.fromString(value))
+            }
+        }
+
+        val billingAddressDisplay = CardWalletDataCodec.parseBillingAddress(cardData.billingAddress)
+            .formatForDisplay()
+            .ifBlank { cardData.billingAddress }
+
+        addProtected(FIELD_CARD_NUMBER, cardData.cardNumber)
+        addPlain(FIELD_CARD_HOLDER, cardData.cardholderName)
+        addPlain("Expiry Month", cardData.expiryMonth)
+        addPlain("Expiry Year", cardData.expiryYear)
+        addProtected(FIELD_CARD_CVV, cardData.cvv)
+        addPlain(FIELD_BANK_NAME, cardData.bankName)
+        addPlain(FIELD_CARD_TYPE, cardData.cardType.name)
+        addPlain(FIELD_BILLING_ADDRESS, billingAddressDisplay)
+        addPlain(FIELD_BRAND, cardData.brand)
+        addPlain(FIELD_NICKNAME, cardData.nickname)
+        addPlain(FIELD_VALID_FROM_MONTH, cardData.validFromMonth)
+        addPlain(FIELD_VALID_FROM_YEAR, cardData.validFromYear)
+        addProtected(FIELD_PIN, cardData.pin)
+        addProtected(FIELD_IBAN, cardData.iban)
+        addProtected(FIELD_SWIFT_BIC, cardData.swiftBic)
+        addProtected(FIELD_ROUTING_NUMBER, cardData.routingNumber)
+        addProtected(FIELD_ACCOUNT_NUMBER, cardData.accountNumber)
+        addPlain(FIELD_BRANCH_CODE, cardData.branchCode)
+        addPlain(FIELD_CURRENCY, cardData.currency)
+        addPlain(FIELD_CUSTOMER_SERVICE_PHONE, cardData.customerServicePhone)
+        appendSecureItemCustomFields(pairs, cardData.customFields)
+    }
+
+    private fun appendSecureItemCustomFields(
+        pairs: MutableList<Pair<String, EntryValue>>,
+        customFields: List<SecureCustomField>
+    ) {
+        val usedKeys = pairs.mapTo(mutableSetOf()) { it.first.trim().lowercase(Locale.ROOT) }
+        customFields
+            .asSequence()
+            .filter { it.isValid() }
+            .forEach { field ->
+                val key = field.label.trim()
+                if (key.isBlank() || key.startsWith("_etm_")) return@forEach
+                if (!usedKeys.add(key.lowercase(Locale.ROOT))) return@forEach
+                val value = if (field.type == SecureCustomFieldType.HIDDEN) {
+                    EntryValue.Encrypted(EncryptedValue.fromString(field.value))
+                } else {
+                    EntryValue.Plain(field.value)
+                }
+                pairs += key to value
+            }
     }
 
     private fun portableSecureItemDataForKeePass(item: SecureItem): String {
@@ -2673,6 +2768,9 @@ class KeePassKdbxService(
             if (allowedTypes != null && itemType !in allowedTypes) return null
 
             val itemData = getFieldValue(entry, FIELD_MONICA_ITEM_DATA, resolutionContext)
+                .ifBlank {
+                    buildStructuredSecureItemDataFromEntry(itemType, entry, resolutionContext).orEmpty()
+                }
             if (itemData.isBlank()) return null
 
             val title = getFieldValue(entry, "Title", resolutionContext)
@@ -2744,6 +2842,192 @@ class KeePassKdbxService(
             ),
             sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID, resolutionContext).toLongOrNull(),
             isInRecycleBin = inRecycleBin
+        )
+    }
+
+    private fun buildStructuredSecureItemDataFromEntry(
+        itemType: ItemType,
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext?
+    ): String? {
+        return when (itemType) {
+            ItemType.BANK_CARD -> buildBankCardItemDataFromEntry(entry, resolutionContext)
+            else -> null
+        }
+    }
+
+    private fun buildBankCardItemDataFromEntry(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext?
+    ): String? {
+        val expiryMonth = getFieldValueIgnoreCase(entry, resolutionContext, "Expiry Month")
+        val expiryYear = getFieldValueIgnoreCase(entry, resolutionContext, "Expiry Year")
+        val fallbackExpiry = splitCardExpiry(
+            getFieldValueIgnoreCase(
+                entry,
+                resolutionContext,
+                FIELD_CARD_EXPIRY,
+                "CardExpiry",
+                "Expiration Date",
+                "Expiry Date"
+            )
+        )
+        val data = BankCardData(
+            cardNumber = getFieldValueIgnoreCase(
+                entry,
+                resolutionContext,
+                FIELD_CARD_NUMBER,
+                "CardNumber",
+                "Credit Card Number",
+                "CreditCardNumber"
+            ),
+            cardholderName = getFieldValueIgnoreCase(
+                entry,
+                resolutionContext,
+                FIELD_CARD_HOLDER,
+                "CardHolder",
+                "Credit Card Holder",
+                "CreditCardHolder"
+            ),
+            expiryMonth = expiryMonth.ifBlank { fallbackExpiry.first },
+            expiryYear = expiryYear.ifBlank { fallbackExpiry.second },
+            cvv = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_CVV, "CardCVV", "CVV", "CVC"),
+            bankName = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BANK_NAME),
+            cardType = parseKeePassCardType(getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_TYPE)),
+            billingAddress = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BILLING_ADDRESS),
+            brand = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BRAND),
+            nickname = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_NICKNAME),
+            validFromMonth = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_VALID_FROM_MONTH),
+            validFromYear = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_VALID_FROM_YEAR),
+            pin = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_PIN),
+            iban = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_IBAN),
+            swiftBic = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_SWIFT_BIC),
+            routingNumber = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_ROUTING_NUMBER),
+            accountNumber = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_ACCOUNT_NUMBER),
+            branchCode = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BRANCH_CODE),
+            currency = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CURRENCY),
+            customerServicePhone = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CUSTOMER_SERVICE_PHONE),
+            customFields = extractStructuredSecureItemCustomFields(entry, resolutionContext)
+        )
+        val hasAnyCardField = listOf(
+            data.cardNumber,
+            data.cardholderName,
+            data.expiryMonth,
+            data.expiryYear,
+            data.cvv,
+            data.bankName,
+            data.billingAddress,
+            data.brand,
+            data.nickname,
+            data.pin,
+            data.iban,
+            data.swiftBic,
+            data.routingNumber,
+            data.accountNumber,
+            data.branchCode,
+            data.currency,
+            data.customerServicePhone
+        ).any { it.isNotBlank() } || data.customFields.isNotEmpty()
+
+        return if (hasAnyCardField) {
+            CardWalletDataCodec.encodeBankCardData(data)
+        } else {
+            null
+        }
+    }
+
+    private fun splitCardExpiry(raw: String): Pair<String, String> {
+        val normalized = raw.trim()
+        if (normalized.isBlank()) return "" to ""
+        val parts = normalized.split("/", "-", ".", " ")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        if (parts.size < 2) return "" to normalized
+        return parts[0] to parts[1]
+    }
+
+    private fun parseKeePassCardType(raw: String): CardType {
+        return when (raw.trim().uppercase(Locale.ROOT).replace(" ", "_")) {
+            "DEBIT", "DEBIT_CARD" -> CardType.DEBIT
+            "PREPAID", "PREPAID_CARD" -> CardType.PREPAID
+            else -> CardType.CREDIT
+        }
+    }
+
+    private fun extractStructuredSecureItemCustomFields(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext?
+    ): List<SecureCustomField> {
+        val reserved = (baseSecureItemFieldNames() + bankCardSecureItemFieldNames())
+            .mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
+        return entry.fields.mapNotNull { (key, value) ->
+            val normalizedKey = key.trim()
+            if (normalizedKey.isBlank() || normalizedKey.startsWith("_etm_")) return@mapNotNull null
+            if (normalizedKey.lowercase(Locale.ROOT) in reserved) return@mapNotNull null
+            val content = getFieldValue(entry, key, resolutionContext)
+            if (content.isBlank()) return@mapNotNull null
+            SecureCustomField(
+                label = normalizedKey,
+                value = content,
+                type = if (value is EntryValue.Encrypted) {
+                    SecureCustomFieldType.HIDDEN
+                } else {
+                    SecureCustomFieldType.TEXT
+                }
+            )
+        }
+    }
+
+    private fun baseSecureItemFieldNames(): Set<String> {
+        return setOf(
+            "Title",
+            "UserName",
+            "Password",
+            "URL",
+            "Notes",
+            FIELD_MONICA_ITEM_TYPE,
+            FIELD_MONICA_ITEM_DATA,
+            FIELD_MONICA_IMAGE_PATHS,
+            FIELD_MONICA_IS_FAVORITE,
+            FIELD_MONICA_ITEM_ID
+        )
+    }
+
+    private fun bankCardSecureItemFieldNames(): Set<String> {
+        return setOf(
+            FIELD_CARD_NUMBER,
+            "CardNumber",
+            "Credit Card Number",
+            "CreditCardNumber",
+            FIELD_CARD_HOLDER,
+            "CardHolder",
+            "Credit Card Holder",
+            "CreditCardHolder",
+            FIELD_CARD_EXPIRY,
+            "CardExpiry",
+            "Expiration Date",
+            "Expiry Date",
+            "Expiry Month",
+            "Expiry Year",
+            FIELD_CARD_CVV,
+            "CardCVV",
+            "CVV",
+            "CVC",
+            FIELD_BANK_NAME,
+            FIELD_CARD_TYPE,
+            FIELD_BILLING_ADDRESS,
+            FIELD_BRAND,
+            FIELD_NICKNAME,
+            FIELD_VALID_FROM_MONTH,
+            FIELD_VALID_FROM_YEAR,
+            FIELD_PIN,
+            FIELD_IBAN,
+            FIELD_SWIFT_BIC,
+            FIELD_ROUTING_NUMBER,
+            FIELD_ACCOUNT_NUMBER,
+            FIELD_BRANCH_CODE,
+            FIELD_CURRENCY,
+            FIELD_CUSTOMER_SERVICE_PHONE
         )
     }
 
@@ -2867,6 +3151,11 @@ class KeePassKdbxService(
             FIELD_CARD_HOLDER, "CardHolder", "Credit Card Holder", "CreditCardHolder",
             FIELD_CARD_EXPIRY, "CardExpiry", "Expiration Date", "Expiry Date",
             FIELD_CARD_CVV, "CardCVV", "CVV", "CVC",
+            "Expiry Month", "Expiry Year", FIELD_BANK_NAME, FIELD_CARD_TYPE,
+            FIELD_BILLING_ADDRESS, FIELD_BRAND, FIELD_NICKNAME,
+            FIELD_VALID_FROM_MONTH, FIELD_VALID_FROM_YEAR, FIELD_PIN, FIELD_IBAN,
+            FIELD_SWIFT_BIC, FIELD_ROUTING_NUMBER, FIELD_ACCOUNT_NUMBER,
+            FIELD_BRANCH_CODE, FIELD_CURRENCY, FIELD_CUSTOMER_SERVICE_PHONE,
             FIELD_SSO_PROVIDER, "SsoProvider", "MonicaSsoProvider", FIELD_MONICA_SSO_REF_ENTRY_ID,
             "otp", "TOTP Seed", "TOTP Settings",
             FIELD_MONICA_LOCAL_ID, FIELD_MONICA_ITEM_ID,

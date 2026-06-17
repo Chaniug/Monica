@@ -21,6 +21,7 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.SecureCustomField
 import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
@@ -47,6 +48,46 @@ class CipherUploadProcessor(
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         private val CIPHER_STRING_PATTERN =
             Regex("^[0-9]+\\.[A-Za-z0-9+/_=-]+\\|[A-Za-z0-9+/_=-]+(?:\\|[A-Za-z0-9+/_=-]+)?$")
+        private val LEGACY_MONICA_FIELD_NAMES = setOf(
+            "monicalocalid",
+            "monicasecureitemid",
+            "monicaitemtype",
+            "monicaitemdata",
+            "monicaimagepaths",
+            "monicaisfavorite"
+        )
+        private val LEGACY_CARD_FIELD_NAMES = setOf(
+            "monica_bank_name",
+            "monica_card_type",
+            "monica_billing_address",
+            "monica_nickname",
+            "monica_valid_from_month",
+            "monica_valid_from_year",
+            "monica_pin",
+            "monica_iban",
+            "monica_swift_bic",
+            "monica_routing_number",
+            "monica_account_number",
+            "monica_branch_code",
+            "monica_currency",
+            "monica_customer_service_phone"
+        )
+        private val READABLE_CARD_FIELD_NAMES = setOf(
+            "bank name",
+            "card type",
+            "billing address",
+            "nickname",
+            "valid from month",
+            "valid from year",
+            "pin",
+            "iban",
+            "swift/bic",
+            "routing number",
+            "account number",
+            "branch code",
+            "currency",
+            "customer service phone"
+        )
     }
     
     private val database = PasswordDatabase.getDatabase(context)
@@ -1271,7 +1312,8 @@ class CipherUploadProcessor(
         val mergedFields = mergeCipherFields(
             localFields = request.fields,
             serverFields = baselineCipher.fields,
-            symmetricKey = symmetricKey
+            symmetricKey = symmetricKey,
+            removeCardStructuredFields = request.type == 3
         )
 
         return request.copy(fields = mergedFields)
@@ -1280,7 +1322,8 @@ class CipherUploadProcessor(
     private fun mergeCipherFields(
         localFields: List<CipherFieldApiData>?,
         serverFields: List<CipherFieldApiData>?,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        removeCardStructuredFields: Boolean
     ): List<CipherFieldApiData>? {
         if (serverFields.isNullOrEmpty()) return localFields
 
@@ -1289,7 +1332,13 @@ class CipherUploadProcessor(
             .map { buildFieldMergeKey(it, symmetricKey) }
             .toMutableSet()
 
-        serverFields.forEach { serverField ->
+        serverFields
+            .filterNot { serverField ->
+                removeCardStructuredFields && isInternalOrStructuredCardFieldName(
+                    decryptOrPlain(serverField.name, symmetricKey).orEmpty()
+                )
+            }
+            .forEach { serverField ->
             val serverKey = buildFieldMergeKey(serverField, symmetricKey)
             if (fieldKeys.add(serverKey)) {
                 merged += serverField
@@ -1311,6 +1360,17 @@ class CipherUploadProcessor(
         } else {
             "named|${field.type}|${field.linkedId}|$plainName"
         }
+    }
+
+    private fun isInternalOrStructuredCardFieldName(name: String): Boolean {
+        val normalized = normalizeFieldName(name)
+        return normalized in LEGACY_MONICA_FIELD_NAMES ||
+            normalized in LEGACY_CARD_FIELD_NAMES ||
+            normalized in READABLE_CARD_FIELD_NAMES
+    }
+
+    private fun normalizeFieldName(name: String): String {
+        return name.trim().lowercase()
     }
 
     private fun decryptOrPlain(value: String?, symmetricKey: SymmetricCryptoKey): String? {
@@ -1344,33 +1404,38 @@ class CipherUploadProcessor(
         cardData: BankCardData,
         symmetricKey: SymmetricCryptoKey
     ): List<CipherFieldApiData>? {
+        val billingAddressDisplay = CardWalletDataCodec.parseBillingAddress(cardData.billingAddress)
+            .formatForDisplay()
+            .ifBlank { cardData.billingAddress }
         val reserved = buildList {
-            add("monica_bank_name" to cardData.bankName)
-            add("monica_card_type" to cardData.cardType.name)
-            add("monica_billing_address" to cardData.billingAddress)
-            add("monica_nickname" to cardData.nickname)
-            add("monica_valid_from_month" to cardData.validFromMonth)
-            add("monica_valid_from_year" to cardData.validFromYear)
-            add("monica_pin" to cardData.pin)
-            add("monica_iban" to cardData.iban)
-            add("monica_swift_bic" to cardData.swiftBic)
-            add("monica_routing_number" to cardData.routingNumber)
-            add("monica_account_number" to cardData.accountNumber)
-            add("monica_branch_code" to cardData.branchCode)
-            add("monica_currency" to cardData.currency)
-            add("monica_customer_service_phone" to cardData.customerServicePhone)
+            add("Bank Name" to cardData.bankName)
+            add("Card Type" to cardData.cardType.name)
+            add("Billing Address" to billingAddressDisplay)
+            add("Nickname" to cardData.nickname)
+            add("Valid From Month" to cardData.validFromMonth)
+            add("Valid From Year" to cardData.validFromYear)
+            add("PIN" to cardData.pin)
+            add("IBAN" to cardData.iban)
+            add("SWIFT/BIC" to cardData.swiftBic)
+            add("Routing Number" to cardData.routingNumber)
+            add("Account Number" to cardData.accountNumber)
+            add("Branch Code" to cardData.branchCode)
+            add("Currency" to cardData.currency)
+            add("Customer Service Phone" to cardData.customerServicePhone)
         }
         return buildEncryptedFields(
             symmetricKey = symmetricKey,
             reservedFields = reserved,
-            customFields = cardData.customFields
+            customFields = cardData.customFields,
+            excludedCustomFieldNames = LEGACY_MONICA_FIELD_NAMES + LEGACY_CARD_FIELD_NAMES + READABLE_CARD_FIELD_NAMES
         )
     }
 
     private fun buildEncryptedFields(
         symmetricKey: SymmetricCryptoKey,
         reservedFields: List<Pair<String, String>>,
-        customFields: List<SecureCustomField>
+        customFields: List<SecureCustomField>,
+        excludedCustomFieldNames: Set<String> = emptySet()
     ): List<CipherFieldApiData>? {
         val crypto = BitwardenCrypto
         val result = mutableListOf<CipherFieldApiData>()
@@ -1387,6 +1452,7 @@ class CipherUploadProcessor(
 
         customFields
             .filter { it.isValid() }
+            .filterNot { normalizeFieldName(it.label) in excludedCustomFieldNames }
             .forEach { field ->
                 result += CipherFieldApiData(
                     name = crypto.encryptString(field.label, symmetricKey),

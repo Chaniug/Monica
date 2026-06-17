@@ -444,6 +444,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     securityManager = securityManager,
                     keepassDatabases = keepassDatabases,
                     canSkipVerification = canOpenPicker,
+                    requireAuthentication = settings.autofillAuthRequired,
                     biometricEnabled = settings.biometricEnabled,
                     autoLockMinutes = settings.autoLockMinutes,
                     iconCardsEnabled = settings.iconCardsEnabled,
@@ -1647,6 +1648,7 @@ private fun AutofillPickerContent(
     securityManager: SecurityManager,
     keepassDatabases: List<LocalKeePassDatabase>,
     canSkipVerification: Boolean = false,
+    requireAuthentication: Boolean = true,
     biometricEnabled: Boolean = false,
     autoLockMinutes: Int = 5,
     iconCardsEnabled: Boolean = false,
@@ -1824,7 +1826,9 @@ private fun AutofillPickerContent(
         }
     }
 
-    var isAuthenticated by remember { mutableStateOf(canSkipVerification) }
+    var isAuthenticated by remember(canSkipVerification, requireAuthentication) {
+        mutableStateOf(canSkipVerification && !requireAuthentication)
+    }
 
     if (!isAuthenticated) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -1904,6 +1908,7 @@ private fun AutofillPickerContent(
                 "manualMode" to isManualMode,
                 "manualReason" to manualModeReason,
                 "mainAppAuthenticated" to canSkipVerification,
+                "autofillAuthRequired" to requireAuthentication,
                 "iconCardsEnabled" to iconCardsEnabled,
                 "responseAuth" to args.responseAuthMode,
                 "idCount" to (args.autofillIds?.size ?: 0),

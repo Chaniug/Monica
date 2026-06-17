@@ -143,17 +143,27 @@ class FilledDataBuilderNg(
         requireAuthentication: Boolean,
         isVaultLocked: Boolean,
     ): AutofillCipher.Login? {
-        if (requireAuthentication && isVaultLocked) {
+        if (requireAuthentication) {
             val subtitleValue = AccountFillPolicy
                 .resolveAccountIdentifierForDisplay(entry)
                 .takeIf { it.isNotBlank() }
                 ?: entry.website.takeIf { it.isNotBlank() }
                 ?: fallbackWebsite.takeIf { it.isNotBlank() }
                 ?: entry.title
-            return entry.toAutofillCipherLogin(
-                fallbackWebsite = fallbackWebsite,
-                usernameValue = subtitleValue,
-                passwordValue = MANUAL_PLACEHOLDER_VALUE
+            val websiteValue = entry.website.takeIf { it.isNotBlank() } ?: fallbackWebsite
+            val titleValue = entry.title
+                .takeIf { it.isNotBlank() }
+                ?: subtitleValue.takeIf { it.isNotBlank() }
+                ?: websiteValue.takeIf { it.isNotBlank() }
+                ?: "Credential"
+            return AutofillCipher.Login(
+                cipherId = entry.id.toString(),
+                name = titleValue,
+                subtitle = subtitleValue,
+                username = MANUAL_PLACEHOLDER_VALUE,
+                password = MANUAL_PLACEHOLDER_VALUE,
+                website = websiteValue,
+                appPackageName = entry.appPackageName.takeIf { it.isNotBlank() }
             )
         }
 

@@ -152,10 +152,8 @@ class FillResponseBuilderNg(
             username = partition.autofillCipher.subtitle
         )
 
-        val hasInlinePresentation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            partition.inlinePresentationSpec != null
         val callbackTargets = buildLoginCallbackTargets(request.partition.views)
-        val inlinePendingIntent = if (hasInlinePresentation) {
+        val authPendingIntent = if (requireAuthentication || forceAuthDatasetWrapper || Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             createCipherAuthPendingIntent(
                 request = request,
                 partition = partition,
@@ -164,6 +162,9 @@ class FillResponseBuilderNg(
             )
         } else {
             null
+        }
+        if ((requireAuthentication || forceAuthDatasetWrapper) && authPendingIntent == null) {
+            throw IllegalStateException("Authentication required but cipher callback pending intent is unavailable")
         }
 
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
@@ -185,7 +186,7 @@ class FillResponseBuilderNg(
                     spec = spec,
                     specs = request.inlinePresentationSpecs,
                     index = index,
-                    pendingIntent = inlinePendingIntent ?: return@create null,
+                    pendingIntent = authPendingIntent ?: return@create null,
                     title = partition.autofillCipher.name,
                     subtitle = partition.autofillCipher.subtitle,
                     icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
@@ -199,6 +200,9 @@ class FillResponseBuilderNg(
             }
         }
 
+        if ((requireAuthentication || forceAuthDatasetWrapper) && authPendingIntent != null) {
+            datasetBuilder.setAuthentication(authPendingIntent.intentSender)
+        }
         return datasetBuilder.build()
     }
 
