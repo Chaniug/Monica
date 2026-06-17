@@ -1256,9 +1256,9 @@ fun MonicaContent(
                     navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
                 }
             }
-            val qrResult = navController.currentBackStackEntry
-                ?.savedStateHandle
-                ?.get<String>("qr_result")
+            val qrResult by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("qr_result", null)
+                .collectAsState()
             var replacementPasswordDetailId by remember(backStackEntry, passwordId) {
                 mutableStateOf<Long?>(null)
             }
@@ -1298,9 +1298,7 @@ fun MonicaContent(
                 pendingQrResult = qrResult,
                 initialLoginType = initialType,
                 onConsumePendingQrResult = {
-                    navController.currentBackStackEntry
-                        ?.savedStateHandle
-                        ?.remove<String>("qr_result")
+                    backStackEntry.savedStateHandle.remove<String>("qr_result")
                 },
                 onScanAuthenticatorQrCode = {
                     navController.navigate(Screen.QrScanner.route) {

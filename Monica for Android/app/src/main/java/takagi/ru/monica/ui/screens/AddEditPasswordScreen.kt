@@ -292,6 +292,7 @@ fun AddEditPasswordScreen(
     var selectedExistingTotpTitle by rememberSaveable { mutableStateOf("") }
     var selectedExistingTotpStorageTarget by remember { mutableStateOf<StorageTarget?>(null) }
     var authenticatorPayloadOverride by rememberSaveable { mutableStateOf<String?>(null) }
+    var authenticatorEditedByUser by rememberSaveable(passwordId) { mutableStateOf(false) }
     var notes by rememberSaveable { mutableStateOf("") }
     var boundNoteId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
@@ -538,6 +539,7 @@ fun AddEditPasswordScreen(
     val isBarcodeMode = loginType.equals(LOGIN_TYPE_BARCODE, ignoreCase = true)
 
     fun applyAuthenticatorInput(rawValue: String) {
+        authenticatorEditedByUser = true
         val trimmed = rawValue.trim()
         existingTotpId = null
         selectedExistingTotpTitle = ""
@@ -562,11 +564,12 @@ fun AddEditPasswordScreen(
     }
 
     fun applyScannedAuthenticator(rawValue: String) {
-        existingTotpId = null
-        selectedExistingTotpTitle = ""
-        selectedExistingTotpStorageTarget = null
         when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(rawValue)) {
             is takagi.ru.monica.util.TotpScanParseResult.Single -> {
+                authenticatorEditedByUser = true
+                existingTotpId = null
+                selectedExistingTotpTitle = ""
+                selectedExistingTotpStorageTarget = null
                 val imported = scanResult.item.totpData
                 authenticatorSecret = imported.secret
                 selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
@@ -586,6 +589,10 @@ fun AddEditPasswordScreen(
             }
             is takagi.ru.monica.util.TotpScanParseResult.Multiple -> {
                 scanResult.items.firstOrNull()?.let { first ->
+                    authenticatorEditedByUser = true
+                    existingTotpId = null
+                    selectedExistingTotpTitle = ""
+                    selectedExistingTotpStorageTarget = null
                     val imported = first.totpData
                     authenticatorSecret = imported.secret
                     selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
@@ -629,6 +636,7 @@ fun AddEditPasswordScreen(
     }
 
     fun applyExistingAuthenticator(candidate: PasswordTotpBindingCandidate) {
+        authenticatorEditedByUser = true
         val normalized = TotpDataResolver.normalizeTotpData(candidate.data)
         val payload = TotpDataResolver.toBitwardenPayload(
             title = candidate.item.title.ifBlank { normalized.issuer.ifBlank { title } },
@@ -1243,26 +1251,28 @@ fun AddEditPasswordScreen(
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
                     currentReplicaGroupId = entry.replicaGroupId
-                    val resolvedAuthenticatorKey = withContext(Dispatchers.Default) {
-                        runCatching {
-                            securityManager.decryptDataIfMonicaCiphertext(entry.authenticatorKey)
-                        }.getOrDefault(entry.authenticatorKey)
+                    if (!authenticatorEditedByUser) {
+                        val resolvedAuthenticatorKey = withContext(Dispatchers.Default) {
+                            runCatching {
+                                securityManager.decryptDataIfMonicaCiphertext(entry.authenticatorKey)
+                            }.getOrDefault(entry.authenticatorKey)
+                        }
+                        val authenticatorDraft = withContext(Dispatchers.Default) {
+                            resolvePasswordScreenAuthenticatorDraft(
+                                rawKey = resolvedAuthenticatorKey,
+                                fallbackIssuer = entry.title,
+                                fallbackAccountName = entry.username
+                            )
+                        }
+                        authenticatorSecret = authenticatorDraft.secret
+                        selectedAuthenticatorOtpTypeName = authenticatorDraft.otpType.toPasswordScreenOtpType().name
+                        originalAuthenticatorKey = resolvedAuthenticatorKey
+                        authenticatorPayloadOverride = resolvedAuthenticatorKey
+                            .takeIf { it.isNotBlank() && it != authenticatorDraft.secret }
+                        existingTotpId = null
+                        selectedExistingTotpTitle = ""
+                        selectedExistingTotpStorageTarget = null
                     }
-                    val authenticatorDraft = withContext(Dispatchers.Default) {
-                        resolvePasswordScreenAuthenticatorDraft(
-                            rawKey = resolvedAuthenticatorKey,
-                            fallbackIssuer = entry.title,
-                            fallbackAccountName = entry.username
-                        )
-                    }
-                    authenticatorSecret = authenticatorDraft.secret
-                    selectedAuthenticatorOtpTypeName = authenticatorDraft.otpType.toPasswordScreenOtpType().name
-                    originalAuthenticatorKey = resolvedAuthenticatorKey
-                    authenticatorPayloadOverride = resolvedAuthenticatorKey
-                        .takeIf { it.isNotBlank() && it != authenticatorDraft.secret }
-                    existingTotpId = null
-                    selectedExistingTotpTitle = ""
-                    selectedExistingTotpStorageTarget = null
                     passkeyBindings = entry.passkeyBindings
                     existingSshKeyData = entry.sshKeyData
                     
@@ -2642,6 +2652,7 @@ fun AddEditPasswordScreen(
                                         DropdownMenuItem(
                                             text = { Text(stringResource(labelRes)) },
                                             onClick = {
+                                                authenticatorEditedByUser = true
                                                 selectedAuthenticatorOtpTypeName = type.name
                                                 existingTotpId = null
                                                 selectedExistingTotpTitle = ""
