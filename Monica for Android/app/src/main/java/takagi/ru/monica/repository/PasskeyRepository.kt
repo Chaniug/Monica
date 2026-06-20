@@ -201,6 +201,12 @@ class PasskeyRepository(
             importedPasskeys = importedPasskeys,
             existingPasskeys = existingPasskeys
         )
+        if (
+            mergeResult.staleRecordIds.isEmpty() &&
+            existingPasskeys.matchesKeePassImportedPasskeyMirror(databaseId, mergeResult.mergedPasskeys)
+        ) {
+            return
+        }
         if (mergeResult.staleRecordIds.isNotEmpty()) {
             passkeyDao.deleteByRecordIds(mergeResult.staleRecordIds)
         }
@@ -465,4 +471,23 @@ fun mergeKeePassImportedPasskeys(
 
 private fun PasskeyEntry.keepassCredentialKey(): String? {
     return PasskeyCredentialIdCodec.normalize(credentialId)?.ifBlank { null }
+}
+
+private fun List<PasskeyEntry>.matchesKeePassImportedPasskeyMirror(
+    databaseId: Long,
+    mergedPasskeys: List<PasskeyEntry>
+): Boolean {
+    val existingByKey = mutableMapOf<String, PasskeyEntry>()
+    filter {
+        it.keepassDatabaseId == databaseId && it.passkeyMode == PasskeyEntry.MODE_KEEPASS_COMPAT
+    }.forEach { entry ->
+        val key = entry.keepassCredentialKey() ?: return false
+        if (existingByKey.put(key, entry) != null) return false
+    }
+
+    if (existingByKey.size != mergedPasskeys.size) return false
+    return mergedPasskeys.all { imported ->
+        val key = imported.keepassCredentialKey() ?: return false
+        existingByKey[key] == imported
+    }
 }

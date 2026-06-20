@@ -254,22 +254,23 @@ class DocumentViewModel(
                     repository.insertItem(incomingForLocalStorage)
                 } else {
                     val isInRecycleBin = snapshot.isInRecycleBin
-                    repository.updateItem(
-                        existing.copy(
-                            title = incoming.title,
-                            notes = incoming.notes,
-                            itemData = incomingForLocalStorage.itemData,
-                            isFavorite = incoming.isFavorite,
-                            imagePaths = incoming.imagePaths,
-                            keepassDatabaseId = incoming.keepassDatabaseId,
-                            keepassGroupPath = incoming.keepassGroupPath,
-                            keepassEntryUuid = incoming.keepassEntryUuid,
-                            keepassGroupUuid = incoming.keepassGroupUuid,
-                            isDeleted = isInRecycleBin,
-                            deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
-                            updatedAt = Date()
-                        )
+                    val updated = existing.copy(
+                        title = incoming.title,
+                        notes = incoming.notes,
+                        itemData = incomingForLocalStorage.itemData,
+                        isFavorite = incoming.isFavorite,
+                        imagePaths = incoming.imagePaths,
+                        keepassDatabaseId = incoming.keepassDatabaseId,
+                        keepassGroupPath = incoming.keepassGroupPath,
+                        keepassEntryUuid = incoming.keepassEntryUuid,
+                        keepassGroupUuid = incoming.keepassGroupUuid,
+                        isDeleted = isInRecycleBin,
+                        deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
+                        updatedAt = Date()
                     )
+                    if (!existing.matchesKeePassSecureItemImport(updated)) {
+                        repository.updateItem(updated)
+                    }
                 }
             }
             SyncDiagnostics.success(
@@ -283,6 +284,11 @@ class DocumentViewModel(
             SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
             throw error
         }
+    }
+
+    private fun SecureItem.matchesKeePassSecureItemImport(imported: SecureItem): Boolean {
+        return copy(itemData = "", updatedAt = imported.updatedAt) == imported.copy(itemData = "") &&
+            decryptStoredSensitiveValue(itemData) == decryptStoredSensitiveValue(imported.itemData)
     }
     
     // 添加证件

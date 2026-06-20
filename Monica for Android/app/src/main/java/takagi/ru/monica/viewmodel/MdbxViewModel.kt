@@ -49,6 +49,7 @@ import takagi.ru.monica.repository.MdbxDeltaSummary
 import takagi.ru.monica.repository.MdbxApplyResult
 import takagi.ru.monica.repository.MdbxBenchmarkResult
 import takagi.ru.monica.repository.MdbxSnapshotSummary
+import takagi.ru.monica.repository.MdbxStoredAttachment
 import takagi.ru.monica.repository.MdbxStoredVaultEntry
 import takagi.ru.monica.repository.MdbxAttachmentCekPayload
 import takagi.ru.monica.repository.MdbxStructurePreview
@@ -2303,6 +2304,22 @@ class MdbxViewModel(
 
     private val mdbxSecureItemEntryTypes = setOf("note", "totp", "card", "document-ref", "billing-address", "payment-account")
 
+    private data class CustomFieldFingerprint(
+        val title: String,
+        val value: String,
+        val isProtected: Boolean,
+        val sortOrder: Int
+    )
+
+    private data class AttachmentFingerprint(
+        val fileName: String,
+        val mimeType: String,
+        val sizeBytes: Long,
+        val sha256Hex: String?,
+        val createdAt: Long,
+        val updatedAt: Long
+    )
+
     private fun summarizeDiagValues(values: Iterable<Any?>, limit: Int = 20): String {
         val list = values.map { it?.toString() ?: "-" }
         if (list.size <= limit) return list.toString()
@@ -2653,6 +2670,11 @@ class MdbxViewModel(
                 itemType = ItemType.TOTP
             ),
             passkeyBindings = payload.optString("passkey_bindings"),
+            boundNoteId = if (payload.optString("bound_note_entry_id").isNotBlank()) {
+                existing?.boundNoteId
+            } else {
+                null
+            },
             loginType = payload.optString("login_type", "PASSWORD"),
             createdAt = existing?.createdAt ?: Date(),
             updatedAt = existing?.updatedAt ?: Date(),
@@ -2661,7 +2683,9 @@ class MdbxViewModel(
             isGroupCover = existing?.isGroupCover ?: false
         )
         val localPasswordId = if (existing != null) {
-            passwordEntryDao.updatePasswordEntry(entry)
+            if (!existing.matchesMdbxImport(entry, plainPassword)) {
+                passwordEntryDao.updatePasswordEntry(entry)
+            }
             existing.id
         } else {
             passwordEntryDao.insertPasswordEntry(entry)
@@ -2669,6 +2693,19 @@ class MdbxViewModel(
 
         restoreCustomFields(localPasswordId, payload)
         return localPasswordId
+    }
+
+    private fun PasswordEntry.matchesMdbxImport(
+        imported: PasswordEntry,
+        importedPlainPassword: String
+    ): Boolean {
+        val existingPlainPassword = decryptMonicaCiphertextOrRaw(password)
+        val existingAuthenticatorKey = decryptMonicaCiphertextOrRaw(authenticatorKey)
+        val importedAuthenticatorKey = decryptMonicaCiphertextOrRaw(imported.authenticatorKey)
+        return copy(password = "", authenticatorKey = "") ==
+            imported.copy(password = "", authenticatorKey = "") &&
+            existingPlainPassword == importedPlainPassword &&
+            existingAuthenticatorKey == importedAuthenticatorKey
     }
 
     private fun JSONObject.optStringPreservingExisting(
@@ -2710,7 +2747,24 @@ class MdbxViewModel(
                 )
             }
         }
-        customFieldDao.replaceFieldsForEntry(entryId, restored)
+        if (!customFieldDao.getFieldsByEntryIdSync(entryId).matchesImportedCustomFields(restored)) {
+            customFieldDao.replaceFieldsForEntry(entryId, restored)
+        }
+    }
+
+    private fun List<CustomField>.matchesImportedCustomFields(imported: List<CustomField>): Boolean {
+        return toCustomFieldFingerprints() == imported.toCustomFieldFingerprints()
+    }
+
+    private fun List<CustomField>.toCustomFieldFingerprints(): List<CustomFieldFingerprint> {
+        return mapIndexed { index, field ->
+            CustomFieldFingerprint(
+                title = field.title,
+                value = field.value,
+                isProtected = field.isProtected,
+                sortOrder = index
+            )
+        }
     }
 
     private suspend fun importSecureItem(
@@ -2756,10 +2810,17 @@ class MdbxViewModel(
             sortOrder = existing?.sortOrder ?: 0
         )
         if (existing != null) {
-            secureItemDao.updateItem(item)
+            if (!existing.matchesMdbxImport(item)) {
+                secureItemDao.updateItem(item)
+            }
             return existing.id
         }
         return secureItemDao.insertItem(item)
+    }
+
+    private fun SecureItem.matchesMdbxImport(imported: SecureItem): Boolean {
+        return copy(itemData = "") == imported.copy(itemData = "") &&
+            decryptMonicaCiphertextOrRaw(itemData) == decryptMonicaCiphertextOrRaw(imported.itemData)
     }
 
     private fun remapImportedTotpBinding(
@@ -2817,7 +2878,9 @@ class MdbxViewModel(
                 ?: return@forEach
             val localNoteId = importedSecureItemIds[boundNoteEntryId] ?: return@forEach
             val password = passwordEntryDao.getPasswordEntryById(localPasswordId) ?: return@forEach
-            passwordEntryDao.updatePasswordEntry(password.copy(boundNoteId = localNoteId))
+            if (password.boundNoteId != localNoteId) {
+                passwordEntryDao.updatePasswordEntry(password.copy(boundNoteId = localNoteId))
+            }
         }
     }
 
@@ -2859,10 +2922,16 @@ class MdbxViewModel(
             syncStatus = existing?.syncStatus ?: "NONE"
         )
         if (existing != null) {
-            passkeyDao.update(passkey)
+            if (existing != passkey) {
+                passkeyDao.update(passkey)
+            }
         } else {
             passkeyDao.insert(passkey)
         }
+    }
+
+    private fun decryptMonicaCiphertextOrRaw(value: String): String {
+        return runCatching { securityManager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value)
     }
 
     private fun JSONObject.optMdbxFolderId(): String? {
@@ -2877,48 +2946,95 @@ class MdbxViewModel(
     ) {
         if (importedPasswordIds.isEmpty()) return
         val attachments = vaultStore.readStoredAttachments(databaseId)
-        importedPasswordIds.values.toSet().forEach { parentPasswordId ->
-            attachmentDao.purgeByParent(parentPasswordId)
-        }
-        if (attachments.isEmpty()) return
         val dir = File(context.filesDir, "secure_attachments")
         dir.mkdirs()
-        attachments.filterNot { it.deleted }.forEach { stored ->
-            val entryId = stored.entryId ?: stored.projectId
-            val parentPasswordId = importedPasswordIds[entryId] ?: return@forEach
-            if (stored.wrappedCek.isNullOrBlank()) return@forEach
-            val localWrappedCek = runCatching {
-                MdbxAttachmentCekPayload.toLocalWrappedCek(
-                    storedValue = stored.wrappedCek,
-                    wrapBase64 = securityManager::encryptData
+        val activeAttachmentsByParentId = attachments
+            .filterNot { it.deleted }
+            .filter { !it.wrappedCek.isNullOrBlank() }
+            .groupBy { stored ->
+                val entryId = stored.entryId ?: stored.projectId
+                importedPasswordIds[entryId]
+            }
+            .filterKeys { it != null }
+            .mapKeys { it.key!! }
+
+        importedPasswordIds.values.toSet().forEach { parentPasswordId ->
+            val remoteAttachments = activeAttachmentsByParentId[parentPasswordId].orEmpty()
+            val localAttachments = attachmentDao.getActiveByParent(parentPasswordId)
+            if (localAttachments.matchesMdbxAttachments(remoteAttachments)) {
+                return@forEach
+            }
+
+            attachmentDao.purgeByParent(parentPasswordId)
+            remoteAttachments.forEach remoteLoop@{ stored ->
+                val wrappedCek = stored.wrappedCek ?: return@remoteLoop
+                val localWrappedCek = runCatching {
+                    MdbxAttachmentCekPayload.toLocalWrappedCek(
+                        storedValue = wrappedCek,
+                        wrapBase64 = securityManager::encryptData
+                    )
+                }.getOrNull() ?: return@remoteLoop
+                val relativePath = "${UUID.randomUUID()}.enc"
+                File(dir, relativePath).writeBytes(stored.blob)
+                attachmentDao.insert(
+                    Attachment(
+                        id = 0L,
+                        parentPasswordId = parentPasswordId,
+                        source = AttachmentSource.LOCAL.name,
+                        fileName = stored.fileName,
+                        mimeType = stored.mimeType.ifBlank { "application/octet-stream" },
+                        sizeBytes = stored.originalSize,
+                        sha256Hex = stored.contentHash,
+                        wrappedCek = localWrappedCek,
+                        localPath = relativePath,
+                        bitwardenAttachmentId = null,
+                        bitwardenUrl = null,
+                        bitwardenFileKeyEnc = null,
+                        keepassBinaryRef = null,
+                        downloadState = AttachmentDownloadState.DOWNLOADED.name,
+                        createdAt = stored.createdAtMillis,
+                        updatedAt = stored.updatedAtMillis,
+                        isDeleted = false,
+                        deletedAt = null
+                    )
                 )
-            }.getOrNull() ?: return@forEach
-            val relativePath = "${UUID.randomUUID()}.enc"
-            File(dir, relativePath).writeBytes(stored.blob)
-            attachmentDao.insert(
-                Attachment(
-                    id = 0L,
-                    parentPasswordId = parentPasswordId,
-                    source = AttachmentSource.LOCAL.name,
-                    fileName = stored.fileName,
-                    mimeType = stored.mimeType.ifBlank { "application/octet-stream" },
-                    sizeBytes = stored.originalSize,
-                    sha256Hex = stored.contentHash,
-                    wrappedCek = localWrappedCek,
-                    localPath = relativePath,
-                    bitwardenAttachmentId = null,
-                    bitwardenUrl = null,
-                    bitwardenFileKeyEnc = null,
-                    keepassBinaryRef = null,
-                    downloadState = AttachmentDownloadState.DOWNLOADED.name,
-                    createdAt = stored.createdAtMillis,
-                    updatedAt = stored.updatedAtMillis,
-                    isDeleted = false,
-                    deletedAt = null
-                )
-            )
+            }
         }
     }
+
+    private fun List<Attachment>.matchesMdbxAttachments(remoteAttachments: List<MdbxStoredAttachment>): Boolean {
+        return map { it.toMdbxAttachmentFingerprint() }.sortedWith(attachmentFingerprintComparator) ==
+            remoteAttachments.map { it.toAttachmentFingerprint() }.sortedWith(attachmentFingerprintComparator)
+    }
+
+    private val attachmentFingerprintComparator = compareBy<AttachmentFingerprint>(
+        { it.fileName },
+        { it.mimeType },
+        { it.sizeBytes },
+        { it.sha256Hex.orEmpty() },
+        { it.createdAt },
+        { it.updatedAt }
+    )
+
+    private fun Attachment.toMdbxAttachmentFingerprint(): AttachmentFingerprint =
+        AttachmentFingerprint(
+            fileName = fileName,
+            mimeType = mimeType.ifBlank { "application/octet-stream" },
+            sizeBytes = sizeBytes,
+            sha256Hex = sha256Hex,
+            createdAt = createdAt,
+            updatedAt = updatedAt
+        )
+
+    private fun MdbxStoredAttachment.toAttachmentFingerprint(): AttachmentFingerprint =
+        AttachmentFingerprint(
+            fileName = fileName,
+            mimeType = mimeType.ifBlank { "application/octet-stream" },
+            sizeBytes = originalSize,
+            sha256Hex = contentHash,
+            createdAt = createdAtMillis,
+            updatedAt = updatedAtMillis
+        )
 
     private suspend fun refreshVaultFromSource(databaseId: Long) {
         val database = databaseDao.getDatabaseById(databaseId)

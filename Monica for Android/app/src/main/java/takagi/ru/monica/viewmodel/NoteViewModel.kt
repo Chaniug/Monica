@@ -57,7 +57,7 @@ class NoteViewModel(
     private val passwordRepository: PasswordRepository? = null,
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
-    securityManager: SecurityManager? = null
+    private val securityManager: SecurityManager? = null
 ) : ViewModel() {
 
     companion object {
@@ -84,6 +84,12 @@ class NoteViewModel(
 
     private fun requestBitwardenMutationSync(vaultId: Long?) {
         vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
+
+    private fun decryptStoredSensitiveValue(value: String): String {
+        return securityManager
+            ?.let { manager -> runCatching { manager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value) }
+            ?: value
     }
 
     private data class KeePassMutationIdentity(
@@ -174,22 +180,23 @@ class NoteViewModel(
                     repository.insertItem(incoming)
                 } else {
                     val isInRecycleBin = snapshot.isInRecycleBin
-                    repository.updateItem(
-                        existing.copy(
-                            title = incoming.title,
-                            notes = incoming.notes,
-                            itemData = incoming.itemData,
-                            isFavorite = incoming.isFavorite,
-                            imagePaths = incoming.imagePaths,
-                            keepassDatabaseId = incoming.keepassDatabaseId,
-                            keepassGroupPath = incoming.keepassGroupPath,
-                            keepassEntryUuid = incoming.keepassEntryUuid,
-                            keepassGroupUuid = incoming.keepassGroupUuid,
-                            isDeleted = isInRecycleBin,
-                            deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
-                            updatedAt = Date()
-                        )
+                    val updated = existing.copy(
+                        title = incoming.title,
+                        notes = incoming.notes,
+                        itemData = incoming.itemData,
+                        isFavorite = incoming.isFavorite,
+                        imagePaths = incoming.imagePaths,
+                        keepassDatabaseId = incoming.keepassDatabaseId,
+                        keepassGroupPath = incoming.keepassGroupPath,
+                        keepassEntryUuid = incoming.keepassEntryUuid,
+                        keepassGroupUuid = incoming.keepassGroupUuid,
+                        isDeleted = isInRecycleBin,
+                        deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
+                        updatedAt = Date()
                     )
+                    if (!existing.matchesKeePassSecureItemImport(updated)) {
+                        repository.updateItem(updated)
+                    }
                 }
             }
             SyncDiagnostics.success(
@@ -203,6 +210,11 @@ class NoteViewModel(
             SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
             throw error
         }
+    }
+
+    private fun SecureItem.matchesKeePassSecureItemImport(imported: SecureItem): Boolean {
+        return copy(itemData = "", updatedAt = imported.updatedAt) == imported.copy(itemData = "") &&
+            decryptStoredSensitiveValue(itemData) == decryptStoredSensitiveValue(imported.itemData)
     }
     
     // 获取所有笔记

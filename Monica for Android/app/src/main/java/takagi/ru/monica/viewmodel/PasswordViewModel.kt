@@ -118,6 +118,13 @@ data class BitwardenSyncRawHistoryItem(
 )
 
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
+
+private data class KeePassCustomFieldFingerprint(
+    val title: String,
+    val value: String,
+    val isProtected: Boolean,
+    val sortOrder: Int
+)
 private const val PASSWORD_SCROLL_DEBUG_LOGS_ENABLED = false
 
 /**
@@ -1384,9 +1391,9 @@ class PasswordViewModel(
                 )
             }
             val normalizedPassword = normalizeIncomingKeePassPassword(item.password)
+            val existingPlainPassword = existing?.let { decryptForDisplay(it.password) }.orEmpty()
             val encryptedPassword = if (existing != null && normalizedPassword.isBlank()) {
-                val existingPassword = decryptForDisplay(existing.password)
-                if (existingPassword.isNotBlank()) {
+                if (existingPlainPassword.isNotBlank()) {
                     Log.w(
                         "PasswordViewModel",
                         "Skip KeePass blank-password overwrite for entryId=${existing.id}, title=${existing.title}"
@@ -1397,6 +1404,11 @@ class PasswordViewModel(
                 }
             } else {
                 securityManager.encryptData(normalizedPassword)
+            }
+            val importedPlainPassword = if (existing != null && encryptedPassword == existing.password) {
+                existingPlainPassword
+            } else {
+                normalizedPassword
             }
             if (existing != null) {
                 val isInRecycleBin = item.isInRecycleBin
@@ -1432,7 +1444,9 @@ class PasswordViewModel(
                     deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                     updatedAt = Date()
                 )
-                repository.updatePasswordEntry(updated)
+                if (!existing.matchesKeePassImport(updated, importedPlainPassword)) {
+                    repository.updatePasswordEntry(updated)
+                }
                 saveKeePassCustomFields(existing.id, item)
             } else {
                 val isInRecycleBin = item.isInRecycleBin
@@ -1485,6 +1499,15 @@ class PasswordViewModel(
         )
     }
 
+    private fun PasswordEntry.matchesKeePassImport(
+        imported: PasswordEntry,
+        importedPlainPassword: String
+    ): Boolean {
+        return copy(password = "", updatedAt = imported.updatedAt) ==
+            imported.copy(password = "") &&
+            decryptForDisplay(password) == importedPlainPassword
+    }
+
     private suspend fun saveKeePassCustomFields(entryId: Long, item: KeePassEntryData) {
         val fieldRepository = customFieldRepository ?: return
         val fields = item.customFields.map { field ->
@@ -1496,8 +1519,27 @@ class PasswordViewModel(
                 sortOrder = field.sortOrder
             )
         }
+        if (fieldRepository.getFieldsByEntryIdSync(entryId).matchesKeePassCustomFields(fields)) {
+            return
+        }
         fieldRepository.saveFieldsForEntries(mapOf(entryId to fields))
     }
+
+    private fun List<CustomField>.matchesKeePassCustomFields(imported: List<CustomField>): Boolean {
+        return toKeePassCustomFieldFingerprints() == imported.toKeePassCustomFieldFingerprints()
+    }
+
+    private fun List<CustomField>.toKeePassCustomFieldFingerprints(): List<KeePassCustomFieldFingerprint> {
+        return mapIndexed { index, field ->
+            KeePassCustomFieldFingerprint(
+                title = field.title,
+                value = field.value,
+                isProtected = field.isProtected,
+                sortOrder = index
+            )
+        }
+    }
+
 
     private suspend fun resolveKeePassCustomFieldsForSync(
         entryId: Long,
@@ -1561,22 +1603,28 @@ class PasswordViewModel(
                     secureRepo.insertItem(incoming)
                 } else {
                     val isInRecycleBin = snapshot.isInRecycleBin
-                    secureRepo.updateItem(
-                        existing.copy(
-                            title = incoming.title,
-                            notes = incoming.notes,
-                            itemData = incoming.itemData,
-                            isFavorite = incoming.isFavorite,
-                            imagePaths = incoming.imagePaths,
-                            keepassDatabaseId = incoming.keepassDatabaseId,
-                            keepassGroupPath = incoming.keepassGroupPath,
-                            isDeleted = isInRecycleBin,
-                            deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
-                            updatedAt = Date()
-                        )
+                    val updated = existing.copy(
+                        title = incoming.title,
+                        notes = incoming.notes,
+                        itemData = incoming.itemData,
+                        isFavorite = incoming.isFavorite,
+                        imagePaths = incoming.imagePaths,
+                        keepassDatabaseId = incoming.keepassDatabaseId,
+                        keepassGroupPath = incoming.keepassGroupPath,
+                        isDeleted = isInRecycleBin,
+                        deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
+                        updatedAt = Date()
                     )
+                    if (!existing.matchesKeePassSecureItemImport(updated)) {
+                        secureRepo.updateItem(updated)
+                    }
                 }
         }
+    }
+
+    private fun SecureItem.matchesKeePassSecureItemImport(imported: SecureItem): Boolean {
+        return copy(itemData = "", updatedAt = imported.updatedAt) == imported.copy(itemData = "") &&
+            decryptStoredSensitiveValue(itemData) == decryptStoredSensitiveValue(imported.itemData)
     }
 
     private fun normalizeIncomingKeePassPassword(raw: String): String {
