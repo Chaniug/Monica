@@ -358,16 +358,14 @@
             android:name=".autofill_ng.BiometricAuthActivity"
             android:exported="false"
             android:theme="@style/Theme.Transparent"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop" />
+            android:excludeFromRecents="true" />
         
         <!-- Autofill Authentication Activity -->
         <activity
             android:name=".autofill_ng.AutofillAuthenticationActivity"
             android:exported="false"
             android:theme="@style/Theme.TransparentDialog"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop" />
+            android:excludeFromRecents="true" />
 
         <activity
             android:name=".autofill_ng.AutofillCipherCallbackActivity"
@@ -375,24 +373,21 @@
             android:theme="@style/Theme.Monica.AutofillCallback"
             android:excludeFromRecents="true"
             android:noHistory="true"
-            android:taskAffinity=""
-            android:launchMode="singleTop" />
+            android:taskAffinity="" />
         
         <!-- Autofill Picker Activity (UI Improvement) -->
         <activity
             android:name=".autofill_ng.AutofillPickerActivity"
             android:exported="false"
             android:theme="@style/Theme.Monica.BottomSheet"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop" />
+            android:excludeFromRecents="true" />
         
         <!-- Autofill Picker Activity V2 (Keyguard Style Full Screen) -->
         <activity
             android:name=".autofill_ng.AutofillPickerActivityV2"
             android:exported="false"
             android:theme="@style/Theme.Monica"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop" />
+            android:excludeFromRecents="true" />
 
         <activity
             android:name=".autofill_ng.AutofillInlinePlaceholderActivity"
@@ -409,8 +404,7 @@
             android:exported="false"
             android:theme="@style/Theme.TransparentDialog"
             android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleTop" />
+            android:taskAffinity="" />
         
         <!-- FileProvider for camera photos -->
         <provider

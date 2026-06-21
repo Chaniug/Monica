@@ -25,7 +25,7 @@ class AutofillCallbackArgsRegressionGuardTest {
                 source.contains("getBundleExtra(EXTRA_ARGS_BUNDLE)")
         )
         assertTrue(
-            "The callback activity must refresh args from onNewIntent when launchMode=singleTop reuses the activity.",
+            "The callback activity should refresh args if a vendor or flag-driven launch still reuses the activity.",
             source.contains("override fun onNewIntent(intent: Intent)") &&
                 source.contains("callbackArgs = resolveArgsFromIntent(intent)")
         )
