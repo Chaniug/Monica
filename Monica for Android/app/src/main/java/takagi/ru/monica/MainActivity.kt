@@ -19,6 +19,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import takagi.ru.monica.ui.navigation.easyNotesScreenEnter
 import takagi.ru.monica.ui.navigation.easyNotesScreenExit
+import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
@@ -310,6 +311,28 @@ private fun SavedStateHandle.consumePendingSendDraft(): PendingSendDraft? {
     )
     clearPendingSendDraft()
     return draft.takeIf { it.hasAnyValue() }
+}
+
+@Composable
+private fun AnimatedContentScope.AddEditRouteContent(
+    content: @Composable () -> Unit
+) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        visible = true
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = easyNotesScreenEnter(),
+            exit = ExitTransition.None
+        ) {
+            content()
+        }
+    }
 }
 
 class MainActivity : BaseMonicaActivity() {
@@ -1258,6 +1281,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val initialType = backStackEntry.arguments?.getString("initialType")
             val pendingStorageDefaults = remember(backStackEntry, passwordId) {
@@ -1336,6 +1360,7 @@ fun MonicaContent(
                 },
                 onNavigateBack = navigateBackFromAddEditPassword
             )
+            }
         }
 
         composable(
@@ -1345,6 +1370,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val passwordIdArg = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val navigateBack = {
                 val popped = navController.popBackStack()
@@ -1393,6 +1419,7 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
         composable(
@@ -1446,6 +1473,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val passwordIdArg = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val navigateBack = {
                 val popped = navController.popBackStack()
@@ -1493,6 +1521,7 @@ fun MonicaContent(
                     }
                 }
             )
+            }
         }
 
         composable(
@@ -1577,6 +1606,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: 0L
             val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
             val displayTotpItems by totpViewModel.allTotpItems.collectAsState()
@@ -1755,6 +1785,7 @@ fun MonicaContent(
                     }
                 )
             }
+            }
         }
 
         composable(
@@ -1764,6 +1795,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val initialTypeRaw = backStackEntry.arguments?.getString("initialType").orEmpty()
             val initialType = runCatching {
                 takagi.ru.monica.ui.screens.CardWalletTab.valueOf(initialTypeRaw)
@@ -1793,6 +1825,7 @@ fun MonicaContent(
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId
             )
+            }
         }
 
         composable(
@@ -1802,6 +1835,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, cardId) {
                 if (cardId > 0) {
@@ -1826,6 +1860,7 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(
@@ -1835,6 +1870,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, documentId) {
                 if (documentId > 0) {
@@ -1859,6 +1895,7 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(
@@ -1868,6 +1905,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val addressId = backStackEntry.arguments?.getString("addressId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, addressId) {
                 if (addressId > 0) {
@@ -1888,6 +1926,7 @@ fun MonicaContent(
                     navController.popBackStack()
                 }
             )
+            }
         }
 
         composable(
@@ -1920,6 +1959,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, noteId) {
                 if (noteId > 0) {
@@ -1943,6 +1983,7 @@ fun MonicaContent(
                 },
                 viewModel = noteViewModel
             )
+            }
         }
 
         composable(
@@ -1952,6 +1993,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
+            AddEditRouteContent {
             val pendingSendDraft = remember(backStackEntry) {
                 navController.previousBackStackEntry?.savedStateHandle?.consumePendingSendDraft()
             }
@@ -1995,6 +2037,7 @@ fun MonicaContent(
                     )
                 }
             )
+            }
         }
 
         composable(

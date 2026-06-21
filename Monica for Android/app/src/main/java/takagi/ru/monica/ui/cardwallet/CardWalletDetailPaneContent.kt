@@ -1,13 +1,6 @@
 package takagi.ru.monica.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import takagi.ru.monica.ui.animation.AnimationUtils
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditBillingAddressScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
@@ -84,15 +78,7 @@ internal fun CardWalletDetailPaneContent(
 
     AnimatedContent(
         targetState = detailContent,
-        transitionSpec = {
-            (
-                fadeIn(animationSpec = tween(240)) +
-                    scaleIn(initialScale = 0.94f, animationSpec = tween(320))
-                ) togetherWith (
-                fadeOut(animationSpec = tween(120)) +
-                    scaleOut(targetScale = 0.98f, animationSpec = tween(120))
-                ) using SizeTransform(clip = false)
-        },
+        transitionSpec = AnimationUtils.pageTransitionSpec(),
         label = "CardWalletDetailPaneContent"
     ) { content ->
         when (content) {
