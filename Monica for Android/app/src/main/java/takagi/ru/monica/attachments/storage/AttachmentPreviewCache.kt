@@ -22,7 +22,7 @@ class AttachmentPreviewCache(private val context: Context) {
     private val cacheDir: File by lazy {
         File(context.applicationContext.cacheDir, DIR_NAME).also { dir ->
             if (!dir.exists() && !dir.mkdirs()) {
-                Log.w(TAG, "Failed to create preview cache dir: ${dir.absolutePath}")
+                Log.w(TAG, "Failed to create preview cache dir")
             }
         }
     }

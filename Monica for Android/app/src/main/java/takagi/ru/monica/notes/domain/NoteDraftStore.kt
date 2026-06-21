@@ -1,6 +1,7 @@
 package takagi.ru.monica.notes.domain
 
 import android.content.Context
+import takagi.ru.monica.security.SecurityManager
 
 interface NoteDraftStorage {
     fun saveDraft(noteId: Long, title: String, content: String, tagsText: String)
@@ -31,32 +32,47 @@ class NoteDraftStore(context: Context) : NoteDraftStorage {
         val tagsText: String
     )
 
-    private val prefs = context.applicationContext
+    private val legacyPrefs = context.applicationContext
         .getSharedPreferences("note_drafts", Context.MODE_PRIVATE)
+    private val securityManager = SecurityManager(context.applicationContext)
 
     override fun saveDraft(noteId: Long, title: String, content: String, tagsText: String) {
         if (title.isBlank() && content.isBlank() && tagsText.isBlank()) {
             clearDraft(noteId)
             return
         }
-        prefs.edit()
-            .putString(key(noteId, "title"), title)
-            .putString(key(noteId, "content"), content)
-            .putString(key(noteId, "tags"), tagsText)
-            .putLong(key(noteId, "ts"), System.currentTimeMillis())
+        securityManager.putProtectedString(key(noteId, "title"), title)
+        securityManager.putProtectedString(key(noteId, "content"), content)
+        securityManager.putProtectedString(key(noteId, "tags"), tagsText)
+        legacyPrefs.edit()
+            .remove(key(noteId, "title"))
+            .remove(key(noteId, "content"))
+            .remove(key(noteId, "tags"))
+            .remove(key(noteId, "ts"))
             .apply()
     }
 
     override fun loadDraft(noteId: Long): NoteDraft? {
-        if (!prefs.contains(key(noteId, "content"))) return null
-        val content = prefs.getString(key(noteId, "content"), null) ?: return null
-        val title = prefs.getString(key(noteId, "title"), "") ?: ""
-        val tags = prefs.getString(key(noteId, "tags"), "") ?: ""
+        val protectedContent = securityManager.getProtectedString(key(noteId, "content"))
+        if (protectedContent != null) {
+            val title = securityManager.getProtectedString(key(noteId, "title")).orEmpty()
+            val tags = securityManager.getProtectedString(key(noteId, "tags")).orEmpty()
+            return NoteDraft(title = title, content = protectedContent, tagsText = tags)
+        }
+
+        if (!legacyPrefs.contains(key(noteId, "content"))) return null
+        val content = legacyPrefs.getString(key(noteId, "content"), null) ?: return null
+        val title = legacyPrefs.getString(key(noteId, "title"), "") ?: ""
+        val tags = legacyPrefs.getString(key(noteId, "tags"), "") ?: ""
+        saveDraft(noteId, title, content, tags)
         return NoteDraft(title = title, content = content, tagsText = tags)
     }
 
     override fun clearDraft(noteId: Long) {
-        prefs.edit()
+        securityManager.removeProtectedString(key(noteId, "title"))
+        securityManager.removeProtectedString(key(noteId, "content"))
+        securityManager.removeProtectedString(key(noteId, "tags"))
+        legacyPrefs.edit()
             .remove(key(noteId, "title"))
             .remove(key(noteId, "content"))
             .remove(key(noteId, "tags"))
@@ -65,7 +81,8 @@ class NoteDraftStore(context: Context) : NoteDraftStorage {
     }
 
     override fun hasDraft(noteId: Long): Boolean {
-        return prefs.contains(key(noteId, "content"))
+        return securityManager.getProtectedString(key(noteId, "content")) != null ||
+            legacyPrefs.contains(key(noteId, "content"))
     }
 
     private fun key(noteId: Long, field: String): String = "$noteId.$field"

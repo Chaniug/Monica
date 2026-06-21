@@ -119,7 +119,6 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
         fieldTypes = intent.getStringArrayListExtra(EXTRA_FIELD_TYPES)
         
         Log.d(TAG, "Password entry ID: $passwordEntryId")
-        Log.d(TAG, "Username: $usernameValue")
         Log.d(TAG, "Autofill IDs count: ${autofillIds?.size}")
         Log.d(TAG, "Field types: $fieldTypes")
 

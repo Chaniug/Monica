@@ -162,7 +162,7 @@ class MonicaAccessibilityService : AccessibilityService() {
             lastUrl = url
             BrowserAutofillContextStore.update(packageName, url)
             ValidatorContextManager.updateContext(packageName, url)
-            Log.d(TAG, "Updated browser context: pkg=$packageName, url=$url")
+            Log.d(TAG, "Updated browser context: pkg=$packageName, hasUrl=${url.isNotBlank()}")
         }.onFailure { e ->
             Log.w(TAG, "onAccessibilityEvent failed", e)
         }

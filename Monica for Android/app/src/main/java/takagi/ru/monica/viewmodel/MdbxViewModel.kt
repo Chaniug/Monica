@@ -389,7 +389,7 @@ class MdbxViewModel(
                         )
                     )
                     MdbxDiagLogger.append(
-                        "[MDBX][createLocalVault] inserted name=$displayName sourceType=${sourceType.name} storage=${storageLocation.name} filePath=$filePath workingCopy=${localVaultFile.absolutePath}"
+                        "[MDBX][createLocalVault] inserted sourceType=${sourceType.name} storage=${storageLocation.name}"
                     )
                 }
 
@@ -397,11 +397,11 @@ class MdbxViewModel(
                     "Local MDBX vault \"$name\" created"
                 )
                 MdbxDiagLogger.append(
-                    "[MDBX][createLocalVault] success name=${requestedName.ifBlank { "<blank>" }}"
+                    "[MDBX][createLocalVault] success"
                 )
             } catch (e: Exception) {
                 MdbxDiagLogger.append(
-                    "[MDBX][createLocalVault] failure name=${requestedName.ifBlank { "<blank>" }} error=${e::class.java.simpleName}:${e.message}"
+                    "[MDBX][createLocalVault] failure error=${e::class.java.simpleName}"
                 )
                 _operationState.value = OperationState.Error(
                     "Failed to create local vault: ${e.message ?: "unknown error"}"
@@ -445,7 +445,7 @@ class MdbxViewModel(
                             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                         )
                     }.onFailure { error ->
-                        android.util.Log.w("MdbxViewModel", "Persistable permission not granted for uri=$sourceUri", error)
+                        android.util.Log.w("MdbxViewModel", "Persistable permission not granted", error)
                     }
 
                     // Write working copy and verify
@@ -2085,7 +2085,7 @@ class MdbxViewModel(
         }
 
         MdbxDiagLogger.append(
-            "[MDBX][createVaultFileInCustomDir] success name=$displayName externalUri=${createdFile.uri} localCopy=${localVaultFile.absolutePath}"
+            "[MDBX][createVaultFileInCustomDir] success"
         )
 
         return CustomDirectoryVault(

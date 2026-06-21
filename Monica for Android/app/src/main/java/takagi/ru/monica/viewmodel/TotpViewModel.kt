@@ -1512,7 +1512,6 @@ class TotpViewModel(
                     )
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -1721,7 +1720,6 @@ class TotpViewModel(
                 
                 repository.updateItem(updatedItem)
             } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -1762,7 +1760,6 @@ class TotpViewModel(
                     )
                     repository.updateItem(updatedItem)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
@@ -1884,7 +1881,6 @@ class TotpViewModel(
                     repository.updateItem(finalUpdatedItem)
                     keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
@@ -1932,7 +1928,6 @@ class TotpViewModel(
                     repository.updateItem(finalUpdatedItem)
                     keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
@@ -1982,7 +1977,6 @@ class TotpViewModel(
                     requestBitwardenMutationSync(vaultId)
                     keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
@@ -2036,7 +2030,6 @@ class TotpViewModel(
                     repository.updateItem(finalUpdatedItem)
                     keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }

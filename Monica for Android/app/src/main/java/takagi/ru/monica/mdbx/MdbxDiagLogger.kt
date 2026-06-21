@@ -125,6 +125,13 @@ object MdbxDiagLogger {
                 Regex("(password|pwd|passwd|masterPassword)[\"'\\s]*[:=][\"'\\s]*[^,\\s]+", RegexOption.IGNORE_CASE),
                 "$1=***"
             )
+            .replace(
+                Regex("\\b(name|filePath|workingCopy|cacheCopy|treeUri|uri|externalUri|localCopy)=([^\\s]+)", RegexOption.IGNORE_CASE),
+                "$1=<redacted>"
+            )
+            .replace(Regex("rows=\\[[^\\]]*\\]"), "rows=<redacted>")
+            .replace(Regex("[A-Za-z]:\\\\[^\\s]+"), "<path>")
+            .replace(Regex("(content|file)://[^\\s]+", RegexOption.IGNORE_CASE), "<uri>")
             .replace(Regex("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"), "***@***.com")
             .replace(Regex("\\b[A-Za-z0-9]{28,}\\b"), "***TOKEN***")
             .replace(Regex("[A-Za-z0-9+/]{40,}={0,2}"), "***TOKEN***")

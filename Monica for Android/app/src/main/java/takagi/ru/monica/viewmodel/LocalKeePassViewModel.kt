@@ -670,7 +670,7 @@ class LocalKeePassViewModel(
                             Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
                     }.onFailure { error ->
-                        Log.w(TAG, "Persistable READ permission not granted for imported DB uri=$uri", error)
+                        Log.w(TAG, "Persistable READ permission not granted for imported DB", error)
                     }
                     
                     if (keyFileUri != null) {

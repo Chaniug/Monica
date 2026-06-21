@@ -95,7 +95,7 @@ fun DualPhotoPicker(
 
     suspend fun prepareSelectedPhoto(slot: DualPhotoSlot, uri: Uri) {
         try {
-            Log.d(DUAL_PHOTO_PICKER_TAG, "Preparing photo import for slot=$slot uri=$uri")
+            Log.d(DUAL_PHOTO_PICKER_TAG, "Preparing photo import for slot=$slot")
             val preparedImport = imageManager.prepareImageImport(uri)
             if (preparedImport != null) {
                 clearPendingPhotoImport()
@@ -105,11 +105,11 @@ fun DualPhotoPicker(
                     originalSizeBytes = preparedImport.originalSizeBytes
                 )
             } else {
-                Log.w(DUAL_PHOTO_PICKER_TAG, "Photo prepare returned null for slot=$slot uri=$uri")
+                Log.w(DUAL_PHOTO_PICKER_TAG, "Photo prepare returned null for slot=$slot")
                 Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Log.e(DUAL_PHOTO_PICKER_TAG, "Photo prepare failed for slot=$slot uri=$uri", e)
+            Log.e(DUAL_PHOTO_PICKER_TAG, "Photo prepare failed for slot=$slot", e)
             Toast.makeText(
                 context,
                 context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
@@ -166,7 +166,7 @@ fun DualPhotoPicker(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         val slot = pendingSlot
-        Log.d(DUAL_PHOTO_PICKER_TAG, "Gallery result slot=$slot uri=$uri")
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Gallery result slot=$slot received=${uri != null}")
         if (uri == null || slot == null) {
             pendingSlot = null
             return@rememberLauncherForActivityResult
@@ -180,7 +180,7 @@ fun DualPhotoPicker(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         val slot = pendingSlot
-        Log.d(DUAL_PHOTO_PICKER_TAG, "Fallback gallery result slot=$slot uri=$uri")
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Fallback gallery result slot=$slot received=${uri != null}")
         if (uri == null || slot == null) {
             pendingSlot = null
             return@rememberLauncherForActivityResult
@@ -198,7 +198,7 @@ fun DualPhotoPicker(
         val tempUri = pendingCameraImageUri
         pendingCameraImagePath = null
         pendingCameraImageUri = null
-        Log.d(DUAL_PHOTO_PICKER_TAG, "Camera result slot=$slot success=$success tempPath=$tempPath tempUri=$tempUri")
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Camera result slot=$slot success=$success hasTemp=${tempPath != null}")
         if (!success || slot == null || tempPath.isNullOrBlank()) {
             tempPath?.let { path: String -> java.io.File(path).delete() }
             pendingSlot = null
@@ -226,7 +226,7 @@ fun DualPhotoPicker(
             val (tempFile, tempUri) = imageManager.createTempPhotoCaptureRequest()
             pendingCameraImagePath = tempFile.absolutePath
             pendingCameraImageUri = tempUri.toString()
-            Log.d(DUAL_PHOTO_PICKER_TAG, "Launching camera for slot=$pendingSlot tempPath=${tempFile.absolutePath} uri=$tempUri")
+            Log.d(DUAL_PHOTO_PICKER_TAG, "Launching camera for slot=$pendingSlot")
             cameraLauncher.launch(tempUri)
         }.onFailure { error ->
             pendingCameraImagePath = null

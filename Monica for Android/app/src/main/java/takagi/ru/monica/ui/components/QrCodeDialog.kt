@@ -68,7 +68,6 @@ fun QrCodeDialog(
                 val bitmap = barcodeEncoder.encodeBitmap(uri, BarcodeFormat.QR_CODE, 800, 800, hints)
                 qrBitmap = bitmap
             } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -214,7 +213,6 @@ private suspend fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title:
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     context,

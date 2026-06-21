@@ -41,7 +41,7 @@ class AttachmentStorage(private val context: Context) {
     private val storageDir: File by lazy {
         File(context.applicationContext.filesDir, DIR_NAME).also { dir ->
             if (!dir.exists() && !dir.mkdirs()) {
-                Log.w(TAG, "Failed to create attachments dir: ${dir.absolutePath}")
+                Log.w(TAG, "Failed to create attachments dir")
             }
         }
     }

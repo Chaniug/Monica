@@ -220,7 +220,7 @@ fun AddEditNoteScreen(
 
     suspend fun prepareSelectedNoteImage(uri: Uri) {
         try {
-            Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Preparing note image import uri=$uri")
+            Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Preparing note image import")
             if (editorState.bitwardenVaultId != null) {
                 Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "Skipped note image import because Bitwarden target is active")
                 Toast.makeText(
@@ -239,7 +239,7 @@ fun AddEditNoteScreen(
                     originalSizeBytes = preparedImport.originalSizeBytes
                 )
             } else {
-                Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "prepareImageImport returned null for uri=$uri")
+                Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "prepareImageImport returned null")
                 Toast.makeText(
                     context,
                     context.getString(R.string.photo_save_failed),
@@ -247,7 +247,7 @@ fun AddEditNoteScreen(
                 ).show()
             }
         } catch (e: Exception) {
-            Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "Failed to prepare note image uri=$uri", e)
+            Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "Failed to prepare note image", e)
             Toast.makeText(
                 context,
                 context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
@@ -308,7 +308,7 @@ fun AddEditNoteScreen(
     val noteGalleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Gallery result uri=$uri")
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Gallery result received=${uri != null}")
         if (uri == null) {
             pendingImageInsertionCursor = -1
             return@rememberLauncherForActivityResult
@@ -321,7 +321,7 @@ fun AddEditNoteScreen(
     val noteGalleryFallbackLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Fallback gallery result uri=$uri")
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Fallback gallery result received=${uri != null}")
         if (uri == null) {
             pendingImageInsertionCursor = -1
             return@rememberLauncherForActivityResult
@@ -338,7 +338,7 @@ fun AddEditNoteScreen(
         val tempUri = pendingCameraImageUri
         pendingCameraImagePath = null
         pendingCameraImageUri = null
-        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Camera result success=$success tempPath=$tempPath tempUri=$tempUri")
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Camera result success=$success hasTemp=${tempPath != null}")
         if (!success || tempPath.isNullOrBlank()) {
             tempPath?.let { path: String -> java.io.File(path).delete() }
             pendingImageInsertionCursor = -1
@@ -370,7 +370,7 @@ fun AddEditNoteScreen(
             val (tempFile, tempUri) = imageManager.createTempPhotoCaptureRequest()
             pendingCameraImagePath = tempFile.absolutePath
             pendingCameraImageUri = tempUri.toString()
-            Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Launching camera tempPath=${tempFile.absolutePath} uri=$tempUri")
+            Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Launching camera for note image")
             noteCameraLauncher.launch(tempUri)
         }.onFailure { error ->
             pendingCameraImagePath = null

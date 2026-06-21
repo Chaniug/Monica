@@ -474,6 +474,7 @@ class WebDavHelper(
     private var serverUrl: String = ""
     private var username: String = ""
     private var password: String = ""
+    private val securityManager = SecurityManager(context)
     
     // 
     private val backupLock = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -490,6 +491,11 @@ class WebDavHelper(
         private const val KEY_PASSWORD = "password"
         private const val KEY_ENABLE_ENCRYPTION = "enable_encryption"
         private const val KEY_ENCRYPTION_PASSWORD = "encryption_password"
+        private const val LEGACY_WEBDAV_BACKUP_FALLBACK_KEY = "Monica_WebDAV_Config_Key"
+        private const val SECURE_KEY_SERVER_URL = "webdav_secure_server_url"
+        private const val SECURE_KEY_USERNAME = "webdav_secure_username"
+        private const val SECURE_KEY_PASSWORD = "webdav_secure_password"
+        private const val SECURE_KEY_ENCRYPTION_PASSWORD = "webdav_secure_encryption_password"
         private const val KEY_AUTO_BACKUP_ENABLED = "auto_backup_enabled"
         private const val KEY_LAST_BACKUP_TIME = "last_backup_time"
         private const val PASSWORD_META_MARKER = "[MonicaMeta]"
@@ -617,7 +623,7 @@ class WebDavHelper(
         username = user.trim()
         password = pass
         sardine = createSardineClient()
-        android.util.Log.d("WebDavHelper", "Configured WebDAV: url=$serverUrl, user=$username")
+        android.util.Log.d("WebDavHelper", "Configured WebDAV credentials")
         // 
         saveConfig()
     }
@@ -633,13 +639,20 @@ class WebDavHelper(
     private fun saveConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().apply {
-            putString(KEY_SERVER_URL, serverUrl)
-            putString(KEY_USERNAME, username)
-            putString(KEY_PASSWORD, password)
             putBoolean(KEY_ENABLE_ENCRYPTION, enableEncryption)
-            putString(KEY_ENCRYPTION_PASSWORD, encryptionPassword)
+            remove(KEY_SERVER_URL)
+            remove(KEY_USERNAME)
+            remove(KEY_PASSWORD)
+            remove(KEY_ENCRYPTION_PASSWORD)
             apply()
         }
+        securityManager.putProtectedString(SECURE_KEY_SERVER_URL, serverUrl.ifBlank { null })
+        securityManager.putProtectedString(SECURE_KEY_USERNAME, username.ifBlank { null })
+        securityManager.putProtectedString(SECURE_KEY_PASSWORD, password.ifBlank { null })
+        securityManager.putProtectedString(
+            SECURE_KEY_ENCRYPTION_PASSWORD,
+            encryptionPassword.ifBlank { null }
+        )
     }
     
     /**
@@ -647,19 +660,20 @@ class WebDavHelper(
      */
     private fun loadConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val storedUrl = prefs.getString(KEY_SERVER_URL, "") ?: ""
+        migrateLegacyConfigIfNeeded(prefs)
+        val storedUrl = securityManager.getProtectedString(SECURE_KEY_SERVER_URL).orEmpty()
         val url = normalizeServerUrl(storedUrl)
-        val user = prefs.getString(KEY_USERNAME, "") ?: ""
-        val pass = prefs.getString(KEY_PASSWORD, "") ?: ""
+        val user = securityManager.getProtectedString(SECURE_KEY_USERNAME).orEmpty()
+        val pass = securityManager.getProtectedString(SECURE_KEY_PASSWORD).orEmpty()
         enableEncryption = prefs.getBoolean(KEY_ENABLE_ENCRYPTION, false)
-        encryptionPassword = prefs.getString(KEY_ENCRYPTION_PASSWORD, "") ?: ""
+        encryptionPassword = securityManager.getProtectedString(SECURE_KEY_ENCRYPTION_PASSWORD).orEmpty()
         
         if (url.isNotEmpty()) {
             serverUrl = url
             username = user.trim()
             password = pass
             sardine = createSardineClient()
-            android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username, encryption=$enableEncryption")
+            android.util.Log.d("WebDavHelper", "Loaded WebDAV config: encryption=$enableEncryption")
             if (url != storedUrl) {
                 saveConfig()
             }
@@ -702,7 +716,32 @@ class WebDavHelper(
      */
     fun clearConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().clear().apply()
+        prefs.edit()
+            .remove(KEY_ENABLE_ENCRYPTION)
+            .remove(KEY_AUTO_BACKUP_ENABLED)
+            .remove(KEY_LAST_BACKUP_TIME)
+            .remove(KEY_BACKUP_INCLUDE_PASSWORDS)
+            .remove(KEY_BACKUP_INCLUDE_AUTHENTICATORS)
+            .remove(KEY_BACKUP_INCLUDE_DOCUMENTS)
+            .remove(KEY_BACKUP_INCLUDE_BANK_CARDS)
+            .remove(KEY_BACKUP_INCLUDE_PASSKEYS)
+            .remove(KEY_BACKUP_INCLUDE_GENERATOR_HISTORY)
+            .remove(KEY_BACKUP_INCLUDE_IMAGES)
+            .remove(KEY_BACKUP_INCLUDE_NOTES)
+            .remove(KEY_BACKUP_INCLUDE_TIMELINE)
+            .remove(KEY_BACKUP_INCLUDE_TRASH)
+            .remove(KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY)
+            .remove(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG)
+            .remove(KEY_BACKUP_INCLUDE_LOCAL_KEEPASS)
+            .remove(KEY_SERVER_URL)
+            .remove(KEY_USERNAME)
+            .remove(KEY_PASSWORD)
+            .remove(KEY_ENCRYPTION_PASSWORD)
+            .apply()
+        securityManager.removeProtectedString(SECURE_KEY_SERVER_URL)
+        securityManager.removeProtectedString(SECURE_KEY_USERNAME)
+        securityManager.removeProtectedString(SECURE_KEY_PASSWORD)
+        securityManager.removeProtectedString(SECURE_KEY_ENCRYPTION_PASSWORD)
         serverUrl = ""
         username = ""
         password = ""
@@ -887,7 +926,6 @@ class WebDavHelper(
             val candidateUrls = buildConnectionCandidates(serverUrl)
             val normalizedServer = takagi.ru.monica.webdav.WebDavUrlBuilder.normalizeServer(serverUrl)
             android.util.Log.d("WebDavHelper", "Testing connection to: ${candidateUrls.joinToString(", ")}")
-            android.util.Log.d("WebDavHelper", "Username: $username")
 
             var resolvedUrl: String? = null
             var lastClassified: takagi.ru.monica.webdav.WebDavErrorClassifier.ClassifiedError? = null
@@ -1771,16 +1809,20 @@ class WebDavHelper(
                             val pageAdjustmentSettingsSnapshot = SettingsManager(context)
                                 .exportPageAdjustmentSettings()
 
-                            // 使用备份加密密码来加密 WebDAV 凭证
-                            val backupEncryptPassword = if (enableEncryption && encryptionPassword.isNotEmpty()) {
-                                encryptionPassword
-                            } else {
-                                // 如果没有启用备份加密，使用固定密钥（不太安全，但提供基本保护）
-                                "Monica_WebDAV_Config_Key"
+                            val backupEncryptPassword = currentBackupEncryptionPassword()
+                            val canExportSensitiveConfig = backupEncryptPassword != null
+                            if (!canExportSensitiveConfig) {
+                                warnings.add("未启用备份加密，已跳过 WebDAV 连接凭证和 Bitwarden Vault 密钥材料")
                             }
-                            
-                            val encryptedWebDavPassword = EncryptionHelper.encryptString(password, backupEncryptPassword)
-                            val encryptedEncPassword = if (this@WebDavHelper.enableEncryption && this@WebDavHelper.encryptionPassword.isNotEmpty()) {
+
+                            val encryptedWebDavPassword = backupEncryptPassword?.let {
+                                EncryptionHelper.encryptString(password, it)
+                            } ?: ""
+                            val encryptedEncPassword = if (
+                                backupEncryptPassword != null &&
+                                this@WebDavHelper.enableEncryption &&
+                                this@WebDavHelper.encryptionPassword.isNotEmpty()
+                            ) {
                                 EncryptionHelper.encryptString(this@WebDavHelper.encryptionPassword, backupEncryptPassword)
                             } else {
                                 ""
@@ -2981,7 +3023,7 @@ class WebDavHelper(
                                                         passwordEntryDao.insertPasswordEntry(entry)
                                                         importedCount++
                                                     } catch (e: Exception) {
-                                                        android.util.Log.w("WebDavHelper", "Failed to restore trash password ${backup.title}: ${e.message}")
+                                                        android.util.Log.w("WebDavHelper", "Failed to restore trash password: ${e.message}")
                                                     }
                                                 }
                                             }
@@ -3033,7 +3075,7 @@ class WebDavHelper(
                                                         secureItemDao.insertItem(item)
                                                         importedCount++
                                                     } catch (e: Exception) {
-                                                        android.util.Log.w("WebDavHelper", "Failed to restore trash item ${backup.title}: ${e.message}")
+                                                        android.util.Log.w("WebDavHelper", "Failed to restore trash item: ${e.message}")
                                                     }
                                                 }
                                             }
@@ -3500,24 +3542,16 @@ class WebDavHelper(
                                         }
 
                                         if (!isConfigured()) {
-                                            val backupEncryptPassword = if (decryptPassword != null && decryptPassword.isNotEmpty()) {
-                                                decryptPassword
-                                            } else {
-                                                "Monica_WebDAV_Config_Key"
-                                            }
-
                                             try {
-                                                val decryptedWebDavPassword = if (monicaConfigBackup.encryptedPassword.isNotEmpty()) {
-                                                    EncryptionHelper.decryptString(monicaConfigBackup.encryptedPassword, backupEncryptPassword)
-                                                } else {
-                                                    ""
-                                                }
+                                                val decryptedWebDavPassword = decryptBackupValueWithLegacyFallback(
+                                                    monicaConfigBackup.encryptedPassword,
+                                                    decryptPassword,
+                                                ).orEmpty()
 
-                                                val decryptedEncPassword = if (monicaConfigBackup.encryptedEncryptionPassword.isNotEmpty()) {
-                                                    EncryptionHelper.decryptString(monicaConfigBackup.encryptedEncryptionPassword, backupEncryptPassword)
-                                                } else {
-                                                    ""
-                                                }
+                                                val decryptedEncPassword = decryptBackupValueWithLegacyFallback(
+                                                    monicaConfigBackup.encryptedEncryptionPassword,
+                                                    decryptPassword,
+                                                ).orEmpty()
 
                                                 if (monicaConfigBackup.serverUrl.isNotEmpty() &&
                                                     monicaConfigBackup.username.isNotEmpty() &&
@@ -3528,7 +3562,7 @@ class WebDavHelper(
                                                         configureEncryption(true, decryptedEncPassword)
                                                     }
                                                     configureAutoBackup(monicaConfigBackup.autoBackupEnabled)
-                                                    android.util.Log.d("WebDavHelper", "Restored WebDAV config from legacy Monica config: ${monicaConfigBackup.serverUrl}")
+                                                    android.util.Log.d("WebDavHelper", "Restored WebDAV config from legacy Monica config")
                                                     warnings.add("✓ WebDAV配置已恢复: ${monicaConfigBackup.serverUrl}")
                                                 }
                                             } catch (e: Exception) {
@@ -3555,24 +3589,16 @@ class WebDavHelper(
                                         // 只有当本地未配置 WebDAV 时才恢复连接信息
                                         if (!isConfigured()) {
                                             // 尝试解密 WebDAV 密码
-                                            val backupEncryptPassword = if (decryptPassword != null && decryptPassword.isNotEmpty()) {
-                                                decryptPassword
-                                            } else {
-                                                "Monica_WebDAV_Config_Key"
-                                            }
-                                            
                                             try {
-                                                val decryptedWebDavPassword = if (webDavConfigBackup.encryptedPassword.isNotEmpty()) {
-                                                    EncryptionHelper.decryptString(webDavConfigBackup.encryptedPassword, backupEncryptPassword)
-                                                } else {
-                                                    ""
-                                                }
-                                                
-                                                val decryptedEncPassword = if (webDavConfigBackup.encryptedEncryptionPassword.isNotEmpty()) {
-                                                    EncryptionHelper.decryptString(webDavConfigBackup.encryptedEncryptionPassword, backupEncryptPassword)
-                                                } else {
-                                                    ""
-                                                }
+                                                val decryptedWebDavPassword = decryptBackupValueWithLegacyFallback(
+                                                    webDavConfigBackup.encryptedPassword,
+                                                    decryptPassword,
+                                                ).orEmpty()
+
+                                                val decryptedEncPassword = decryptBackupValueWithLegacyFallback(
+                                                    webDavConfigBackup.encryptedEncryptionPassword,
+                                                    decryptPassword,
+                                                ).orEmpty()
                                                 
                                                 if (webDavConfigBackup.serverUrl.isNotEmpty() && 
                                                     webDavConfigBackup.username.isNotEmpty() && 
@@ -3589,7 +3615,7 @@ class WebDavHelper(
                                                     // 配置自动备份
                                                     configureAutoBackup(webDavConfigBackup.autoBackupEnabled)
                                                     
-                                                    android.util.Log.d("WebDavHelper", "Restored WebDAV config: ${webDavConfigBackup.serverUrl}")
+                                                    android.util.Log.d("WebDavHelper", "Restored WebDAV config")
                                                     warnings.add("✓ WebDAV配置已恢复: ${webDavConfigBackup.serverUrl}")
                                                 }
                                             } catch (e: Exception) {
@@ -5111,14 +5137,75 @@ class WebDavHelper(
         saveConfig()
     }
 
-    private fun encryptSensitiveBackupValue(value: String?, backupEncryptPassword: String): String? {
-        val sanitizedValue = value?.takeIf { it.isNotBlank() } ?: return null
-        return EncryptionHelper.encryptString(sanitizedValue, backupEncryptPassword)
+    private fun migrateLegacyConfigIfNeeded(prefs: android.content.SharedPreferences) {
+        val legacyServerUrl = prefs.getString(KEY_SERVER_URL, null)
+        val legacyUsername = prefs.getString(KEY_USERNAME, null)
+        val legacyPassword = prefs.getString(KEY_PASSWORD, null)
+        val legacyEncryptionPassword = prefs.getString(KEY_ENCRYPTION_PASSWORD, null)
+        val hasLegacyValues =
+            !legacyServerUrl.isNullOrBlank() ||
+                !legacyUsername.isNullOrBlank() ||
+                !legacyPassword.isNullOrBlank() ||
+                !legacyEncryptionPassword.isNullOrBlank()
+        if (!hasLegacyValues) return
+
+        if (securityManager.getProtectedString(SECURE_KEY_SERVER_URL).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_SERVER_URL, legacyServerUrl)
+        }
+        if (securityManager.getProtectedString(SECURE_KEY_USERNAME).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_USERNAME, legacyUsername)
+        }
+        if (securityManager.getProtectedString(SECURE_KEY_PASSWORD).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_PASSWORD, legacyPassword)
+        }
+        if (securityManager.getProtectedString(SECURE_KEY_ENCRYPTION_PASSWORD).isNullOrBlank()) {
+            securityManager.putProtectedString(
+                SECURE_KEY_ENCRYPTION_PASSWORD,
+                legacyEncryptionPassword
+            )
+        }
+
+        prefs.edit()
+            .remove(KEY_SERVER_URL)
+            .remove(KEY_USERNAME)
+            .remove(KEY_PASSWORD)
+            .remove(KEY_ENCRYPTION_PASSWORD)
+            .apply()
     }
 
-    private fun decryptSensitiveBackupValue(value: String?, backupEncryptPassword: String): String? {
+    private fun currentBackupEncryptionPassword(): String? {
+        return encryptionPassword.takeIf { enableEncryption && it.isNotEmpty() }
+    }
+
+    private fun encryptSensitiveBackupValue(value: String?, backupEncryptPassword: String?): String? {
         val sanitizedValue = value?.takeIf { it.isNotBlank() } ?: return null
-        return EncryptionHelper.decryptString(sanitizedValue, backupEncryptPassword)
+        val password = backupEncryptPassword ?: return null
+        return EncryptionHelper.encryptString(sanitizedValue, password)
+    }
+
+    private fun decryptBackupValueWithLegacyFallback(value: String?, decryptPassword: String?): String? {
+        val sanitizedValue = value?.takeIf { it.isNotBlank() } ?: return null
+        val candidatePasswords = buildList {
+            decryptPassword?.takeIf { it.isNotBlank() }?.let(::add)
+            if (decryptPassword.isNullOrBlank()) {
+                add(LEGACY_WEBDAV_BACKUP_FALLBACK_KEY)
+            }
+        }
+
+        var lastError: Exception? = null
+        for (candidate in candidatePasswords) {
+            try {
+                return EncryptionHelper.decryptString(sanitizedValue, candidate)
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+
+        throw lastError ?: IllegalStateException("No backup decryption password available")
+    }
+
+    private fun decryptSensitiveBackupValue(value: String?, backupEncryptPassword: String?): String? {
+        return decryptBackupValueWithLegacyFallback(value, backupEncryptPassword)
     }
 
     private suspend fun restoreBitwardenVaultBackups(
@@ -5127,11 +5214,6 @@ class WebDavHelper(
     ): Int {
         if (backups.isEmpty()) return 0
 
-        val backupEncryptPassword = if (!decryptPassword.isNullOrEmpty()) {
-            decryptPassword
-        } else {
-            "Monica_WebDAV_Config_Key"
-        }
         val database = PasswordDatabase.getDatabase(context)
         val vaultDao = database.bitwardenVaultDao()
         val bitwardenRepository = takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context)
@@ -5185,12 +5267,12 @@ class WebDavHelper(
                     identityUrl = backup.identityUrl.trim().ifEmpty { "https://identity.bitwarden.com" },
                     apiUrl = backup.apiUrl.trim().ifEmpty { "https://api.bitwarden.com" },
                     eventsUrl = backup.eventsUrl?.trim()?.ifBlank { null },
-                    encryptedAccessToken = decryptSensitiveBackupValue(backup.encryptedAccessToken, backupEncryptPassword),
-                    encryptedRefreshToken = decryptSensitiveBackupValue(backup.encryptedRefreshToken, backupEncryptPassword),
+                    encryptedAccessToken = decryptSensitiveBackupValue(backup.encryptedAccessToken, decryptPassword),
+                    encryptedRefreshToken = decryptSensitiveBackupValue(backup.encryptedRefreshToken, decryptPassword),
                     accessTokenExpiresAt = backup.accessTokenExpiresAt,
-                    encryptedMasterKey = decryptSensitiveBackupValue(backup.encryptedMasterKey, backupEncryptPassword),
-                    encryptedEncKey = decryptSensitiveBackupValue(backup.encryptedEncKey, backupEncryptPassword),
-                    encryptedMacKey = decryptSensitiveBackupValue(backup.encryptedMacKey, backupEncryptPassword),
+                    encryptedMasterKey = decryptSensitiveBackupValue(backup.encryptedMasterKey, decryptPassword),
+                    encryptedEncKey = decryptSensitiveBackupValue(backup.encryptedEncKey, decryptPassword),
+                    encryptedMacKey = decryptSensitiveBackupValue(backup.encryptedMacKey, decryptPassword),
                     kdfType = backup.kdfType,
                     kdfIterations = backup.kdfIterations.takeIf { it > 0 } ?: defaultKdfIterations,
                     kdfMemory = backup.kdfMemory,

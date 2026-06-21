@@ -508,13 +508,8 @@ class CipherSyncProcessor(
     }
 
     private fun buildSshKeyDataFromCustomFields(fields: Map<String, String>): String {
-        // 调试日志：打印所有解密后的自定义字段名和值前缀
         if (fields.isNotEmpty()) {
-            val fieldDump = fields.entries.joinToString("; ") { (name, value) ->
-                val preview = if (value.length > 40) value.take(40) + "..." else value
-                "[$name]=${preview}"
-            }
-            android.util.Log.i(TAG, "SSH_FIELD_DUMP fieldCount=${fields.size}: $fieldDump")
+            android.util.Log.i(TAG, "SSH custom fields available: count=${fields.size}")
         }
 
         // 1. 先按字段名匹配（Monica 自己上传的格式）
@@ -553,7 +548,11 @@ class CipherSyncProcessor(
         val resolvedFingerprint = fingerprint.ifBlank { fields.findValueByContent(::looksLikeSshFingerprint) }
 
         if (fields.isNotEmpty()) {
-            android.util.Log.i(TAG, "SSH_RESOLVE pub=${resolvedPublicKey.take(30)} priv=${resolvedPrivateKey.take(30)} fp=${resolvedFingerprint.take(30)}")
+            android.util.Log.i(
+                TAG,
+                "SSH fields resolved: hasPublic=${resolvedPublicKey.isNotBlank()}, " +
+                    "hasPrivate=${resolvedPrivateKey.isNotBlank()}, hasFingerprint=${resolvedFingerprint.isNotBlank()}"
+            )
         }
 
         val algorithm = fields.findSshField("monica_ssh_algorithm", "algorithm", "key type", "key-type", "keyType")

@@ -1348,7 +1348,7 @@ class SecurityManager(private val context: Context) {
             .putBoolean(BITWARDEN_CONNECTED_KEY, true)
             .apply()
         
-        android.util.Log.d("SecurityManager", "Bitwarden credential saved for user: ${credential.userEmail}")
+        android.util.Log.d("SecurityManager", "Bitwarden credential saved")
     }
     
     /**
@@ -1520,6 +1520,24 @@ class SecurityManager(private val context: Context) {
             .apply()
         
         android.util.Log.d("SecurityManager", "Bitwarden credential cleared")
+    }
+
+    fun putProtectedString(key: String, value: String?) {
+        sharedPreferences.edit().apply {
+            if (value.isNullOrEmpty()) {
+                remove(key)
+            } else {
+                putString(key, value)
+            }
+        }.apply()
+    }
+
+    fun getProtectedString(key: String): String? {
+        return sharedPreferences.getString(key, null)
+    }
+
+    fun removeProtectedString(key: String) {
+        sharedPreferences.edit().remove(key).apply()
     }
     
     /**

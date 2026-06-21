@@ -9,11 +9,13 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.isEmpty
+import takagi.ru.monica.security.SecurityManager
 import java.util.UUID
 
 private val Context.commonAccountDataStore: DataStore<Preferences> by preferencesDataStore(name = "common_account")
@@ -24,6 +26,8 @@ private val Context.commonAccountDataStore: DataStore<Preferences> by preference
  * 存储用户常用的邮箱、手机号等信息，方便在新建条目时快速填入
  */
 class CommonAccountPreferences(private val context: Context) {
+    private val appContext = context.applicationContext
+    private val securityManager = SecurityManager(appContext)
     
     companion object {
         private val KEY_DEFAULT_EMAIL = stringPreferencesKey("default_email")
@@ -39,12 +43,12 @@ class CommonAccountPreferences(private val context: Context) {
      * 常用邮箱
      */
     val defaultEmail: Flow<String> = context.commonAccountDataStore.data.map { preferences ->
-        preferences[KEY_DEFAULT_EMAIL] ?: ""
-    }
+        readProtectedPreference(preferences[KEY_DEFAULT_EMAIL])
+    }.onStart { migrateSensitivePreferencesIfNeeded() }
     
     suspend fun setDefaultEmail(email: String) {
         context.commonAccountDataStore.edit { preferences ->
-            preferences[KEY_DEFAULT_EMAIL] = email
+            preferences[KEY_DEFAULT_EMAIL] = protectedPreferenceValue(email)
         }
     }
     
@@ -52,12 +56,12 @@ class CommonAccountPreferences(private val context: Context) {
      * 常用手机号
      */
     val defaultPhone: Flow<String> = context.commonAccountDataStore.data.map { preferences ->
-        preferences[KEY_DEFAULT_PHONE] ?: ""
-    }
+        readProtectedPreference(preferences[KEY_DEFAULT_PHONE])
+    }.onStart { migrateSensitivePreferencesIfNeeded() }
     
     suspend fun setDefaultPhone(phone: String) {
         context.commonAccountDataStore.edit { preferences ->
-            preferences[KEY_DEFAULT_PHONE] = phone
+            preferences[KEY_DEFAULT_PHONE] = protectedPreferenceValue(phone)
         }
     }
     
@@ -65,12 +69,12 @@ class CommonAccountPreferences(private val context: Context) {
      * 常用用户名
      */
     val defaultUsername: Flow<String> = context.commonAccountDataStore.data.map { preferences ->
-        preferences[KEY_DEFAULT_USERNAME] ?: ""
-    }
+        readProtectedPreference(preferences[KEY_DEFAULT_USERNAME])
+    }.onStart { migrateSensitivePreferencesIfNeeded() }
     
     suspend fun setDefaultUsername(username: String) {
         context.commonAccountDataStore.edit { preferences ->
-            preferences[KEY_DEFAULT_USERNAME] = username
+            preferences[KEY_DEFAULT_USERNAME] = protectedPreferenceValue(username)
         }
     }
     
@@ -92,23 +96,24 @@ class CommonAccountPreferences(private val context: Context) {
      */
     val commonAccountInfo: Flow<CommonAccountInfo> = context.commonAccountDataStore.data.map { preferences ->
         CommonAccountInfo(
-            email = preferences[KEY_DEFAULT_EMAIL] ?: "",
-            phone = preferences[KEY_DEFAULT_PHONE] ?: "",
-            username = preferences[KEY_DEFAULT_USERNAME] ?: "",
+            email = readProtectedPreference(preferences[KEY_DEFAULT_EMAIL]),
+            phone = readProtectedPreference(preferences[KEY_DEFAULT_PHONE]),
+            username = readProtectedPreference(preferences[KEY_DEFAULT_USERNAME]),
             autoFillEnabled = preferences[KEY_AUTO_FILL_ENABLED] ?: false,
             billingAddress = CardWalletDataCodec.parseBillingAddress(
-                preferences[KEY_BILLING_ADDRESS_JSON].orEmpty()
+                readProtectedPreference(preferences[KEY_BILLING_ADDRESS_JSON])
             )
         )
-    }
+    }.onStart { migrateSensitivePreferencesIfNeeded() }
 
     val billingAddress: Flow<BillingAddress> = context.commonAccountDataStore.data.map { preferences ->
-        CardWalletDataCodec.parseBillingAddress(preferences[KEY_BILLING_ADDRESS_JSON].orEmpty())
-    }
+        CardWalletDataCodec.parseBillingAddress(readProtectedPreference(preferences[KEY_BILLING_ADDRESS_JSON]))
+    }.onStart { migrateSensitivePreferencesIfNeeded() }
 
     suspend fun setBillingAddress(address: BillingAddress) {
         context.commonAccountDataStore.edit { preferences ->
-            preferences[KEY_BILLING_ADDRESS_JSON] = CardWalletDataCodec.encodeBillingAddress(address)
+            preferences[KEY_BILLING_ADDRESS_JSON] =
+                protectedPreferenceValue(CardWalletDataCodec.encodeBillingAddress(address))
         }
     }
 
@@ -116,8 +121,8 @@ class CommonAccountPreferences(private val context: Context) {
      * 常用账号模板列表（新结构仅保留“类型/内容”，title 作为旧数据兼容字段读取后即丢弃）
      */
     val templatesFlow: Flow<List<CommonAccountTemplate>> = context.commonAccountDataStore.data.map { preferences ->
-        decodeTemplates(preferences[KEY_TEMPLATES_JSON])
-    }
+        decodeTemplates(readProtectedPreference(preferences[KEY_TEMPLATES_JSON]))
+    }.onStart { migrateSensitivePreferencesIfNeeded() }
 
     suspend fun addTemplate(type: String, content: String): CommonAccountTemplate {
         return addTemplate(type = type, title = "", content = content)
@@ -131,8 +136,8 @@ class CommonAccountPreferences(private val context: Context) {
             content = content.trim()
         ).normalized()
         context.commonAccountDataStore.edit { preferences ->
-            val current = decodeTemplates(preferences[KEY_TEMPLATES_JSON])
-            preferences[KEY_TEMPLATES_JSON] = encodeTemplates(current + template)
+            val current = decodeTemplates(readProtectedPreference(preferences[KEY_TEMPLATES_JSON]))
+            preferences[KEY_TEMPLATES_JSON] = protectedPreferenceValue(encodeTemplates(current + template))
         }
         return template
     }
@@ -140,40 +145,40 @@ class CommonAccountPreferences(private val context: Context) {
     suspend fun updateTemplate(template: CommonAccountTemplate) {
         val normalizedTemplate = template.normalized()
         context.commonAccountDataStore.edit { preferences ->
-            val current = decodeTemplates(preferences[KEY_TEMPLATES_JSON])
+            val current = decodeTemplates(readProtectedPreference(preferences[KEY_TEMPLATES_JSON]))
             val updated = current.map { existing ->
                 if (existing.id == normalizedTemplate.id) normalizedTemplate else existing
             }
-            preferences[KEY_TEMPLATES_JSON] = encodeTemplates(updated)
+            preferences[KEY_TEMPLATES_JSON] = protectedPreferenceValue(encodeTemplates(updated))
         }
     }
 
     suspend fun upsertTemplate(template: CommonAccountTemplate) {
         val normalizedTemplate = template.normalized()
         context.commonAccountDataStore.edit { preferences ->
-            val current = decodeTemplates(preferences[KEY_TEMPLATES_JSON])
+            val current = decodeTemplates(readProtectedPreference(preferences[KEY_TEMPLATES_JSON]))
             val index = current.indexOfFirst { it.id == normalizedTemplate.id }
             val updated = if (index >= 0) {
                 current.toMutableList().apply { this[index] = normalizedTemplate }
             } else {
                 current + normalizedTemplate
             }
-            preferences[KEY_TEMPLATES_JSON] = encodeTemplates(updated)
+            preferences[KEY_TEMPLATES_JSON] = protectedPreferenceValue(encodeTemplates(updated))
         }
     }
 
     suspend fun deleteTemplate(templateId: String) {
         context.commonAccountDataStore.edit { preferences ->
-            val current = decodeTemplates(preferences[KEY_TEMPLATES_JSON])
-            preferences[KEY_TEMPLATES_JSON] = encodeTemplates(
+            val current = decodeTemplates(readProtectedPreference(preferences[KEY_TEMPLATES_JSON]))
+            preferences[KEY_TEMPLATES_JSON] = protectedPreferenceValue(encodeTemplates(
                 current.filterNot { it.id == templateId }
-            )
+            ))
         }
     }
 
     suspend fun setTemplates(templates: List<CommonAccountTemplate>) {
         context.commonAccountDataStore.edit { preferences ->
-            preferences[KEY_TEMPLATES_JSON] = encodeTemplates(templates)
+            preferences[KEY_TEMPLATES_JSON] = protectedPreferenceValue(encodeTemplates(templates))
         }
     }
 
@@ -193,10 +198,10 @@ class CommonAccountPreferences(private val context: Context) {
                 return@edit
             }
 
-            val username = (preferences[KEY_DEFAULT_USERNAME] ?: "").trim()
-            val email = (preferences[KEY_DEFAULT_EMAIL] ?: "").trim()
-            val phone = (preferences[KEY_DEFAULT_PHONE] ?: "").trim()
-            val currentTemplates = decodeTemplates(preferences[KEY_TEMPLATES_JSON]).toMutableList()
+            val username = readProtectedPreference(preferences[KEY_DEFAULT_USERNAME]).trim()
+            val email = readProtectedPreference(preferences[KEY_DEFAULT_EMAIL]).trim()
+            val phone = readProtectedPreference(preferences[KEY_DEFAULT_PHONE]).trim()
+            val currentTemplates = decodeTemplates(readProtectedPreference(preferences[KEY_TEMPLATES_JSON])).toMutableList()
 
             fun hasTemplate(type: String, content: String): Boolean {
                 val normalizedType = type.trim().lowercase()
@@ -234,13 +239,48 @@ class CommonAccountPreferences(private val context: Context) {
                 )
             }
 
-            preferences[KEY_TEMPLATES_JSON] = encodeTemplates(currentTemplates)
+            preferences[KEY_TEMPLATES_JSON] = protectedPreferenceValue(encodeTemplates(currentTemplates))
             preferences[KEY_DEFAULT_USERNAME] = ""
             preferences[KEY_DEFAULT_EMAIL] = ""
             preferences[KEY_DEFAULT_PHONE] = ""
             preferences[KEY_AUTO_FILL_ENABLED] = false
             preferences[KEY_LEGACY_DEFAULTS_MIGRATED] = true
         }
+    }
+
+    private suspend fun migrateSensitivePreferencesIfNeeded() {
+        context.commonAccountDataStore.edit { preferences ->
+            listOf(
+                KEY_DEFAULT_EMAIL,
+                KEY_DEFAULT_PHONE,
+                KEY_DEFAULT_USERNAME,
+                KEY_TEMPLATES_JSON,
+                KEY_BILLING_ADDRESS_JSON
+            ).forEach { key ->
+                val raw = preferences[key] ?: return@forEach
+                if (raw.isBlank() || securityManager.looksLikeMonicaCiphertext(raw)) {
+                    return@forEach
+                }
+                preferences[key] = protectedPreferenceValue(raw)
+            }
+        }
+    }
+
+    private fun readProtectedPreference(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        return runCatching {
+            if (securityManager.looksLikeMonicaCiphertext(raw)) {
+                securityManager.decryptData(raw)
+            } else {
+                raw
+            }
+        }.getOrDefault("")
+    }
+
+    private fun protectedPreferenceValue(value: String): String {
+        return value.takeIf { it.isNotEmpty() }
+            ?.let { securityManager.encryptDataLegacyCompat(it) }
+            .orEmpty()
     }
 
     private fun decodeTemplates(raw: String?): List<CommonAccountTemplate> {

@@ -134,7 +134,6 @@ object PhotoPickerHelper {
                     currentCallback?.onError("启动相机失败: ${e.message}")
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
                 currentCallback?.onError("启动相机失败: ${e.message}")
             }
         }
@@ -209,7 +208,6 @@ object PhotoPickerHelper {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             currentCallback?.onError("启动相册失败: ${e.message}")
         }
     }
@@ -351,7 +349,6 @@ object PhotoPickerHelper {
                 tempFile.absolutePath
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             null
         }
     }

@@ -102,12 +102,10 @@ class DataExportImportManager(private val context: Context) {
                         return@withContext Result.failure(Exception("文件为空"))
                     }
                     
-                    android.util.Log.d("DataImport", "第一行: $firstLine")
-                    
                     // 跳过BOM标记（如果存在）
                     if (firstLine.startsWith("\uFEFF")) {
                         firstLine = firstLine.substring(1)
-                        android.util.Log.d("DataImport", "跳过BOM后: $firstLine")
+                        android.util.Log.d("DataImport", "Skipped UTF-8 BOM in first CSV record")
                     }
                     
                     // 检测CSV格式
@@ -147,7 +145,7 @@ class DataExportImportManager(private val context: Context) {
                         lineCount++
                         try {
                             val fields = parseCsvLine(firstLine)
-                            android.util.Log.d("DataImport", "第一行字段数: ${fields.size}, 内容: $fields")
+                            android.util.Log.d("DataImport", "第一行字段数: ${fields.size}")
                             val item = createExportItemFromFormat(
                                 fields = fields,
                                 format = csvFormat,
@@ -174,7 +172,6 @@ class DataExportImportManager(private val context: Context) {
                         if (record == null) break
                         val currentLine = record
                         lineCount++
-                        android.util.Log.d("DataImport", "读取第${lineCount}行: $currentLine")
                         if (currentLine.isNotBlank()) {
                             try {
                                 val fields = parseCsvLine(currentLine)
@@ -1359,7 +1356,7 @@ class DataExportImportManager(private val context: Context) {
             }
             fields.add(currentField.toString().trim())
         } catch (e: Exception) {
-            android.util.Log.e("DataImport", "解析CSV行失败: $line", e)
+            android.util.Log.e("DataImport", "解析CSV行失败: length=${line.length}", e)
             // 返回当前已解析的字段
         }
         

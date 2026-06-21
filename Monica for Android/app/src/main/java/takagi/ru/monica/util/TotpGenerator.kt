@@ -100,7 +100,6 @@ object TotpGenerator {
             // 截断HMAC生成验证码
             return truncateHmac(hmac, safeDigits)
         } catch (e: Exception) {
-            e.printStackTrace()
             return zeroCode(safeDigits)
         }
     }
@@ -252,7 +251,6 @@ object TotpGenerator {
             // 截断HMAC生成验证码
             truncateHmac(hmac, safeDigits)
         } catch (e: Exception) {
-            e.printStackTrace()
             zeroCode(safeDigits)
         }
     }
@@ -298,7 +296,6 @@ object TotpGenerator {
             
             code.toString()
         } catch (e: Exception) {
-            e.printStackTrace()
             "2345B"
         }
     }
@@ -368,7 +365,6 @@ object TotpGenerator {
                 digits.padEnd(6, '0')
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             "000000"
         }
     }

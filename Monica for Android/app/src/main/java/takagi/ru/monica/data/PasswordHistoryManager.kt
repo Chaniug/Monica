@@ -7,11 +7,13 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.decodeFromString
+import takagi.ru.monica.security.SecurityManager
 
 private val Context.passwordHistoryDataStore: DataStore<Preferences> by preferencesDataStore(name = "password_history")
 
@@ -22,6 +24,7 @@ private val Context.passwordHistoryDataStore: DataStore<Preferences> by preferen
 class PasswordHistoryManager(private val context: Context) {
     
     private val json = Json { ignoreUnknownKeys = true }
+    private val securityManager = SecurityManager(context.applicationContext)
     
     companion object {
         private val HISTORY_KEY = stringPreferencesKey("password_generation_history")
@@ -32,13 +35,9 @@ class PasswordHistoryManager(private val context: Context) {
      * 获取所有历史记录
      */
     val historyFlow: Flow<List<PasswordGenerationHistory>> = context.passwordHistoryDataStore.data
+        .onStart { migrateLegacyHistoryIfNeeded() }
         .map { preferences ->
-            val historyJson = preferences[HISTORY_KEY] ?: "[]"
-            try {
-                json.decodeFromString<List<PasswordGenerationHistory>>(historyJson)
-            } catch (e: Exception) {
-                emptyList()
-            }
+            decodeHistoryPayload(preferences[HISTORY_KEY])
         }
     
     /**
@@ -52,12 +51,7 @@ class PasswordHistoryManager(private val context: Context) {
         type: String = "AUTOFILL"
     ) {
         context.passwordHistoryDataStore.edit { preferences ->
-            val currentHistoryJson = preferences[HISTORY_KEY] ?: "[]"
-            val currentHistory = try {
-                json.decodeFromString<List<PasswordGenerationHistory>>(currentHistoryJson)
-            } catch (e: Exception) {
-                emptyList()
-            }
+            val currentHistory = decodeHistoryPayload(preferences[HISTORY_KEY])
             
             // 创建新记录
             val newRecord = PasswordGenerationHistory(
@@ -73,7 +67,7 @@ class PasswordHistoryManager(private val context: Context) {
             val updatedHistory = (listOf(newRecord) + currentHistory).take(MAX_HISTORY_SIZE)
             
             // 保存
-            preferences[HISTORY_KEY] = json.encodeToString(updatedHistory)
+            preferences[HISTORY_KEY] = encodeHistoryPayload(updatedHistory)
         }
     }
     
@@ -82,7 +76,7 @@ class PasswordHistoryManager(private val context: Context) {
      */
     suspend fun clearHistory() {
         context.passwordHistoryDataStore.edit { preferences ->
-            preferences[HISTORY_KEY] = "[]"
+            preferences.remove(HISTORY_KEY)
         }
     }
 
@@ -99,7 +93,7 @@ class PasswordHistoryManager(private val context: Context) {
      */
     suspend fun importHistory(history: List<PasswordGenerationHistory>) {
         context.passwordHistoryDataStore.edit { preferences ->
-            preferences[HISTORY_KEY] = json.encodeToString(history)
+            preferences[HISTORY_KEY] = encodeHistoryPayload(history.take(MAX_HISTORY_SIZE))
         }
     }
     
@@ -108,15 +102,41 @@ class PasswordHistoryManager(private val context: Context) {
      */
     suspend fun deleteHistory(timestamp: Long) {
         context.passwordHistoryDataStore.edit { preferences ->
-            val currentHistoryJson = preferences[HISTORY_KEY] ?: "[]"
-            val currentHistory = try {
-                json.decodeFromString<List<PasswordGenerationHistory>>(currentHistoryJson)
-            } catch (e: Exception) {
-                emptyList()
-            }
+            val currentHistory = decodeHistoryPayload(preferences[HISTORY_KEY])
             
             val updatedHistory = currentHistory.filter { it.timestamp != timestamp }
-            preferences[HISTORY_KEY] = json.encodeToString(updatedHistory)
+            preferences[HISTORY_KEY] = encodeHistoryPayload(updatedHistory)
         }
+    }
+
+    private suspend fun migrateLegacyHistoryIfNeeded() {
+        context.passwordHistoryDataStore.edit { preferences ->
+            val raw = preferences[HISTORY_KEY] ?: return@edit
+            if (raw.isBlank() || securityManager.looksLikeMonicaCiphertext(raw)) {
+                return@edit
+            }
+            val decoded = runCatching {
+                json.decodeFromString<List<PasswordGenerationHistory>>(raw)
+            }.getOrNull() ?: return@edit
+            preferences[HISTORY_KEY] = encodeHistoryPayload(decoded.take(MAX_HISTORY_SIZE))
+        }
+    }
+
+    private fun decodeHistoryPayload(raw: String?): List<PasswordGenerationHistory> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val historyJson = runCatching {
+            if (securityManager.looksLikeMonicaCiphertext(raw)) {
+                securityManager.decryptData(raw)
+            } else {
+                raw
+            }
+        }.getOrDefault("[]")
+        return runCatching {
+            json.decodeFromString<List<PasswordGenerationHistory>>(historyJson)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun encodeHistoryPayload(history: List<PasswordGenerationHistory>): String {
+        return securityManager.encryptDataLegacyCompat(json.encodeToString(history))
     }
 }

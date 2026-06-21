@@ -18,7 +18,7 @@ object WebDavUrlBuilder {
      *
      * 行为：
      * - 去除首尾空白。
-     * - 补齐 scheme（默认 `http://`）。
+     * - 补齐 scheme（默认 `https://`）。
      * - 去除 path 末尾多余的 `/`（保证幂等）。
      * - 保留原始 path 段（含中文、特殊字符）的可读性：以解码形式出现在返回值里。
      *
@@ -28,7 +28,7 @@ object WebDavUrlBuilder {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return ""
 
-        val withScheme = if (trimmed.contains("://")) trimmed else "http://$trimmed"
+        val withScheme = if (trimmed.contains("://")) trimmed else "https://$trimmed"
         val parsed = withScheme.toHttpUrlOrNull() ?: return withScheme.trimEnd('/')
 
         val schemeAndHost = buildString {

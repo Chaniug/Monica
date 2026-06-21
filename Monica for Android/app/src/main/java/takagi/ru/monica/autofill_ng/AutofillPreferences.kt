@@ -728,11 +728,11 @@ class AutofillPreferences(private val context: Context) {
         val now = System.currentTimeMillis()
         Log.i(
             "AutofillPreferences",
-            "completeAutofillInteraction: id=$normalized, passwordId=$passwordId, at=$now"
+            "completeAutofillInteraction: completed=true, at=$now"
         )
         AutofillLogger.i(
             "PREFERENCES",
-            "completeAutofillInteraction: id=$normalized, passwordId=$passwordId, at=$now"
+            "completeAutofillInteraction: completed=true, at=$now"
         )
         context.dataStore.edit { preferences ->
             val existingIdentifier = preferences[KEY_INTERACTION_IDENTIFIER]

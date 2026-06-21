@@ -206,10 +206,10 @@ class DataExportImportViewModel(
                                 if (newId > 0 && importedAuthenticator != null) {
                                     saveImportedAuthenticator(newId, exportItem, importedAuthenticator)
                                 }
-                                android.util.Log.d("DataImport", "成功插入到PasswordEntry表: ${exportItem.title}")
+                                android.util.Log.d("DataImport", "成功插入到PasswordEntry表")
                                 count++
                             } else {
-                                android.util.Log.d("DataImport", "跳过重复密码: ${exportItem.title}")
+                                android.util.Log.d("DataImport", "跳过重复密码")
                                 if (originalId > 0) {
                                     passwordIdMap[originalId] = existingEntry.id
                                 }
@@ -217,14 +217,14 @@ class DataExportImportViewModel(
                             }
                         } catch (e: Exception) {
                             errorCount++
-                            android.util.Log.e("DataImport", "插入密码失败: ${exportItem.title}, 错误: ${e.message}", e)
+                            android.util.Log.e("DataImport", "插入密码失败: ${e.message}", e)
                         }
                     }
                     
                     // 2. Process Other Items (SecureItems) and update bindings
                     otherItems.forEach { exportItem ->
                         try {
-                            android.util.Log.d("DataImport", "处理项: ${exportItem.title}, 类型: ${exportItem.itemType}")
+                            android.util.Log.d("DataImport", "处理项类型: ${exportItem.itemType}")
                             val itemType = ItemType.valueOf(exportItem.itemType)
                             
                             // 其他类型存入SecureItem表
@@ -252,7 +252,7 @@ class DataExportImportViewModel(
                                                 itemData = encodeTotpDataPreservingStorageShape(itemData, updatedTotpData)
                                                 android.util.Log.d("DataImport", "Updated TOTP boundPasswordId from $originalBoundId to $newBoundId")
                                             } else {
-                                                android.util.Log.w("DataImport", "Could not map password ID for TOTP: ${exportItem.title} (Old: $originalBoundId)")
+                                                android.util.Log.w("DataImport", "Could not map password ID for TOTP: oldId=$originalBoundId")
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -277,7 +277,7 @@ class DataExportImportViewModel(
                                     bitwardenFolderId = exportItem.bitwardenFolderId
                                 )
                                 secureItemRepository.insertItem(secureItem)
-                                android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
+                                android.util.Log.d("DataImport", "成功插入到SecureItem表")
                                 count++
                             } else {
                                 if (itemType == ItemType.NOTE) {
@@ -286,20 +286,20 @@ class DataExportImportViewModel(
                                         incoming = exportItem
                                     )
                                     if (merged) {
-                                        android.util.Log.d("DataImport", "重复笔记已合并标签: ${exportItem.title}")
+                                        android.util.Log.d("DataImport", "重复笔记已合并标签")
                                         count++
                                     } else {
-                                        android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
+                                        android.util.Log.d("DataImport", "跳过重复项")
                                         skippedCount++
                                     }
                                 } else {
-                                    android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
+                                    android.util.Log.d("DataImport", "跳过重复项")
                                     skippedCount++
                                 }
                             }
                         } catch (e: Exception) {
                             errorCount++
-                            android.util.Log.e("DataImport", "插入数据库失败: ${exportItem.title}, 错误: ${e.message}", e)
+                            android.util.Log.e("DataImport", "插入数据库失败: ${e.message}", e)
                         }
                     }
                     
@@ -622,7 +622,7 @@ class DataExportImportViewModel(
                                 }
                                 
                                 if (isDuplicate) {
-                                    android.util.Log.d("AegisImport", "跳过重复条目: ${aegisEntry.name}")
+                                    android.util.Log.d("AegisImport", "跳过重复条目")
                                     skippedCount++
                                 } else {
                                     // 创建新的TOTP条目
@@ -656,11 +656,11 @@ class DataExportImportViewModel(
                                     
                                     secureItemRepository.insertItem(secureItem)
                                     count++
-                                    android.util.Log.d("AegisImport", "成功插入TOTP条目: $title")
+                                    android.util.Log.d("AegisImport", "成功插入TOTP条目")
                                 }
                             } catch (e: Exception) {
                                 errorCount++
-                                android.util.Log.e("AegisImport", "插入数据库失败: ${aegisEntry.name}, 错误: ${e.message}", e)
+                                android.util.Log.e("AegisImport", "插入数据库失败: ${e.message}", e)
                             }
                         }
                         
@@ -713,7 +713,7 @@ class DataExportImportViewModel(
                             }
                             
                             if (isDuplicate) {
-                                android.util.Log.d("EncryptedAegisImport", "跳过重复条目: ${aegisEntry.name}")
+                                android.util.Log.d("EncryptedAegisImport", "跳过重复条目")
                                 skippedCount++
                             } else {
                                 // 创建新的TOTP条目
@@ -747,11 +747,11 @@ class DataExportImportViewModel(
                                 
                                 secureItemRepository.insertItem(secureItem)
                                 count++
-                                android.util.Log.d("EncryptedAegisImport", "成功插入TOTP条目: $title")
+                                android.util.Log.d("EncryptedAegisImport", "成功插入TOTP条目")
                             }
                         } catch (e: Exception) {
                             errorCount++
-                            android.util.Log.e("EncryptedAegisImport", "插入数据库失败: ${aegisEntry.name}, 错误: ${e.message}", e)
+                            android.util.Log.e("EncryptedAegisImport", "插入数据库失败: ${e.message}", e)
                         }
                     }
                     
@@ -915,7 +915,7 @@ class DataExportImportViewModel(
         }
 
         if (isDuplicate) {
-            android.util.Log.d("SteamImport", "跳过重复条目: ${steamEntry.name}")
+            android.util.Log.d("SteamImport", "跳过重复条目")
             return Result.failure(Exception("该Steam Guard验证器已存在"))
         }
 
@@ -957,7 +957,7 @@ class DataExportImportViewModel(
         )
 
         secureItemRepository.insertItem(secureItem)
-        android.util.Log.d("SteamImport", "成功插入Steam Guard: $title")
+        android.util.Log.d("SteamImport", "成功插入Steam Guard")
         logImportSummary(
             source = "STEAM_GUARD",
             importedCount = 1

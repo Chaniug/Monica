@@ -107,7 +107,7 @@ class KeePassKdbxViewModel {
         keyFileUri: Uri? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Starting local KDBX import from uri=$sourceUri ...")
+            Log.d(TAG, "Starting local KDBX import")
             val importedCount = context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
                 parseKdbxAndInsertToDb(
                     context = context,
@@ -252,7 +252,7 @@ class KeePassKdbxViewModel {
             val decryptedPassword = try {
                 securityManager.decryptData(password.password)
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to decrypt password for ${password.title}: ${e.message}")
+                Log.w(TAG, "Failed to decrypt password during KDBX export: ${e.message}")
                 password.password // 如果解密失败，使用原始值
             }
             
@@ -295,7 +295,7 @@ class KeePassKdbxViewModel {
                 val decryptedSecret = try {
                     securityManager.decryptDataIfMonicaCiphertext(totpData.secret)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to decrypt TOTP secret for ${item.title}: ${e.message}")
+                    Log.w(TAG, "Failed to decrypt TOTP secret during KDBX export: ${e.message}")
                     totpData.secret
                 }
                 
@@ -327,7 +327,7 @@ class KeePassKdbxViewModel {
                     )
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse TOTP data for ${item.title}: ${e.message}")
+                Log.w(TAG, "Failed to parse TOTP data during KDBX export: ${e.message}")
                 null
             }
         }
@@ -582,7 +582,7 @@ class KeePassKdbxViewModel {
                                 updatedAt = Date()
                             )
                             passwordDao.update(updated)
-                            Log.d(TAG, "Updated existing password: $title")
+                            Log.d(TAG, "Updated existing password during KDBX import")
                             existingEntry.id
                         } else {
                             val passwordEntry = takagi.ru.monica.data.PasswordEntry(
@@ -713,7 +713,7 @@ class KeePassKdbxViewModel {
                                     updatedAt = Date()
                                 )
                                 secureItemDao.updateItem(updatedItem)
-                                Log.d(TAG, "Updated existing TOTP: $normalizedTitle")
+                                Log.d(TAG, "Updated existing TOTP during KDBX import")
                             } else {
                                 val secureItem = SecureItem(
                                     itemType = ItemType.TOTP,
@@ -728,7 +728,7 @@ class KeePassKdbxViewModel {
                                 
                                 secureItemDao.insertItem(secureItem)
                                 totpImportedCount++
-                                Log.d(TAG, "Imported TOTP: $normalizedTitle")
+                                Log.d(TAG, "Imported TOTP during KDBX import")
                             }
                         }
                     }
@@ -992,7 +992,7 @@ class KeePassKdbxViewModel {
                 period = period
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse otpauth URI: $uri", e)
+            Log.e(TAG, "Failed to parse otpauth URI", e)
             return null
         }
     }

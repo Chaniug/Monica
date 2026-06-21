@@ -110,7 +110,7 @@ object BackupRestoreApplier {
                 passwordFailed++
                 val detail = "${password.title} (${password.username}): ${e.message}"
                 failedPasswordDetails.add(detail)
-                android.util.Log.e(logTag, "Failed to import password: $detail")
+                android.util.Log.e(logTag, "Failed to import password: ${e.message}")
             }
         }
 
@@ -132,7 +132,7 @@ object BackupRestoreApplier {
                                     passwordRepository.updatePasswordEntry(updatedEntry)
                                     android.util.Log.d(
                                         logTag,
-                                        "Updated ssoRefEntryId from $originalRefId to $newRefId for password: ${password.title}"
+                                        "Updated ssoRefEntryId from $originalRefId to $newRefId"
                                     )
                                 }
                             } else if (existingEntry.ssoRefEntryId != null) {
@@ -140,13 +140,13 @@ object BackupRestoreApplier {
                                 passwordRepository.updatePasswordEntry(updatedEntry)
                                 android.util.Log.w(
                                     logTag,
-                                    "Cleared invalid ssoRefEntryId $originalRefId for password: ${password.title} (referenced password not found)"
+                                    "Cleared invalid ssoRefEntryId $originalRefId (referenced password not found)"
                                 )
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    android.util.Log.w(logTag, "Failed to update ssoRefEntryId for ${password.title}: ${e.message}")
+                    android.util.Log.w(logTag, "Failed to update ssoRefEntryId: ${e.message}")
                 }
             }
         }
@@ -351,13 +351,13 @@ object BackupRestoreApplier {
                                     } else {
                                         updatedJson
                                     }
-                                    android.util.Log.d(logTag, "Updated TOTP binding: ${exportItem.title} -> Password ID $newBoundId")
+                                    android.util.Log.d(logTag, "Updated TOTP binding to Password ID $newBoundId")
                                 } else {
-                                    android.util.Log.w(logTag, "Could not find new password ID for TOTP binding: ${exportItem.title} (Old ID: ${totpData.boundPasswordId})")
+                                    android.util.Log.w(logTag, "Could not find new password ID for TOTP binding: oldId=${totpData.boundPasswordId}")
                                 }
                             }
                         } catch (e: Exception) {
-                            android.util.Log.w(logTag, "Failed to parse/update TOTP data for ${exportItem.title}: ${e.message}")
+                            android.util.Log.w(logTag, "Failed to parse/update TOTP data: ${e.message}")
                         }
                     }
 
@@ -386,7 +386,7 @@ object BackupRestoreApplier {
                 secureItemFailed++
                 val detail = "${exportItem.title} (${exportItem.itemType}): ${e.message}"
                 failedSecureItemDetails.add(detail)
-                android.util.Log.e(logTag, "Failed to import secure item: $detail")
+                android.util.Log.e(logTag, "Failed to import secure item: ${e.message}")
             }
         }
 

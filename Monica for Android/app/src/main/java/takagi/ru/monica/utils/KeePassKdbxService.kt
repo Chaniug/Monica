@@ -2503,7 +2503,7 @@ class KeePassKdbxService(
             )
         }
         if (isEnhancedEntryTemplate(entry, title, username, password, url, notes, resolutionContext)) {
-            Log.d(TAG, "Skip KeePassXC template entry from password sync: title=$title uuid=${entry.uuid}")
+            Log.d(TAG, "Skip KeePassXC template entry from password sync")
             return result(
                 skipReason = KeePassPasswordSkipReason.TEMPLATE,
                 hasPasskeyFields = hasPasskeyFields,
@@ -2733,7 +2733,7 @@ class KeePassKdbxService(
         }
         Log.i(
             TAG,
-            "KeePass password sync summary: databaseId=$databaseId, name=$databaseName, " +
+            "KeePass password sync summary: databaseId=$databaseId, " +
                 "total=${entries.size}, imported=${data.size}, passkeyFieldEntries=$passkeyFieldCount, " +
                 "importedWithPasskeyFields=$importedWithPasskeyFields, " +
                 "skippedSecureItem=${skipCounts[KeePassPasswordSkipReason.MONICA_SECURE_ITEM] ?: 0}, " +
@@ -2742,9 +2742,7 @@ class KeePassKdbxService(
                 "skippedEmpty=${skipCounts[KeePassPasswordSkipReason.EMPTY] ?: 0}"
         )
         if (data.isEmpty() || skipCounts.isNotEmpty()) {
-            skippedSamples.forEach { sample ->
-                Log.i(TAG, "KeePass password sync sample: databaseId=$databaseId, $sample")
-            }
+            Log.i(TAG, "KeePass password sync skippedSampleCount=${skippedSamples.size}")
         }
         return data
     }
@@ -4111,7 +4109,7 @@ class KeePassKdbxService(
                 }
             }
         }.onFailure { error ->
-            Log.w(TAG, "openFileDescriptor r failed, retry with input stream: $uri", error)
+            Log.w(TAG, "openFileDescriptor r failed, retry with input stream", error)
         }.getOrNull()
         if (descriptorBytes != null) return descriptorBytes
 
@@ -4687,7 +4685,7 @@ class KeePassKdbxService(
         try {
             context.contentResolver.openFileDescriptor(uri, "rwt")
         } catch (e: FileNotFoundException) {
-            Log.w(TAG, "openFileDescriptor rwt failed, retry with wt: $uri", e)
+            Log.w(TAG, "openFileDescriptor rwt failed, retry with wt", e)
             context.contentResolver.openFileDescriptor(uri, "wt")
         }
 
@@ -4695,7 +4693,7 @@ class KeePassKdbxService(
         try {
             context.contentResolver.openOutputStream(uri, "wt")
         } catch (e: FileNotFoundException) {
-            Log.w(TAG, "openOutputStream wt failed, retry with rwt: $uri", e)
+            Log.w(TAG, "openOutputStream wt failed, retry with rwt", e)
             context.contentResolver.openOutputStream(uri, "rwt")
         }
 
