@@ -4772,7 +4772,7 @@ class WebDavHelper(
         val withScheme = if (trimmed.contains("://")) {
             trimmed
         } else {
-            "http://$trimmed"
+            "https://$trimmed"
         }
         return withScheme.trimEnd('/')
     }
@@ -4907,7 +4907,7 @@ class WebDavHelper(
                 throw e
             }
             
-            android.util.Log.d("WebDavHelper", "Backup uploaded successfully: $fileName (${fileSizeMB}MB)")
+            android.util.Log.d("WebDavHelper", "Backup uploaded successfully (${fileSizeMB}MB)")
             
             Result.success(fileName)
         } catch (e: OutOfMemoryError) {

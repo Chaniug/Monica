@@ -49,6 +49,14 @@ class WebDavSecurityStorageGuardTest {
         assertTrue(source.contains("if (decryptPassword.isNullOrBlank())"))
     }
 
+    @Test
+    fun webDavHelper_defaultsMissingSchemeToHttps() {
+        val source = projectFile("app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt")
+
+        assertTrue(source.contains("\"https://${'$'}trimmed\""))
+        assertFalse(source.contains("\"http://${'$'}trimmed\""))
+    }
+
     private fun projectFile(relativePath: String): String {
         val start = Paths.get("").toAbsolutePath()
         var cursor = start

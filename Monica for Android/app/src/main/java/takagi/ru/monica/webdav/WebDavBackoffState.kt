@@ -2,6 +2,7 @@ package takagi.ru.monica.webdav
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -48,28 +49,6 @@ object WebDavBackoffState {
         val sharedPreferences = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = sharedPreferences
-        restoreFromPrefs(sharedPreferences)
-    }
-
-    private fun restoreFromPrefs(prefs: SharedPreferences) {
-        val all = prefs.all
-        val hostNames = all.keys
-            .asSequence()
-            .filter { it.startsWith(KEY_PREFIX) }
-            .map { it.removePrefix(KEY_PREFIX).substringBefore(':') }
-            .distinct()
-            .toList()
-        for (host in hostNames) {
-            val blockUntil = prefs.getLong(KEY_PREFIX + host + KEY_BLOCK_UNTIL, 0L)
-            val disableUntil = prefs.getLong(KEY_PREFIX + host + KEY_DISABLE_UNTIL, 0L)
-            val window = prefs.getString(KEY_PREFIX + host + KEY_RL_WINDOW, null).orEmpty()
-            val timestamps = window
-                .split(',')
-                .mapNotNull { it.trim().takeIf(String::isNotEmpty)?.toLongOrNull() }
-            val state = HostState(blockUntil = blockUntil, disableUntil = disableUntil)
-            for (t in timestamps) state.rateLimitTimestamps.addLast(t)
-            hosts[host] = state
-        }
     }
 
     /** 记录一次 429 / 503+Retry-After 事件，更新阻塞截止时间。 */
@@ -79,7 +58,7 @@ object WebDavBackoffState {
         now: Long = System.currentTimeMillis(),
     ) {
         if (host.isEmpty()) return
-        val state = hosts.getOrPut(host) { HostState() }
+        val state = stateForHost(host)
         synchronized(state) {
             // 维护 60 秒窗口
             pruneLocked(state, now)
@@ -115,7 +94,7 @@ object WebDavBackoffState {
     /** 当前主机是否应阻塞请求（尚未到阻塞截止或临时禁用中）。 */
     fun shouldBlock(host: String, now: Long = System.currentTimeMillis()): Boolean {
         if (host.isEmpty()) return false
-        val state = hosts[host] ?: return false
+        val state = stateForHost(host)
         synchronized(state) {
             return now < maxOf(state.blockUntil, state.disableUntil)
         }
@@ -124,7 +103,7 @@ object WebDavBackoffState {
     /** 建议等待毫秒数；若无 backoff 返回 0。 */
     fun suggestedWaitMillis(host: String, now: Long = System.currentTimeMillis()): Long {
         if (host.isEmpty()) return 0L
-        val state = hosts[host] ?: return 0L
+        val state = stateForHost(host)
         synchronized(state) {
             val deadline = maxOf(state.blockUntil, state.disableUntil)
             return (deadline - now).coerceAtLeast(0L)
@@ -134,7 +113,7 @@ object WebDavBackoffState {
     /** 该主机是否处于 5 分钟临时禁用状态。 */
     fun isTemporarilyDisabled(host: String, now: Long = System.currentTimeMillis()): Boolean {
         if (host.isEmpty()) return false
-        val state = hosts[host] ?: return false
+        val state = stateForHost(host)
         synchronized(state) {
             return now < state.disableUntil
         }
@@ -164,21 +143,70 @@ object WebDavBackoffState {
     private fun persistLocked(host: String, state: HostState) {
         val p = prefs ?: return
         val window = state.rateLimitTimestamps.joinToString(",")
+        val key = storageKey(host)
         p.edit()
-            .putLong(KEY_PREFIX + host + KEY_BLOCK_UNTIL, state.blockUntil)
-            .putLong(KEY_PREFIX + host + KEY_DISABLE_UNTIL, state.disableUntil)
-            .putString(KEY_PREFIX + host + KEY_RL_WINDOW, window)
+            .putLong(key + KEY_BLOCK_UNTIL, state.blockUntil)
+            .putLong(key + KEY_DISABLE_UNTIL, state.disableUntil)
+            .putString(key + KEY_RL_WINDOW, window)
             .apply()
     }
 
     private fun clearLocked(host: String) {
         val p = prefs ?: return
+        val key = storageKey(host)
+        val legacyKey = legacyStorageKey(host)
         p.edit()
-            .remove(KEY_PREFIX + host + KEY_BLOCK_UNTIL)
-            .remove(KEY_PREFIX + host + KEY_DISABLE_UNTIL)
-            .remove(KEY_PREFIX + host + KEY_RL_WINDOW)
+            .remove(key + KEY_BLOCK_UNTIL)
+            .remove(key + KEY_DISABLE_UNTIL)
+            .remove(key + KEY_RL_WINDOW)
+            .remove(legacyKey + KEY_BLOCK_UNTIL)
+            .remove(legacyKey + KEY_DISABLE_UNTIL)
+            .remove(legacyKey + KEY_RL_WINDOW)
             .apply()
     }
+
+    private fun stateForHost(host: String): HostState {
+        return hosts.getOrPut(host) {
+            restoreHostFromPrefs(host) ?: HostState()
+        }
+    }
+
+    private fun restoreHostFromPrefs(host: String): HostState? {
+        val p = prefs ?: return null
+        readState(p, storageKey(host))?.let { return it }
+
+        val legacyKey = legacyStorageKey(host)
+        val legacyState = readState(p, legacyKey) ?: return null
+        p.edit()
+            .remove(legacyKey + KEY_BLOCK_UNTIL)
+            .remove(legacyKey + KEY_DISABLE_UNTIL)
+            .remove(legacyKey + KEY_RL_WINDOW)
+            .apply()
+        persistLocked(host, legacyState)
+        return legacyState
+    }
+
+    private fun readState(prefs: SharedPreferences, key: String): HostState? {
+        val blockUntil = prefs.getLong(key + KEY_BLOCK_UNTIL, 0L)
+        val disableUntil = prefs.getLong(key + KEY_DISABLE_UNTIL, 0L)
+        val window = prefs.getString(key + KEY_RL_WINDOW, null).orEmpty()
+        if (blockUntil <= 0L && disableUntil <= 0L && window.isBlank()) return null
+        val state = HostState(blockUntil = blockUntil, disableUntil = disableUntil)
+        window
+            .split(',')
+            .mapNotNull { it.trim().takeIf(String::isNotEmpty)?.toLongOrNull() }
+            .forEach { state.rateLimitTimestamps.addLast(it) }
+        return state
+    }
+
+    private fun storageKey(host: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(host.lowercase().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return KEY_PREFIX + digest
+    }
+
+    private fun legacyStorageKey(host: String): String = KEY_PREFIX + host
 
     internal class HostState(
         @Volatile var blockUntil: Long = 0L,

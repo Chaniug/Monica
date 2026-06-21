@@ -170,7 +170,7 @@ object OperationLogger {
             return
         }
         
-        android.util.Log.d("OperationLogger", "Logging $operationType for $itemType: $itemTitle (id=$itemId)")
+        android.util.Log.d("OperationLogger", "Logging $operationType for $itemType")
         
         val changesJson = if (changes.isNotEmpty()) {
             json.encodeToString(changes)
@@ -192,7 +192,7 @@ object OperationLogger {
         scope.launch {
             try {
                 db.operationLogDao().insert(operationLog)
-                android.util.Log.d("OperationLogger", "Successfully logged operation for $itemTitle")
+                android.util.Log.d("OperationLogger", "Successfully logged operation")
             } catch (e: Exception) {
                 android.util.Log.e("OperationLogger", "Failed to log operation", e)
             }

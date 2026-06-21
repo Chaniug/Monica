@@ -180,13 +180,13 @@ class ImageCompressor(private val context: Context) {
         try {
             // 检查是否已压缩
             if (isImageCompressed(fileName)) {
-                android.util.Log.d("ImageCompressor", "Image already compressed: $fileName")
+                android.util.Log.d("ImageCompressor", "Image already compressed")
                 return@withContext 0L
             }
             
             val file = File(imageDirectory, fileName)
             if (!file.exists()) {
-                android.util.Log.w("ImageCompressor", "Image file not found: $fileName")
+                android.util.Log.w("ImageCompressor", "Image file not found")
                 return@withContext 0L
             }
             
@@ -251,7 +251,7 @@ class ImageCompressor(private val context: Context) {
                 return@withContext 0L
             }
         } catch (e: Exception) {
-            android.util.Log.e("ImageCompressor", "Failed to compress image: $fileName", e)
+            android.util.Log.e("ImageCompressor", "Failed to compress image", e)
             return@withContext -1L // 返回-1表示失败
         }
     }

@@ -897,7 +897,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 put("clientExtensionResults", buildClientExtensionResults(requestJson, discoverable))
             }
             
-            Log.d(TAG, "Passkey created successfully: $credentialIdB64")
+            Log.d(TAG, "Passkey created successfully")
             repository.logAudit("PASSKEY_CREATE_SUCCESS", 
                 "$credentialIdB64|rpId=$rpId|userName=$userName")
             recordPasskeyEvent(
@@ -972,9 +972,9 @@ class PasskeyCreateActivity : FragmentActivity() {
                 "PASSKEY_CREATE_ROLLBACK",
                 "$credentialId|boundPasswordId=${boundPasswordId ?: "null"}"
             )
-            Log.w(TAG, "Rolled back passkey creation for credentialId=$credentialId")
+            Log.w(TAG, "Rolled back passkey creation")
         }.onFailure { rollbackError ->
-            Log.e(TAG, "Failed to rollback created passkey: $credentialId", rollbackError)
+            Log.e(TAG, "Failed to rollback created passkey", rollbackError)
         }
     }
 

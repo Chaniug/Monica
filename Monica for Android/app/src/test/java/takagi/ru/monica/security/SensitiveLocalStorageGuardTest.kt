@@ -41,6 +41,31 @@ class SensitiveLocalStorageGuardTest {
     }
 
     @Test
+    fun oneDriveBackupConfig_usesProtectedStorageWithLegacyMigration() {
+        val source = projectFile("app/src/main/java/takagi/ru/monica/utils/OneDriveBackupHelper.kt")
+
+        assertTrue(source.contains("SecurityManager(appContext)"))
+        assertTrue(source.contains("migrateLegacyConfigIfNeeded"))
+        assertTrue(source.contains("securityManager.putProtectedString(SECURE_KEY_USERNAME"))
+        assertTrue(source.contains("securityManager.getProtectedString(SECURE_KEY_USERNAME)"))
+        assertTrue(source.contains("securityManager.removeProtectedString(SECURE_KEY_USERNAME)"))
+        assertFalse(source.contains(".putString(KEY_USERNAME, session.username)"))
+        assertFalse(source.contains(".putString(KEY_FOLDER_PATH, normalizedFolderPath)"))
+    }
+
+    @Test
+    fun webDavBackoffPersistence_hashesHostKeys() {
+        val source = projectFile("app/src/main/java/takagi/ru/monica/webdav/WebDavBackoffState.kt")
+
+        assertTrue(source.contains("MessageDigest.getInstance(\"SHA-256\")"))
+        assertTrue(source.contains("private fun storageKey(host: String)"))
+        assertTrue(source.contains("readState(p, storageKey(host))"))
+        assertTrue(source.contains("private fun legacyStorageKey(host: String)"))
+        assertFalse(source.contains(".putString(KEY_PREFIX + host + KEY_RL_WINDOW"))
+        assertFalse(source.contains(".putLong(KEY_PREFIX + host + KEY_BLOCK_UNTIL"))
+    }
+
+    @Test
     fun importAndBitwardenSyncLogs_doNotExposeSensitiveRawValues() {
         val importManager = projectFile("app/src/main/java/takagi/ru/monica/util/DataExportImportManager.kt")
         val cipherSync = projectFile("app/src/main/java/takagi/ru/monica/bitwarden/service/CipherSyncProcessor.kt")
@@ -63,6 +88,15 @@ class SensitiveLocalStorageGuardTest {
         val keepassViewModel = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/KeePassKdbxViewModel.kt")
         val accessibilityService = projectFile("app/src/main/java/takagi/ru/monica/service/MonicaAccessibilityService.kt")
         val autofillPreferences = projectFile("app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPreferences.kt")
+        val autofillPicker = projectFile("app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPickerActivityV2.kt")
+        val oneDriveBackup = projectFile("app/src/main/java/takagi/ru/monica/utils/OneDriveBackupHelper.kt")
+        val autoBackupWorker = projectFile("app/src/main/java/takagi/ru/monica/workers/AutoBackupWorker.kt")
+        val webDavBackupScreen = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt")
+        val passkeyRepository = projectFile("app/src/main/java/takagi/ru/monica/repository/PasskeyRepository.kt")
+        val passkeyCreate = projectFile("app/src/main/java/takagi/ru/monica/passkey/PasskeyCreateActivity.kt")
+        val passkeyAuth = projectFile("app/src/main/java/takagi/ru/monica/passkey/PasskeyAuthActivity.kt")
+        val cipherSync = projectFile("app/src/main/java/takagi/ru/monica/bitwarden/service/CipherSyncProcessor.kt")
+        val operationLogger = projectFile("app/src/main/java/takagi/ru/monica/utils/OperationLogger.kt")
 
         assertFalse(importViewModel.contains("成功插入到PasswordEntry表: ${'$'}{exportItem.title}"))
         assertFalse(importViewModel.contains("跳过重复条目: ${'$'}{aegisEntry.name}"))
@@ -77,6 +111,19 @@ class SensitiveLocalStorageGuardTest {
         assertFalse(keepassViewModel.contains("Failed to parse otpauth URI: ${'$'}uri"))
         assertFalse(accessibilityService.contains("url=${'$'}url"))
         assertFalse(autofillPreferences.contains("id=${'$'}normalized, passwordId=${'$'}passwordId"))
+        assertFalse(autofillPicker.contains("app=${'$'}applicationId, web=${'$'}webDomain"))
+        assertFalse(oneDriveBackup.contains("folder=${'$'}{config.folderPath}"))
+        assertFalse(oneDriveBackup.contains("target=${'$'}targetName"))
+        assertFalse(autoBackupWorker.contains("无法解密密码 ${'$'}{entry.title}"))
+        assertFalse(webDavBackupScreen.contains("无法解密密码 ${'$'}{entry.title}"))
+        assertFalse(webDavBackupScreen.contains("entry.website.ifBlank { entry.username }"))
+        assertFalse(passkeyRepository.contains("[${'$'}action] ${'$'}details"))
+        assertFalse(passkeyRepository.contains("Keystore: ${'$'}keyAlias"))
+        assertFalse(passkeyCreate.contains("Passkey created successfully: ${'$'}credentialIdB64"))
+        assertFalse(passkeyAuth.contains("Passkey not found: ${'$'}credentialId"))
+        assertFalse(passkeyAuth.contains("Authentication successful for: ${'$'}{passkey.credentialId}"))
+        assertFalse(cipherSync.contains("title=${'$'}name"))
+        assertFalse(operationLogger.contains("for ${'$'}itemType: ${'$'}itemTitle"))
     }
 
     @Test

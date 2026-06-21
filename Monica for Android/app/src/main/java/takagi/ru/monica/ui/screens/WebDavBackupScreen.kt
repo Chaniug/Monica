@@ -805,19 +805,19 @@ fun WebDavBackupScreen(
 
                                         // WebDAV 是跨端备份；如果 Android 本机密钥不可用，不能把设备密文写进备份。
                                         val securityManager = takagi.ru.monica.security.SecurityManager(context)
-                                        val failedPasswordTitles = mutableListOf<String>()
+                                        var failedPasswordDecryptCount = 0
                                         val decryptedPasswords = localPasswords.map { entry ->
                                             try {
                                                 entry.copy(password = securityManager.decryptData(entry.password))
                                             } catch (e: Exception) {
-                                                android.util.Log.w("WebDavBackupScreen", "无法解密密码 ${entry.title}: ${e.message}")
-                                                failedPasswordTitles += entry.title.ifBlank { entry.website.ifBlank { entry.username } }
+                                                android.util.Log.w("WebDavBackupScreen", "无法解密密码条目: ${e.message}")
+                                                failedPasswordDecryptCount++
                                                 entry.copy(password = "")
                                             }
                                         }
-                                        if (failedPasswordTitles.isNotEmpty()) {
+                                        if (failedPasswordDecryptCount > 0) {
                                             throw IllegalStateException(
-                                                "有 ${failedPasswordTitles.size} 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
+                                                "有 $failedPasswordDecryptCount 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
                                             )
                                         }
 

@@ -174,7 +174,7 @@ class AutoBackupWorker(
                 try {
                     entry.copy(password = securityManager.decryptData(entry.password))
                 } catch (e: Exception) {
-                    android.util.Log.w(TAG, "无法解密密码 ${entry.title}: ${e.message}")
+                    android.util.Log.w(TAG, "无法解密密码条目: ${e.message}")
                     failedPasswordDecryptCount++
                     entry.copy(password = "")
                 }

@@ -1577,7 +1577,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val applicationId = args.applicationId
         val webDomain = args.webDomain
         
-        android.util.Log.d("AutofillPickerV2", "Saving URI binding: app=$applicationId, web=$webDomain for password=${password.id}")
+        android.util.Log.d(
+            "AutofillPickerV2",
+            "Saving URI binding: hasApp=${!applicationId.isNullOrBlank()}, hasWeb=${!webDomain.isNullOrBlank()}"
+        )
         
         // 后台保存
         kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {

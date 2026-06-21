@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.security.SecurityManager
 import java.io.File
 import java.util.Date
 
@@ -17,15 +18,17 @@ data class OneDriveBackupConfig(
 class OneDriveBackupHelper(context: Context) {
     private val appContext = context.applicationContext
     private val authManager = OneDriveAuthManager(appContext)
+    private val securityManager = SecurityManager(appContext)
 
     fun getConfig(): OneDriveBackupConfig? {
         val prefs = preferences()
-        val accountId = prefs.getString(KEY_ACCOUNT_ID, null)?.takeIf { it.isNotBlank() } ?: return null
-        val folderPath = prefs.getString(KEY_FOLDER_PATH, null)?.takeIf { it.isNotBlank() } ?: return null
+        migrateLegacyConfigIfNeeded(prefs)
+        val accountId = securityManager.getProtectedString(SECURE_KEY_ACCOUNT_ID)?.takeIf { it.isNotBlank() } ?: return null
+        val folderPath = securityManager.getProtectedString(SECURE_KEY_FOLDER_PATH)?.takeIf { it.isNotBlank() } ?: return null
         return OneDriveBackupConfig(
             accountId = accountId,
-            displayName = prefs.getString(KEY_DISPLAY_NAME, null).orEmpty().ifBlank { "OneDrive" },
-            username = prefs.getString(KEY_USERNAME, null).orEmpty(),
+            displayName = securityManager.getProtectedString(SECURE_KEY_DISPLAY_NAME).orEmpty().ifBlank { "OneDrive" },
+            username = securityManager.getProtectedString(SECURE_KEY_USERNAME).orEmpty(),
             folderPath = folderPath
         )
     }
@@ -35,15 +38,23 @@ class OneDriveBackupHelper(context: Context) {
     fun saveConfig(session: OneDriveAccountSession, folderPath: String) {
         val normalizedFolderPath = OneDriveKeePassFileSource.normalizeOptionalRemotePath(folderPath)
         preferences().edit()
-            .putString(KEY_ACCOUNT_ID, session.accountId)
-            .putString(KEY_DISPLAY_NAME, session.displayName)
-            .putString(KEY_USERNAME, session.username)
-            .putString(KEY_FOLDER_PATH, normalizedFolderPath)
+            .remove(KEY_ACCOUNT_ID)
+            .remove(KEY_DISPLAY_NAME)
+            .remove(KEY_USERNAME)
+            .remove(KEY_FOLDER_PATH)
             .apply()
+        securityManager.putProtectedString(SECURE_KEY_ACCOUNT_ID, session.accountId)
+        securityManager.putProtectedString(SECURE_KEY_DISPLAY_NAME, session.displayName)
+        securityManager.putProtectedString(SECURE_KEY_USERNAME, session.username)
+        securityManager.putProtectedString(SECURE_KEY_FOLDER_PATH, normalizedFolderPath)
     }
 
     fun clearConfig() {
         preferences().edit().clear().apply()
+        securityManager.removeProtectedString(SECURE_KEY_ACCOUNT_ID)
+        securityManager.removeProtectedString(SECURE_KEY_DISPLAY_NAME)
+        securityManager.removeProtectedString(SECURE_KEY_USERNAME)
+        securityManager.removeProtectedString(SECURE_KEY_FOLDER_PATH)
     }
 
     suspend fun getConfiguredSession(): OneDriveAccountSession? {
@@ -86,7 +97,7 @@ class OneDriveBackupHelper(context: Context) {
                     )
                 }
                 .sortedByDescending { it.modified.time }
-            Log.d(TAG, "Listed OneDrive backups: folder=${config.folderPath}, count=${backups.size}")
+            Log.d(TAG, "Listed OneDrive backups: count=${backups.size}")
             backups
         }
     }
@@ -101,8 +112,7 @@ class OneDriveBackupHelper(context: Context) {
             }
             Log.i(
                 TAG,
-                "Uploading OneDrive backup: folder=${config.folderPath}, target=$targetName, " +
-                    "sizeBytes=${file.length()}, permanent=$isPermanent"
+                "Uploading OneDrive backup: sizeBytes=${file.length()}, permanent=$isPermanent"
             )
             val entry = OneDriveKeePassFileSource(
                 context = appContext,
@@ -189,7 +199,7 @@ class OneDriveBackupHelper(context: Context) {
             )
             var deleted = 0
             expiredBackups.forEach { backup ->
-                Log.d(TAG, "Deleting expired OneDrive backup: ${backup.name}")
+                Log.d(TAG, "Deleting expired OneDrive backup")
                 deleteBackup(backup).getOrThrow()
                 deleted++
             }
@@ -207,6 +217,39 @@ class OneDriveBackupHelper(context: Context) {
 
     private fun preferences() = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private fun migrateLegacyConfigIfNeeded(prefs: android.content.SharedPreferences) {
+        val legacyAccountId = prefs.getString(KEY_ACCOUNT_ID, null)
+        val legacyDisplayName = prefs.getString(KEY_DISPLAY_NAME, null)
+        val legacyUsername = prefs.getString(KEY_USERNAME, null)
+        val legacyFolderPath = prefs.getString(KEY_FOLDER_PATH, null)
+        val hasLegacyValues =
+            !legacyAccountId.isNullOrBlank() ||
+                !legacyDisplayName.isNullOrBlank() ||
+                !legacyUsername.isNullOrBlank() ||
+                !legacyFolderPath.isNullOrBlank()
+        if (!hasLegacyValues) return
+
+        if (securityManager.getProtectedString(SECURE_KEY_ACCOUNT_ID).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_ACCOUNT_ID, legacyAccountId)
+        }
+        if (securityManager.getProtectedString(SECURE_KEY_DISPLAY_NAME).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_DISPLAY_NAME, legacyDisplayName)
+        }
+        if (securityManager.getProtectedString(SECURE_KEY_USERNAME).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_USERNAME, legacyUsername)
+        }
+        if (securityManager.getProtectedString(SECURE_KEY_FOLDER_PATH).isNullOrBlank()) {
+            securityManager.putProtectedString(SECURE_KEY_FOLDER_PATH, legacyFolderPath)
+        }
+
+        prefs.edit()
+            .remove(KEY_ACCOUNT_ID)
+            .remove(KEY_DISPLAY_NAME)
+            .remove(KEY_USERNAME)
+            .remove(KEY_FOLDER_PATH)
+            .apply()
+    }
+
     companion object {
         private const val TAG = "OneDriveBackupHelper"
         private const val PREFS_NAME = "onedrive_backup_config"
@@ -214,5 +257,9 @@ class OneDriveBackupHelper(context: Context) {
         private const val KEY_DISPLAY_NAME = "display_name"
         private const val KEY_USERNAME = "username"
         private const val KEY_FOLDER_PATH = "folder_path"
+        private const val SECURE_KEY_ACCOUNT_ID = "onedrive_backup_account_id"
+        private const val SECURE_KEY_DISPLAY_NAME = "onedrive_backup_display_name"
+        private const val SECURE_KEY_USERNAME = "onedrive_backup_username"
+        private const val SECURE_KEY_FOLDER_PATH = "onedrive_backup_folder_path"
     }
 }

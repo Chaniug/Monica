@@ -410,7 +410,7 @@ class CipherUploadProcessor(
             // 更新本地 Passkey
             passkeyDao.markSyncedByRecordId(passkey.id, createdCipher.id)
             
-            android.util.Log.d(TAG, "Uploaded Passkey ${passkey.credentialId} as cipher ${createdCipher.id}")
+            android.util.Log.d(TAG, "Uploaded Passkey as cipher")
             UploadItemResult.Success(createdCipher.id)
         } catch (e: Exception) {
             runCatching { passkeyDao.markFailedByRecordId(passkey.id) }

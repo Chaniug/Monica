@@ -114,7 +114,7 @@ class AttachmentStorage(private val context: Context) {
         val file = File(storageDir, relativePath)
         if (!file.exists()) return@withContext true
         file.delete().also {
-            if (!it) Log.w(TAG, "Failed to delete attachment blob: $relativePath")
+            if (!it) Log.w(TAG, "Failed to delete attachment blob")
         }
     }
 

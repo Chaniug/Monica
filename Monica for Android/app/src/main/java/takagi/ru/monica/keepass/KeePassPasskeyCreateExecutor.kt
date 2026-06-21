@@ -20,7 +20,7 @@ class KeePassPasskeyCreateExecutor(
 
         val keepassBridge = bridge
         if (keepassBridge == null) {
-            Log.w(TAG, "Create passkey ${passkey.credentialId} skipped KeePass sync because bridge is unavailable")
+            Log.w(TAG, "Create passkey skipped KeePass sync because bridge is unavailable")
             rollbackPasskey(passkey.credentialId)
             return false
         }

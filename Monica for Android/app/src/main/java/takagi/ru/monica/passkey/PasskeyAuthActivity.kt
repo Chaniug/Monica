@@ -210,7 +210,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         
         val currentPasskey = passkey
         if (currentPasskey == null) {
-            Log.e(TAG, "Passkey not found: $credentialId")
+            Log.e(TAG, "Passkey not found")
             recordPasskeyEvent(
                 stage = "request_rejected",
                 requestJson = requestJson,
@@ -584,7 +584,7 @@ class PasskeyAuthActivity : FragmentActivity() {
                 put("clientExtensionResults", JSONObject())
             }
             
-            Log.d(TAG, "Authentication successful for: ${passkey.credentialId}")
+            Log.d(TAG, "Authentication successful")
             repository.logAudit("PASSKEY_AUTH_SUCCESS", 
                 "${passkey.credentialId}|rpId=${passkey.rpId}|signCount=$newSignCount")
             recordPasskeyEvent(

@@ -315,12 +315,12 @@ class PasskeyRepository(
             
             if (keyStore.containsAlias(keyAlias)) {
                 keyStore.deleteEntry(keyAlias)
-                Log.d(TAG, "Deleted private key from Keystore: $keyAlias")
+                Log.d(TAG, "Deleted private key from Keystore")
             } else {
-                Log.w(TAG, "Key alias not found in Keystore: $keyAlias")
+                Log.w(TAG, "Key alias not found in Keystore")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete private key: $keyAlias", e)
+            Log.e(TAG, "Failed to delete private key", e)
         }
     }
     
@@ -331,7 +331,7 @@ class PasskeyRepository(
      * TODO: 可扩展为写入文件或远程日志服务
      */
     fun logAudit(action: String, details: String) {
-        Log.i("PasskeyAudit", "[$action] $details")
+        Log.i("PasskeyAudit", "[$action] detailsPresent=${details.isNotBlank()}")
     }
 
     private suspend fun resolveExistingPasskey(passkey: PasskeyEntry): PasskeyEntry? {

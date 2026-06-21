@@ -1185,7 +1185,7 @@ class TotpViewModel(
                                 val targetSaved = saveIntoTarget(target, targetId = existingReplicasByKey[target.stableKey]?.id)
                                 if (!targetSaved) {
                                     allTargetsSaved = false
-                                    Log.e("TotpViewModel", "saveTotpAcrossTargets skipped failed target=${target.stableKey}")
+                                    Log.e("TotpViewModel", "saveTotpAcrossTargets skipped failed target")
                                 }
                             }
 

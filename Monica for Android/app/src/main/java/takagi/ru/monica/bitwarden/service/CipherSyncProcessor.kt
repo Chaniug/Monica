@@ -301,7 +301,7 @@ class CipherSyncProcessor(
         val customFields = decryptCustomFieldMap(cipher.fields, symmetricKey)
         // 调试：对有自定义字段的 cipher 记录 ID
         if (customFields.isNotEmpty()) {
-            android.util.Log.i(TAG, "syncPasswordCipher cipherId=${cipher.id} has ${customFields.size} custom fields, title=$name")
+            android.util.Log.i(TAG, "syncPasswordCipher has ${customFields.size} custom fields")
         }
         val remoteAppPackage = customFields["monica_app_package"]
             ?: customFields["appPackageName"]
