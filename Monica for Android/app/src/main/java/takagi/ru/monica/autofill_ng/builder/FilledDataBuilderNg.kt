@@ -3,6 +3,7 @@ package takagi.ru.monica.autofill_ng.builder
 import android.content.Context
 import android.view.autofill.AutofillValue
 import android.widget.inline.InlinePresentationSpec
+import takagi.ru.monica.autofill_ng.AccountFillPolicy
 import takagi.ru.monica.autofill_ng.model.AutofillCipher
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillPartition
@@ -85,7 +86,8 @@ class FilledDataBuilderNg(
                     fillLoginPartition(
                         autofillCipher = autofillCipher,
                         autofillViews = loginViews,
-                        inlinePresentationSpec = getCipherInlinePresentationOrNull()
+                        inlinePresentationSpec = getCipherInlinePresentationOrNull(),
+                        requiresAuthentication = requireAuthentication && isVaultLocked
                     )
                 }
                 .filter { it.filledItems.isNotEmpty() }
@@ -110,20 +112,30 @@ class FilledDataBuilderNg(
         autofillCipher: AutofillCipher.Login,
         autofillViews: List<AutofillView.Login>,
         inlinePresentationSpec: InlinePresentationSpec?,
+        requiresAuthentication: Boolean,
     ): FilledPartition {
-        val filledItems = autofillViews
-            .mapNotNull { autofillView ->
+        val filledItems = if (requiresAuthentication) {
+            autofillViews.map { autofillView ->
+                FilledItem(
+                    autofillId = autofillView.data.autofillId,
+                    value = null
+                )
+            }
+        } else {
+            autofillViews.mapNotNull { autofillView ->
                 val value = when (autofillView) {
                     is AutofillView.Login.Username -> autofillCipher.username
                     is AutofillView.Login.Password -> autofillCipher.password
                 }
                 autofillView.buildFilledItemOrNull(value = value)
             }
+        }
 
         return FilledPartition(
             autofillCipher = autofillCipher,
             filledItems = filledItems,
-            inlinePresentationSpec = inlinePresentationSpec
+            inlinePresentationSpec = inlinePresentationSpec,
+            requiresAuthentication = requiresAuthentication
         )
     }
 
@@ -142,7 +154,27 @@ class FilledDataBuilderNg(
         isVaultLocked: Boolean,
     ): AutofillCipher.Login? {
         if (requireAuthentication && isVaultLocked) {
-            return null
+            val subtitleValue = AccountFillPolicy
+                .resolveAccountIdentifierForDisplay(entry)
+                .takeIf { it.isNotBlank() }
+                ?: entry.website.takeIf { it.isNotBlank() }
+                ?: fallbackWebsite.takeIf { it.isNotBlank() }
+                ?: entry.title
+            val websiteValue = entry.website.takeIf { it.isNotBlank() } ?: fallbackWebsite
+            val titleValue = entry.title
+                .takeIf { it.isNotBlank() }
+                ?: subtitleValue.takeIf { it.isNotBlank() }
+                ?: websiteValue.takeIf { it.isNotBlank() }
+                ?: "Credential"
+            return AutofillCipher.Login(
+                cipherId = entry.id.toString(),
+                name = titleValue,
+                subtitle = subtitleValue,
+                username = "",
+                password = "",
+                website = websiteValue,
+                appPackageName = entry.appPackageName.takeIf { it.isNotBlank() }
+            )
         }
 
         val usernameValue = decryptForAutofill(entry.username)

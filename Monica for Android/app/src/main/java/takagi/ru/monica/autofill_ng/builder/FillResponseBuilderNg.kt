@@ -48,7 +48,7 @@ class FillResponseBuilderNg(
         val responseBuilder = FillResponse.Builder()
         var cipherDatasetCount = 0
         var failedCipherDatasetCount = 0
-        var inlineCallbackCipherDatasetCount = 0
+        var callbackCipherDatasetCount = 0
         filledData.filledPartitions.forEachIndexed { index, partition ->
             if (partition.filledItems.isEmpty()) return@forEachIndexed
             runCatching {
@@ -61,10 +61,12 @@ class FillResponseBuilderNg(
                     )
                 )
                 cipherDatasetCount++
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                    partition.inlinePresentationSpec != null
+                if (partition.requiresAuthentication ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                        partition.inlinePresentationSpec != null
+                    )
                 ) {
-                    inlineCallbackCipherDatasetCount++
+                    callbackCipherDatasetCount++
                 }
             }.onFailure { error ->
                 failedCipherDatasetCount++
@@ -116,7 +118,7 @@ class FillResponseBuilderNg(
                 "vaultDataset=1, fillableIds=${fillableAutofillIds.size}, " +
                 "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}, " +
                 "authRequired=$requireAuthentication, sdk=${Build.VERSION.SDK_INT}, " +
-                "inlineCallbackCipherDatasets=$inlineCallbackCipherDatasetCount"
+                "callbackCipherDatasets=$callbackCipherDatasetCount"
         )
         AutofillLogger.i(
             "FILLING",
@@ -130,7 +132,7 @@ class FillResponseBuilderNg(
                 "suggestedIds" to filledData.filledPartitions.count { it.autofillCipher.cipherId != null },
                 "authRequired" to requireAuthentication,
                 "sdk" to Build.VERSION.SDK_INT,
-                "inlineCallbackCipherDatasets" to inlineCallbackCipherDatasetCount,
+                "callbackCipherDatasets" to callbackCipherDatasetCount,
             )
         )
         return responseBuilder.build()
@@ -151,7 +153,7 @@ class FillResponseBuilderNg(
         val hasInlinePresentation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             partition.inlinePresentationSpec != null
         val callbackTargets = buildLoginCallbackTargets(request.partition.views)
-        val inlinePendingIntent = if (hasInlinePresentation) {
+        val authPendingIntent = if (partition.requiresAuthentication || hasInlinePresentation) {
             createCipherAuthPendingIntent(
                 request = request,
                 partition = partition,
@@ -160,6 +162,9 @@ class FillResponseBuilderNg(
             )
         } else {
             null
+        }
+        if (partition.requiresAuthentication && authPendingIntent == null) {
+            throw IllegalStateException("Authentication required but cipher callback pending intent is unavailable")
         }
 
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
@@ -181,7 +186,7 @@ class FillResponseBuilderNg(
                     spec = spec,
                     specs = request.inlinePresentationSpecs,
                     index = index,
-                    pendingIntent = inlinePendingIntent ?: return@create null,
+                    pendingIntent = authPendingIntent ?: return@create null,
                     title = partition.autofillCipher.name,
                     subtitle = partition.autofillCipher.subtitle,
                     icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
@@ -193,6 +198,9 @@ class FillResponseBuilderNg(
             } else {
                 null
             }
+        }
+        if (partition.requiresAuthentication && authPendingIntent != null) {
+            datasetBuilder.setAuthentication(authPendingIntent.intentSender)
         }
         return datasetBuilder.build()
     }

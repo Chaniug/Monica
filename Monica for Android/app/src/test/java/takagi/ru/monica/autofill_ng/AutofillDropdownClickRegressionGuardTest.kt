@@ -24,9 +24,10 @@ class AutofillDropdownClickRegressionGuardTest {
             cipherDatasetBody.contains("partition.filledItems.forEach { filledItem ->") &&
                 cipherDatasetBody.contains("value = filledItem.value")
         )
-        assertFalse(
-            "Concrete dropdown suggestions must not set Dataset authentication; affected vendor ROMs dropped callback args and caused tap-flash-without-fill.",
-            cipherDatasetBody.contains("setAuthentication")
+        assertTrue(
+            "Locked concrete suggestions may set Dataset authentication so the list stays visible, but unlocked direct-fill suggestions must not be wrapped.",
+            cipherDatasetBody.contains("if (partition.requiresAuthentication && authPendingIntent != null)") &&
+                cipherDatasetBody.contains("datasetBuilder.setAuthentication(authPendingIntent.intentSender)")
         )
         assertTrue(
             "Manual picker fallback should remain available even when direct autofill has a single match.",
@@ -65,6 +66,13 @@ class AutofillDropdownClickRegressionGuardTest {
             "Concrete cipher suggestions should resolve real fill values through the autofill secret resolver.",
             cipherBody.contains("val usernameValue = decryptForAutofill(entry.username)") &&
                 cipherBody.contains("val passwordValue = decryptForAutofill(entry.password)")
+        )
+        assertTrue(
+            "Locked authenticated suggestions should remain visible without carrying real values or placeholders.",
+            source.contains("requiresAuthentication = requireAuthentication && isVaultLocked") &&
+                source.contains("value = null") &&
+                source.contains("username = \"\"") &&
+                source.contains("password = \"\"")
         )
     }
 

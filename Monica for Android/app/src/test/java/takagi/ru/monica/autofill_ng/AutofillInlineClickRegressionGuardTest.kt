@@ -17,20 +17,21 @@ class AutofillInlineClickRegressionGuardTest {
 
         assertTrue(
             "Inline suggestions should still create the real callback PendingIntent for keyboards that launch the slice PendingIntent.",
-            cipherDatasetBody.contains("val inlinePendingIntent = if (hasInlinePresentation)") &&
+            cipherDatasetBody.contains("val authPendingIntent = if (partition.requiresAuthentication || hasInlinePresentation)") &&
                 cipherDatasetBody.contains("createCipherAuthPendingIntent(")
         )
         assertTrue(
             "The real callback PendingIntent should be wired to the inline presentation itself.",
-            cipherDatasetBody.contains("pendingIntent = inlinePendingIntent ?: return@create null")
+            cipherDatasetBody.contains("pendingIntent = authPendingIntent ?: return@create null")
         )
         assertFalse(
             "Inline suggestion clicks must not be wired to a no-op PendingIntent, because some keyboards launch it instead of applying dataset values.",
             cipherDatasetBody.contains("createNoopPendingIntent")
         )
-        assertFalse(
-            "Concrete dropdown suggestions should remain direct-fill; do not set Dataset authentication just to support inline.",
-            cipherDatasetBody.contains("setAuthentication")
+        assertTrue(
+            "Inline alone must not wrap direct-fill suggestions; Dataset authentication is only for locked authenticated suggestions.",
+            cipherDatasetBody.contains("if (partition.requiresAuthentication && authPendingIntent != null)") &&
+                cipherDatasetBody.contains("datasetBuilder.setAuthentication(authPendingIntent.intentSender)")
         )
     }
 

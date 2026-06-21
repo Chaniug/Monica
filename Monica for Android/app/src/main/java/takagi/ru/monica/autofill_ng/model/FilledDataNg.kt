@@ -17,9 +17,10 @@ data class FilledPartition(
     val autofillCipher: AutofillCipher.Login,
     val filledItems: List<FilledItem>,
     val inlinePresentationSpec: InlinePresentationSpec?,
+    val requiresAuthentication: Boolean = false,
 )
 
 data class FilledItem(
     val autofillId: AutofillId,
-    val value: AutofillValue,
+    val value: AutofillValue?,
 )
