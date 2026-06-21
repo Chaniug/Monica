@@ -21,7 +21,6 @@ import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillView
 import takagi.ru.monica.autofill_ng.model.FilledData
 import takagi.ru.monica.autofill_ng.model.FilledPartition
-import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.PasswordGenerator
 import kotlin.random.Random
 
@@ -47,10 +46,9 @@ class FillResponseBuilderNg(
         }
 
         val responseBuilder = FillResponse.Builder()
-        val huaweiApi29AuthDatasetCompat = requireAuthentication && shouldUseHuaweiApi29AuthDatasetCompat()
         var cipherDatasetCount = 0
         var failedCipherDatasetCount = 0
-        var callbackWrappedCipherDatasetCount = 0
+        var inlineCallbackCipherDatasetCount = 0
         filledData.filledPartitions.forEachIndexed { index, partition ->
             if (partition.filledItems.isEmpty()) return@forEachIndexed
             runCatching {
@@ -60,12 +58,13 @@ class FillResponseBuilderNg(
                         partition = partition,
                         index = index,
                         requireAuthentication = requireAuthentication,
-                        forceAuthDatasetWrapper = huaweiApi29AuthDatasetCompat,
                     )
                 )
                 cipherDatasetCount++
-                if (requireAuthentication || huaweiApi29AuthDatasetCompat) {
-                    callbackWrappedCipherDatasetCount++
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                    partition.inlinePresentationSpec != null
+                ) {
+                    inlineCallbackCipherDatasetCount++
                 }
             }.onFailure { error ->
                 failedCipherDatasetCount++
@@ -117,8 +116,7 @@ class FillResponseBuilderNg(
                 "vaultDataset=1, fillableIds=${fillableAutofillIds.size}, " +
                 "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}, " +
                 "authRequired=$requireAuthentication, sdk=${Build.VERSION.SDK_INT}, " +
-                "huaweiApi29AuthDatasetCompat=$huaweiApi29AuthDatasetCompat, " +
-                "callbackWrappedCipherDatasets=$callbackWrappedCipherDatasetCount"
+                "inlineCallbackCipherDatasets=$inlineCallbackCipherDatasetCount"
         )
         AutofillLogger.i(
             "FILLING",
@@ -132,8 +130,7 @@ class FillResponseBuilderNg(
                 "suggestedIds" to filledData.filledPartitions.count { it.autofillCipher.cipherId != null },
                 "authRequired" to requireAuthentication,
                 "sdk" to Build.VERSION.SDK_INT,
-                "huaweiApi29AuthDatasetCompat" to huaweiApi29AuthDatasetCompat,
-                "callbackWrappedCipherDatasets" to callbackWrappedCipherDatasetCount,
+                "inlineCallbackCipherDatasets" to inlineCallbackCipherDatasetCount,
             )
         )
         return responseBuilder.build()
@@ -144,7 +141,6 @@ class FillResponseBuilderNg(
         partition: FilledPartition,
         index: Int,
         requireAuthentication: Boolean,
-        forceAuthDatasetWrapper: Boolean,
     ): android.service.autofill.Dataset {
         val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordEntry(
             context = context,
@@ -152,8 +148,10 @@ class FillResponseBuilderNg(
             username = partition.autofillCipher.subtitle
         )
 
+        val hasInlinePresentation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            partition.inlinePresentationSpec != null
         val callbackTargets = buildLoginCallbackTargets(request.partition.views)
-        val authPendingIntent = if (requireAuthentication || forceAuthDatasetWrapper || Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val inlinePendingIntent = if (hasInlinePresentation) {
             createCipherAuthPendingIntent(
                 request = request,
                 partition = partition,
@@ -162,9 +160,6 @@ class FillResponseBuilderNg(
             )
         } else {
             null
-        }
-        if ((requireAuthentication || forceAuthDatasetWrapper) && authPendingIntent == null) {
-            throw IllegalStateException("Authentication required but cipher callback pending intent is unavailable")
         }
 
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
@@ -186,7 +181,7 @@ class FillResponseBuilderNg(
                     spec = spec,
                     specs = request.inlinePresentationSpecs,
                     index = index,
-                    pendingIntent = authPendingIntent ?: return@create null,
+                    pendingIntent = inlinePendingIntent ?: return@create null,
                     title = partition.autofillCipher.name,
                     subtitle = partition.autofillCipher.subtitle,
                     icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
@@ -199,16 +194,7 @@ class FillResponseBuilderNg(
                 null
             }
         }
-
-        if ((requireAuthentication || forceAuthDatasetWrapper) && authPendingIntent != null) {
-            datasetBuilder.setAuthentication(authPendingIntent.intentSender)
-        }
         return datasetBuilder.build()
-    }
-
-    private fun shouldUseHuaweiApi29AuthDatasetCompat(): Boolean {
-        return Build.VERSION.SDK_INT == Build.VERSION_CODES.Q &&
-            DeviceUtils.getManufacturer() == DeviceUtils.Manufacturer.HUAWEI
     }
 
     private fun buildStrongPasswordSuggestionDataset(

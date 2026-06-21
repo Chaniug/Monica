@@ -13,7 +13,7 @@ class AutofillInlineClickRegressionGuardTest {
             "app/src/main/java/takagi/ru/monica/autofill_ng/builder/FillResponseBuilderNg.kt"
         ).readText()
         val cipherDatasetBody = source.substringAfter("private fun buildCipherDataset(")
-            .substringBefore("private fun shouldUseHuaweiApi29AuthDatasetCompat(")
+            .substringBefore("private fun buildStrongPasswordSuggestionDataset(")
 
         assertTrue(
             "Inline suggestions should still create the real callback PendingIntent for keyboards that launch the slice PendingIntent.",

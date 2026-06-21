@@ -15,7 +15,7 @@ class AutofillDropdownClickRegressionGuardTest {
         val buildBody = source.substringAfter("fun build(")
             .substringBefore("private fun buildCipherDataset(")
         val cipherDatasetBody = source.substringAfter("private fun buildCipherDataset(")
-            .substringBefore("private fun shouldUseHuaweiApi29AuthDatasetCompat(")
+            .substringBefore("private fun buildStrongPasswordSuggestionDataset(")
         val authIntentBody = source.substringAfter("private fun createCipherAuthPendingIntent(")
             .substringBefore("private fun buildVaultItemDataset(")
 
@@ -45,6 +45,26 @@ class AutofillDropdownClickRegressionGuardTest {
         assertFalse(
             "Callback IDs must not come only from filledItems while hints come from all views; that mismatch makes dropdown clicks flash without filling.",
             authIntentBody.contains("partition.filledItems.map { it.autofillId }.distinct()")
+        )
+    }
+
+    @Test
+    fun filledCipherValuesNeverUsePlaceholderSentinel() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/builder/FilledDataBuilderNg.kt"
+        ).readText()
+        val cipherBody = source.substringAfter("private fun buildCipherForResponse(")
+            .substringBefore("private fun decryptForAutofill(")
+
+        assertFalse(
+            "Concrete cipher suggestions must never put the PLACEHOLDER sentinel into AutofillValue fields.",
+            cipherBody.contains("MANUAL_PLACEHOLDER_VALUE") ||
+                cipherBody.contains("\"PLACEHOLDER\"")
+        )
+        assertTrue(
+            "Concrete cipher suggestions should resolve real fill values through the autofill secret resolver.",
+            cipherBody.contains("val usernameValue = decryptForAutofill(entry.username)") &&
+                cipherBody.contains("val passwordValue = decryptForAutofill(entry.password)")
         )
     }
 

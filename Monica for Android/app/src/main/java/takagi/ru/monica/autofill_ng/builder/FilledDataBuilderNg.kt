@@ -3,7 +3,6 @@ package takagi.ru.monica.autofill_ng.builder
 import android.content.Context
 import android.view.autofill.AutofillValue
 import android.widget.inline.InlinePresentationSpec
-import takagi.ru.monica.autofill_ng.AccountFillPolicy
 import takagi.ru.monica.autofill_ng.model.AutofillCipher
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillPartition
@@ -23,7 +22,6 @@ import kotlinx.coroutines.runBlocking
 // 不在此处截断条目数量，让系统键盘自行控制横向滚动显示所有条目。
 private const val MAX_FILLED_PARTITIONS_COUNT = Int.MAX_VALUE
 private const val MAX_INLINE_SUGGESTION_COUNT = Int.MAX_VALUE
-private const val MANUAL_PLACEHOLDER_VALUE = "PLACEHOLDER"
 
 class FilledDataBuilderNg(
     private val context: Context,
@@ -143,28 +141,8 @@ class FilledDataBuilderNg(
         requireAuthentication: Boolean,
         isVaultLocked: Boolean,
     ): AutofillCipher.Login? {
-        if (requireAuthentication) {
-            val subtitleValue = AccountFillPolicy
-                .resolveAccountIdentifierForDisplay(entry)
-                .takeIf { it.isNotBlank() }
-                ?: entry.website.takeIf { it.isNotBlank() }
-                ?: fallbackWebsite.takeIf { it.isNotBlank() }
-                ?: entry.title
-            val websiteValue = entry.website.takeIf { it.isNotBlank() } ?: fallbackWebsite
-            val titleValue = entry.title
-                .takeIf { it.isNotBlank() }
-                ?: subtitleValue.takeIf { it.isNotBlank() }
-                ?: websiteValue.takeIf { it.isNotBlank() }
-                ?: "Credential"
-            return AutofillCipher.Login(
-                cipherId = entry.id.toString(),
-                name = titleValue,
-                subtitle = subtitleValue,
-                username = MANUAL_PLACEHOLDER_VALUE,
-                password = MANUAL_PLACEHOLDER_VALUE,
-                website = websiteValue,
-                appPackageName = entry.appPackageName.takeIf { it.isNotBlank() }
-            )
+        if (requireAuthentication && isVaultLocked) {
+            return null
         }
 
         val usernameValue = decryptForAutofill(entry.username)
