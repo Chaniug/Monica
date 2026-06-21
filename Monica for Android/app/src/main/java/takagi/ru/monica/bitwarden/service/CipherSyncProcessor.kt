@@ -24,6 +24,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.TotpDataResolver
 import java.time.Instant
@@ -1350,6 +1351,13 @@ class CipherSyncProcessor(
                 .ifBlank { rpId }
             val userName = decoded.userName.ifBlank { fallbackUserName }
             val userDisplayName = decoded.userDisplayName.ifBlank { userName }
+            val storedPrivateKey = PasskeyPrivateKeyStore.protectForStorage(
+                context = context,
+                credentialId = resolvedCredentialId,
+                rpId = rpId,
+                userId = decoded.userHandle,
+                keyMaterial = decoded.keyValue
+            )
 
             val existing = passkeyDao.getByBitwardenCipherCredentialIdInVault(
                 vaultId = vault.id,
@@ -1368,7 +1376,7 @@ class CipherSyncProcessor(
                         userDisplayName = userDisplayName,
                         publicKeyAlgorithm = decoded.publicKeyAlgorithm,
                         publicKey = "",
-                        privateKeyAlias = decoded.keyValue,
+                        privateKeyAlias = storedPrivateKey,
                         createdAt = decoded.creationDateMillis ?: now,
                         lastUsedAt = now,
                         useCount = 0,
@@ -1388,7 +1396,7 @@ class CipherSyncProcessor(
                 )
                 added++
             } else {
-                val mergedPrivateKey = decoded.keyValue.ifBlank { existing.privateKeyAlias }
+                val mergedPrivateKey = storedPrivateKey.ifBlank { existing.privateKeyAlias }
                 val syncStatus = if (mergedPrivateKey.isBlank()) "REFERENCE" else "SYNCED"
 
                 passkeyDao.update(

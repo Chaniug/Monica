@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,7 +40,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
-import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.passkey.managementRecordIdOrNull
 import takagi.ru.monica.ui.PasskeyDetailPane
 import takagi.ru.monica.ui.components.ActionStrip
@@ -223,7 +224,8 @@ fun PasskeyDetailScreen(
                         passwordMap = passwordMap,
                         passkeyViewModel = passkeyViewModel,
                         passwordViewModel = passwordViewModel,
-                        bitwardenRepository = bitwardenRepository
+                        bitwardenRepository = bitwardenRepository,
+                        context = context
                     )
                 ) {
                     PasskeyBindResult.DeleteQueueFailed -> {
@@ -266,11 +268,12 @@ private suspend fun bindPasskey(
     passwordMap: Map<Long, PasswordEntry>,
     passkeyViewModel: PasskeyViewModel,
     passwordViewModel: PasswordViewModel,
-    bitwardenRepository: BitwardenRepository
+    bitwardenRepository: BitwardenRepository,
+    context: Context
 ): PasskeyBindResult {
     val previousPasswordId = passkey.boundPasswordId
     val nonMigratableForBitwarden = password.bitwardenVaultId != null &&
-        !withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(passkey) }
+        !withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(context, passkey) }
 
     val newBinding = PasskeyBinding(
         credentialId = passkey.credentialId,
@@ -386,8 +389,8 @@ private fun unbindPasskey(
     }
 }
 
-private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
+private fun isPasskeyMigratableToBitwarden(context: Context, passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
     if (passkey.syncStatus == "REFERENCE") return false
-    return PasskeyPrivateKeySupport.hasBitwardenCompatiblePrivateKey(passkey.privateKeyAlias)
+    return PasskeyPrivateKeyStore.hasBitwardenCompatiblePrivateKey(context, passkey.privateKeyAlias)
 }

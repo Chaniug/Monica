@@ -402,11 +402,11 @@ class BankCardViewModel(
                 }
                 // 检测备注变化
                 if (existingItem.notes != notes) {
-                    changes.add(FieldChange("备注", existingItem.notes, notes))
+                    changes.add(FieldChange("备注", "<redacted>", "<redacted>"))
                 }
                 // 检测卡号变化
                 if (oldCardData?.cardNumber != cardData.cardNumber) {
-                    changes.add(FieldChange("卡号", oldCardData?.cardNumber ?: "", cardData.cardNumber))
+                    changes.add(FieldChange("卡号", "<redacted>", "<redacted>"))
                 }
                 // 检测持卡人变化
                 if (oldCardData?.cardholderName != cardData.cardholderName) {

@@ -2303,15 +2303,10 @@ class PasswordViewModel(
                 createDetails.add(takagi.ru.monica.utils.FieldChange("网站", "", normalizedBoundEntry.website))
             }
             if (normalizedBoundEntry.password.isNotBlank()) {
-                // 记录真实密码，在UI层隐藏显示
-                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", normalizedBoundEntry.password))
+                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", "<redacted>"))
             }
             if (normalizedBoundEntry.notes.isNotBlank()) {
-                val truncatedNotes = normalizedBoundEntry.notes.substring(
-                    startIndex = 0,
-                    endIndex = minOf(normalizedBoundEntry.notes.length, 50)
-                )
-                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", truncatedNotes))
+                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", "<redacted>"))
             }
             takagi.ru.monica.utils.OperationLogger.logCreate(
                 itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
@@ -2503,14 +2498,14 @@ class PasswordViewModel(
             )
         )
 
-        // 捕获密码变化（记录真实密码，在UI层隐藏显示）
+        // 捕获密码变化，仅记录脱敏占位，避免明文进入日志负载。
         if (oldEntry != null && oldPassword != entryToUpdate.password) {
             val updatedChanges = changes.toMutableList()
             updatedChanges.add(
                 takagi.ru.monica.utils.FieldChange(
                     fieldName = "密码",
-                    oldValue = oldPassword,
-                    newValue = entryToUpdate.password
+                    oldValue = "<redacted>",
+                    newValue = "<redacted>"
                 )
             )
             takagi.ru.monica.utils.OperationLogger.logUpdate(

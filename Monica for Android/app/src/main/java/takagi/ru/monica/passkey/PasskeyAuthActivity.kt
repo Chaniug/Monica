@@ -84,7 +84,8 @@ class PasskeyAuthActivity : FragmentActivity() {
                 database.mdbxRemoteSourceDao(),
                 database.passwordEntryDao(),
                 database.secureItemDao()
-            )
+            ),
+            applicationContext
         )
     }
 
@@ -534,23 +535,33 @@ class PasskeyAuthActivity : FragmentActivity() {
                     "clientDataJsonSize=${clientDataJsonBytes.size}"
             )
             
+            val activePasskey = PasskeyPrivateKeyStore.protectPasskey(applicationContext, passkey)
+            if (activePasskey.privateKeyAlias != passkey.privateKeyAlias) {
+                runBlocking {
+                    activePasskey.id.takeIf { it > 0L }?.let {
+                        database.passkeyDao().update(activePasskey)
+                    } ?: database.passkeyDao().update(activePasskey)
+                }
+                this.passkey = activePasskey
+            }
+
             val signedData = authenticatorData + clientDataHash
             val signature = signWithPrivateKey(
-                privateKeyData = passkey.privateKeyAlias,
-                publicKeyAlgorithm = passkey.publicKeyAlgorithm,
+                privateKeyData = activePasskey.privateKeyAlias,
+                publicKeyAlgorithm = activePasskey.publicKeyAlgorithm,
                 data = signedData
             )
             
             // 更新数据库
             runBlocking {
-                passkey.id.takeIf { it > 0L }?.let { recordId ->
+                activePasskey.id.takeIf { it > 0L }?.let { recordId ->
                     database.passkeyDao().updateUsageByRecordId(
                         recordId = recordId,
                         timestamp = System.currentTimeMillis(),
                         signCount = newSignCount
                     )
                 } ?: database.passkeyDao().updateUsage(
-                    credentialId = passkey.credentialId,
+                    credentialId = activePasskey.credentialId,
                     timestamp = System.currentTimeMillis(),
                     signCount = newSignCount
                 )
@@ -698,17 +709,19 @@ class PasskeyAuthActivity : FragmentActivity() {
         publicKeyAlgorithm: Int,
         data: ByteArray
     ): ByteArray {
+        val resolvedPrivateKeyData = PasskeyPrivateKeyStore.resolve(applicationContext, privateKeyData)
+            ?: privateKeyData
         val privateKey: java.security.PrivateKey = try {
-            PasskeyPrivateKeySupport.decodeFlexiblePrivateKey(privateKeyData)?.privateKey
+            PasskeyPrivateKeySupport.decodeFlexiblePrivateKey(resolvedPrivateKeyData)?.privateKey
                 ?: throw IllegalStateException("Private key data is not exportable")
         } catch (e: Exception) {
             // 回退到AndroidKeyStore（向后兼容旧数据）
-            Log.d(TAG, "Falling back to AndroidKeyStore for key: $privateKeyData")
+            Log.d(TAG, "Falling back to AndroidKeyStore for stored key reference")
             val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
             keyStore.load(null)
             
-            val privateKeyEntry = keyStore.getEntry(privateKeyData, null) as? KeyStore.PrivateKeyEntry
-                ?: throw IllegalStateException("Private key not found: $privateKeyData")
+            val privateKeyEntry = keyStore.getEntry(resolvedPrivateKeyData, null) as? KeyStore.PrivateKeyEntry
+                ?: throw IllegalStateException("Private key not found")
             privateKeyEntry.privateKey
         }
 

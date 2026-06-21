@@ -417,7 +417,7 @@ class NoteViewModel(
             val changes = mutableListOf<FieldChange>()
             existingItem?.let { oldItem ->
                 if (oldItem.notes != content) {
-                    changes.add(FieldChange("内容", oldItem.notes, content))
+                    changes.add(FieldChange("内容", "<redacted>", "<redacted>"))
                 }
                 // 检测标题变化
                 if (oldItem.title != resolvedTitle) {

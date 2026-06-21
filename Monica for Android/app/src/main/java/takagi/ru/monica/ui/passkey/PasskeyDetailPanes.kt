@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import java.text.DateFormat
@@ -254,10 +255,13 @@ internal fun PasskeyDetailPane(
                     )
                 }
                 if (passkey.privateKeyAlias.isNotBlank()) {
-                    InfoFieldWithCopy(
-                        label = "Key alias",
-                        value = passkey.privateKeyAlias,
-                        context = context
+                    InfoField(
+                        label = "Private key",
+                        value = if (PasskeyPrivateKeyStore.isProtectedReference(passkey.privateKeyAlias)) {
+                            "Protected storage"
+                        } else {
+                            "Legacy key material"
+                        }
                     )
                 }
             }

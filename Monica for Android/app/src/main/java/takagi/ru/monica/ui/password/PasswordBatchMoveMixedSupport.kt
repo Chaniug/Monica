@@ -20,7 +20,7 @@ import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.TimelinePasswordRecreatedEntry
 import takagi.ru.monica.notes.domain.NoteContentCodec
-import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -909,7 +909,8 @@ internal suspend fun executeMixedPasswordBatchMove(
         val updateResult = applyPasswordPagePasskeyStorageTarget(
             passkey = passkey,
             target = target,
-            bitwardenRepository = bitwardenRepository
+            bitwardenRepository = bitwardenRepository,
+            context = context
         )
         when {
             updateResult.isSuccess &&
@@ -965,7 +966,8 @@ private class PasswordPagePasskeyBitwardenMoveBlockedException :
 internal suspend fun applyPasswordPagePasskeyStorageTarget(
     passkey: PasskeyEntry,
     target: UnifiedMoveCategoryTarget,
-    bitwardenRepository: BitwardenRepository
+    bitwardenRepository: BitwardenRepository,
+    context: Context
 ): Result<PasskeyEntry> {
     val currentVaultId = passkey.bitwardenVaultId
     val currentCipherId = passkey.bitwardenCipherId
@@ -977,7 +979,7 @@ internal suspend fun applyPasswordPagePasskeyStorageTarget(
 
     if (targetVaultId != null) {
         val canMoveToBitwarden = withContext(Dispatchers.IO) {
-            isPasswordPagePasskeyMigratableToBitwarden(passkey)
+            isPasswordPagePasskeyMigratableToBitwarden(context, passkey)
         }
         if (!canMoveToBitwarden) {
             return Result.failure(PasswordPagePasskeyBitwardenMoveBlockedException())
@@ -1117,8 +1119,8 @@ internal suspend fun applyPasswordPagePasskeyStorageTarget(
     )
 }
 
-private fun isPasswordPagePasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
+private fun isPasswordPagePasskeyMigratableToBitwarden(context: Context, passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
     if (passkey.syncStatus == "REFERENCE") return false
-    return PasskeyPrivateKeySupport.hasBitwardenCompatiblePrivateKey(passkey.privateKeyAlias)
+    return PasskeyPrivateKeyStore.hasBitwardenCompatiblePrivateKey(context, passkey.privateKeyAlias)
 }

@@ -172,16 +172,18 @@ object OperationLogger {
         
         android.util.Log.d("OperationLogger", "Logging $operationType for $itemType")
         
-        val changesJson = if (changes.isNotEmpty()) {
-            json.encodeToString(changes)
+        val sanitizedChanges = sanitizeChanges(itemType, changes)
+        val changesJson = if (sanitizedChanges.isNotEmpty()) {
+            json.encodeToString(sanitizedChanges)
         } else {
             ""
         }
+        val sanitizedTitle = sanitizeItemTitle(itemType, itemTitle, itemId)
         
         val operationLog = OperationLog(
             itemType = itemType.name,
             itemId = itemId,
-            itemTitle = itemTitle,
+            itemTitle = sanitizedTitle,
             operationType = operationType.name,
             changesJson = changesJson,
             deviceId = deviceId,
@@ -197,6 +199,72 @@ object OperationLogger {
                 android.util.Log.e("OperationLogger", "Failed to log operation", e)
             }
         }
+    }
+
+    private fun sanitizeItemTitle(
+        itemType: OperationLogItemType,
+        itemTitle: String,
+        itemId: Long
+    ): String {
+        return if (itemType.requiresSensitiveLogRedaction()) {
+            "${itemType.name}#$itemId"
+        } else {
+            itemTitle
+        }
+    }
+
+    private fun sanitizeChanges(
+        itemType: OperationLogItemType,
+        changes: List<FieldChange>
+    ): List<FieldChange> {
+        if (changes.isEmpty()) return emptyList()
+        return changes.map { change ->
+            if (itemType.requiresSensitiveLogRedaction() || change.fieldName.isSensitiveFieldName()) {
+                change.copy(
+                    oldValue = redactedValue(change.oldValue),
+                    newValue = redactedValue(change.newValue)
+                )
+            } else {
+                change
+            }
+        }
+    }
+
+    private fun OperationLogItemType.requiresSensitiveLogRedaction(): Boolean {
+        return this in setOf(
+            OperationLogItemType.PASSWORD,
+            OperationLogItemType.TOTP,
+            OperationLogItemType.PASSKEY,
+            OperationLogItemType.BANK_CARD,
+            OperationLogItemType.DOCUMENT,
+            OperationLogItemType.BILLING_ADDRESS,
+            OperationLogItemType.PAYMENT_ACCOUNT,
+            OperationLogItemType.NOTE
+        )
+    }
+
+    private fun String.isSensitiveFieldName(): Boolean {
+        val normalized = trim().lowercase()
+        return listOf(
+            "password",
+            "密码",
+            "secret",
+            "token",
+            "private",
+            "私钥",
+            "内容",
+            "备注",
+            "卡号",
+            "证件号",
+            "cvv",
+            "totp",
+            "验证器",
+            "主密码"
+        ).any { normalized.contains(it.lowercase()) }
+    }
+
+    private fun redactedValue(value: String): String {
+        return if (value.isBlank()) "" else "<redacted>"
     }
     
     /**

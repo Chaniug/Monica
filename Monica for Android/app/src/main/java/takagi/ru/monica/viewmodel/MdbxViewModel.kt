@@ -37,6 +37,7 @@ import takagi.ru.monica.data.MdbxTigaMode
 import takagi.ru.monica.data.MdbxUnlockMethod
 import takagi.ru.monica.data.PasskeyDao
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.SecureItem
@@ -2892,7 +2893,7 @@ class MdbxViewModel(
     ) {
         val credentialId = payload.optString("credential_id")
         if (credentialId.isBlank()) return
-        val passkey = PasskeyEntry(
+        val passkey = PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
             id = existing?.id ?: 0L,
             credentialId = credentialId,
             rpId = payload.optString("rp_id"),
@@ -2920,7 +2921,7 @@ class MdbxViewModel(
             boundPasswordId = existing?.boundPasswordId,
             categoryId = existing?.categoryId,
             syncStatus = existing?.syncStatus ?: "NONE"
-        )
+        ))
         if (existing != null) {
             if (existing != passkey) {
                 passkeyDao.update(passkey)

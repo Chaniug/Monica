@@ -59,6 +59,7 @@ import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
 import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.attachments.executor.KeePassAttachmentRef
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.sync.SyncDiagnostics
@@ -1931,7 +1932,10 @@ class KeePassKdbxService(
         existingEntry: Entry? = null
     ): EntryFields {
         val readableTitle = passkey.rpName.ifBlank { passkey.rpId }.ifBlank { "Passkey" }
-        val payload = KeePassPasskeySyncCodec.encode(passkey)
+        val portablePasskey = passkey.copy(
+            privateKeyAlias = PasskeyPrivateKeyStore.resolve(context, passkey.privateKeyAlias).orEmpty()
+        )
+        val payload = KeePassPasskeySyncCodec.encode(portablePasskey)
         val pairs = mutableListOf<Pair<String, EntryValue>>(
             "Title" to EntryValue.Plain("$readableTitle [Passkey]"),
             "UserName" to EntryValue.Plain(passkey.userName.ifBlank { passkey.userDisplayName }),
@@ -1948,9 +1952,15 @@ class KeePassKdbxService(
             FIELD_MONICA_PASSKEY_MODE to EntryValue.Plain(PasskeyEntry.MODE_KEEPASS_COMPAT),
             FIELD_MONICA_PASSKEY_DATA to EntryValue.Encrypted(EncryptedValue.fromString(payload))
         )
-        pairs += KeePassDxPasskeyCodec.buildCustomFieldPairs(passkey) { fieldName ->
-            existingEntry?.let { getFieldValue(it, fieldName) }.orEmpty()
-        }
+        pairs += KeePassDxPasskeyCodec.buildCustomFieldPairs(
+            passkey = passkey,
+            existingFieldValue = { fieldName ->
+                existingEntry?.let { getFieldValue(it, fieldName) }.orEmpty()
+            },
+            exportPrivateKeyPem = { keyMaterial ->
+                PasskeyPrivateKeyStore.exportPem(context, keyMaterial)
+            }
+        )
         return EntryFields.of(*pairs.toTypedArray())
     }
 
@@ -3077,7 +3087,7 @@ class KeePassKdbxService(
             bitwardenCipherId = null,
             syncStatus = "NONE",
             passkeyMode = PasskeyEntry.MODE_KEEPASS_COMPAT
-        )
+        )?.let { PasskeyPrivateKeyStore.protectPasskey(context, it) }
     }
 
     private fun isLikelyRecycleBinPath(groupPath: String?): Boolean {

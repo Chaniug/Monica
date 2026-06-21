@@ -3063,7 +3063,8 @@ fun VaultV2Pane(
 									val updateResult = applyPasswordPagePasskeyStorageTarget(
 										passkey = passkey,
 										target = target,
-										bitwardenRepository = bitwardenRepository
+										bitwardenRepository = bitwardenRepository,
+										context = context
 									)
 									if (updateResult.isFailure) {
 										Toast.makeText(

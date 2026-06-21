@@ -40,7 +40,7 @@ import takagi.ru.monica.data.bitwarden.*
         LocalMdbxDatabase::class,
         MdbxRemoteSource::class
     ],
-    version = 68,
+    version = 69,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -2046,6 +2046,36 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_68_69 = object : androidx.room.migration.Migration(68, 69) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 68→69: redact sensitive operation logs")
+                    database.execSQL(
+                        """
+                        UPDATE operation_logs
+                        SET
+                            changesJson = '',
+                            itemTitle = itemType || '#' || itemId
+                        WHERE itemType IN (
+                            'PASSWORD',
+                            'TOTP',
+                            'PASSKEY',
+                            'BANK_CARD',
+                            'DOCUMENT',
+                            'BILLING_ADDRESS',
+                            'PAYMENT_ACCOUNT',
+                            'NOTE'
+                        )
+                        """.trimIndent()
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 68→69 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 68→69 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         private fun addColumnIfMissing(
             database: androidx.sqlite.db.SupportSQLiteDatabase,
             tableName: String,
@@ -2142,7 +2172,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_64_65,   // MDBX 解锁方式元数据 (password/key file/device key)
                         MIGRATION_65_66,   // MDBX key file URI for real unlock flows
                         MIGRATION_66_67,   // MDBX category linkage
-                        MIGRATION_67_68    // MDBX folder ownership
+                        MIGRATION_67_68,   // MDBX folder ownership
+                        MIGRATION_68_69    // Redact sensitive operation log history
                     )
                     // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
                     // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。

@@ -24,7 +24,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.notes.domain.NoteContentCodec
-import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
@@ -536,7 +536,10 @@ class CipherUploadProcessor(
     }
 
     private fun normalizePasskeyForUpload(passkey: PasskeyEntry): PasskeyEntry {
-        val normalizedKey = PasskeyPrivateKeySupport.normalizeForBitwardenUpload(passkey.privateKeyAlias)
+        val normalizedKey = PasskeyPrivateKeyStore.normalizeForBitwardenUpload(
+            context = context,
+            keyReferenceOrMaterial = passkey.privateKeyAlias
+        )
             ?: return passkey
         return if (normalizedKey == passkey.privateKeyAlias) {
             passkey

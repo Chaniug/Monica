@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.Context
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -119,7 +120,7 @@ import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
-import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.passkey.managementKey
 import takagi.ru.monica.passkey.managementRecordIdOrNull
 
@@ -253,7 +254,7 @@ fun PasskeyListScreen(
     LaunchedEffect(combinedPasskeys) {
         passkeyMigratableById = withContext(Dispatchers.IO) {
             combinedPasskeys.associate { passkey ->
-                passkey.managementKey() to isPasskeyMigratableToBitwarden(passkey)
+                passkey.managementKey() to isPasskeyMigratableToBitwarden(context, passkey)
             }
         }
     }
@@ -765,7 +766,7 @@ fun PasskeyListScreen(
 
         if (targetVaultId != null) {
             val canMoveToBitwarden = withContext(Dispatchers.IO) {
-                isPasskeyMigratableToBitwarden(passkey)
+                isPasskeyMigratableToBitwarden(context, passkey)
             }
             if (!canMoveToBitwarden) {
                 return Result.failure(PasskeyBitwardenMoveBlockedException())
@@ -1476,7 +1477,7 @@ fun PasskeyListScreen(
             val previousPasswordId = passkey.boundPasswordId
             scope.launch {
                 val nonMigratableForBitwarden = password.bitwardenVaultId != null &&
-                    !withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(passkey) }
+                    !withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(context, passkey) }
 
                 if (passwordViewModel != null) {
                     val newBinding = PasskeyBinding(
@@ -1954,6 +1955,7 @@ private fun PasskeyListItem(
     onChangeCategory: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     val syncStatus = remember(passkey.syncStatus) { SyncStatus.fromDbValue(passkey.syncStatus) }
     var canMoveToBitwarden by remember(
@@ -1972,7 +1974,9 @@ private fun PasskeyListItem(
         passkey.passkeyMode
     ) {
         if (expanded) {
-            canMoveToBitwarden = withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(passkey) }
+            canMoveToBitwarden = withContext(Dispatchers.IO) {
+                isPasskeyMigratableToBitwarden(context, passkey)
+            }
         } else {
             canMoveToBitwarden = null
         }
@@ -2547,10 +2551,10 @@ private fun SafeAnimatedVisibility(
 private class PasskeyBitwardenMoveBlockedException :
     IllegalStateException("Passkey cannot be migrated to Bitwarden")
 
-private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
+private fun isPasskeyMigratableToBitwarden(context: Context, passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
     if (passkey.syncStatus == "REFERENCE") return false
-    return PasskeyPrivateKeySupport.hasBitwardenCompatiblePrivateKey(passkey.privateKeyAlias)
+    return PasskeyPrivateKeyStore.hasBitwardenCompatiblePrivateKey(context, passkey.privateKeyAlias)
 }
 
 private fun PasskeyEntry.passkeyReferenceDedupKey(): String {

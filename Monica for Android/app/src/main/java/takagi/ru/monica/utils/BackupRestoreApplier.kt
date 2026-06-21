@@ -11,6 +11,7 @@ import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.util.TotpDataResolver
 
 data class RestoreApplyStats(
@@ -404,7 +405,10 @@ object BackupRestoreApplier {
                             passwordIdMap[oldId]
                         }
                         passkeyDao.insert(
-                            passkey.copy(boundPasswordId = mappedBoundPasswordId)
+                            PasskeyPrivateKeyStore.protectPasskey(
+                                context,
+                                passkey.copy(boundPasswordId = mappedBoundPasswordId)
+                            )
                         )
                         passkeyCountImported++
                     } else {

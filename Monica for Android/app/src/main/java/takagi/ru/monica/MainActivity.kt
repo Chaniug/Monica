@@ -535,7 +535,13 @@ fun MonicaApp(
     )
     
     // Passkey 通行密钥
-    val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao(), mdbxRepository) }
+    val passkeyRepository = remember {
+        takagi.ru.monica.repository.PasskeyRepository(
+            database.passkeyDao(),
+            mdbxRepository,
+            context.applicationContext
+        )
+    }
     val passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel = viewModel {
         takagi.ru.monica.viewmodel.PasskeyViewModel(
             repository = passkeyRepository,
@@ -573,6 +579,12 @@ fun MonicaApp(
     }
 
     var startupAuthState by remember { mutableStateOf<MainAppAccessState?>(null) }
+    LaunchedEffect(passkeyRepository) {
+        withContext(Dispatchers.IO) {
+            runCatching { passkeyRepository.protectPlaintextPrivateKeys() }
+        }
+    }
+
     LaunchedEffect(viewModel, settingsManager) {
         val loadedState = withContext(Dispatchers.IO) {
             val settingsSnapshot = runCatching {
@@ -3489,7 +3501,7 @@ fun MonicaContent(
             popExitTransition = { easyNotesScreenExit() }
         ) {
             val dedupPasskeyRepository = remember {
-                PasskeyRepository(database.passkeyDao(), mdbxRepository)
+                PasskeyRepository(database.passkeyDao(), mdbxRepository, context.applicationContext)
             }
             val dedupViewModel: DedupEngineViewModel = viewModel {
                 DedupEngineViewModel(

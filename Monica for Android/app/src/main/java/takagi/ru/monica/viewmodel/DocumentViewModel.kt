@@ -384,11 +384,11 @@ class DocumentViewModel(
                 }
                 // 检测备注变化
                 if (existingItem.notes != notes) {
-                    changes.add(FieldChange("备注", existingItem.notes, notes))
+                    changes.add(FieldChange("备注", "<redacted>", "<redacted>"))
                 }
                 // 检测证件号变化
                 if (oldDocData?.documentNumber != documentData.documentNumber) {
-                    changes.add(FieldChange("证件号", oldDocData?.documentNumber ?: "", documentData.documentNumber))
+                    changes.add(FieldChange("证件号", "<redacted>", "<redacted>"))
                 }
                 // 检测姓名变化
                 if (oldDocData?.fullName != documentData.fullName) {

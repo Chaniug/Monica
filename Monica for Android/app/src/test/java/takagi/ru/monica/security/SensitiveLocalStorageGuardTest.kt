@@ -127,6 +127,36 @@ class SensitiveLocalStorageGuardTest {
     }
 
     @Test
+    fun passkeyPrivateKeys_areProtectedOutsideRoom() {
+        val passkeyCreate = projectFile("app/src/main/java/takagi/ru/monica/passkey/PasskeyCreateActivity.kt")
+        val passkeyAuth = projectFile("app/src/main/java/takagi/ru/monica/passkey/PasskeyAuthActivity.kt")
+        val privateKeyStore = projectFile("app/src/main/java/takagi/ru/monica/passkey/PasskeyPrivateKeyStore.kt")
+        val repository = projectFile("app/src/main/java/takagi/ru/monica/repository/PasskeyRepository.kt")
+
+        assertTrue(privateKeyStore.contains("putProtectedString(storageKey, pkcs8Base64)"))
+        assertTrue(privateKeyStore.contains("REF_PREFIX + storageKey"))
+        assertTrue(passkeyCreate.contains("PasskeyPrivateKeyStore.protectForStorage"))
+        assertFalse(passkeyCreate.contains("privateKeyAlias = privateKeyB64"))
+        assertTrue(passkeyAuth.contains("PasskeyPrivateKeyStore.resolve(applicationContext, privateKeyData)"))
+        assertTrue(repository.contains("protectPlaintextPrivateKeys"))
+        assertTrue(repository.contains("protectPrivateKeyForRoom"))
+    }
+
+    @Test
+    fun operationLogs_redactSensitivePayloadsBeforePersistence() {
+        val operationLogger = projectFile("app/src/main/java/takagi/ru/monica/utils/OperationLogger.kt")
+        val database = projectFile("app/src/main/java/takagi/ru/monica/data/PasswordDatabase.kt")
+
+        assertTrue(operationLogger.contains("sanitizeChanges(itemType, changes)"))
+        assertTrue(operationLogger.contains("sanitizeItemTitle(itemType, itemTitle, itemId)"))
+        assertTrue(operationLogger.contains("requiresSensitiveLogRedaction"))
+        assertTrue(operationLogger.contains("\"<redacted>\""))
+        assertTrue(database.contains("MIGRATION_68_69"))
+        assertTrue(database.contains("UPDATE operation_logs"))
+        assertTrue(database.contains("changesJson = ''"))
+    }
+
+    @Test
     fun persistentMdbxDiagnostics_redactSensitiveMetadata() {
         val logger = projectFile("app/src/main/java/takagi/ru/monica/mdbx/MdbxDiagLogger.kt")
 

@@ -1,10 +1,12 @@
 package takagi.ru.monica.repository
 
+import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.PasskeyDao
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import java.security.KeyStore
 
 /**
@@ -15,7 +17,8 @@ import java.security.KeyStore
  */
 class PasskeyRepository(
     private val passkeyDao: PasskeyDao,
-    private val mdbxRepository: MdbxRepository? = null
+    private val mdbxRepository: MdbxRepository? = null,
+    private val context: Context? = null
 ) {
     
     companion object {
@@ -127,7 +130,7 @@ class PasskeyRepository(
      */
     suspend fun savePasskey(passkey: PasskeyEntry) {
         mdbxRepository?.upsertPasskey(passkey)
-        passkeyDao.insert(passkey)
+        passkeyDao.insert(protectPrivateKeyForRoom(passkey))
     }
     
     /**
@@ -135,7 +138,7 @@ class PasskeyRepository(
      */
     suspend fun saveAllPasskeys(passkeys: List<PasskeyEntry>) {
         mdbxRepository?.upsertPasskeys(passkeys)
-        passkeyDao.insertAll(passkeys)
+        passkeyDao.insertAll(passkeys.map(::protectPrivateKeyForRoom))
     }
     
     /**
@@ -159,7 +162,23 @@ class PasskeyRepository(
         ) {
             mdbxRepository?.deletePasskey(existing)
         }
-        passkeyDao.update(normalized)
+        passkeyDao.update(protectPrivateKeyForRoom(normalized))
+    }
+
+    suspend fun protectPlaintextPrivateKeys(): Int {
+        val appContext = context?.applicationContext ?: return 0
+        var migrated = 0
+        passkeyDao.getAllPasskeysSync().forEach { passkey ->
+            val protected = PasskeyPrivateKeyStore.protectPasskey(appContext, passkey)
+            if (protected.privateKeyAlias != passkey.privateKeyAlias) {
+                passkeyDao.update(protected)
+                migrated++
+            }
+        }
+        if (migrated > 0) {
+            Log.i(TAG, "Protected plaintext passkey private keys: count=$migrated")
+        }
+        return migrated
     }
 
     suspend fun updateMdbxDatabaseForPasskeys(
@@ -271,7 +290,7 @@ class PasskeyRepository(
         val passkeys = passkeyDao.getPasskeysByRpIdSync(rpId)
         mdbxRepository?.deletePasskeys(passkeys)
         for (passkey in passkeys) {
-            deletePrivateKey(passkey.privateKeyAlias)
+            cleanupPrivateKey(passkey.privateKeyAlias)
             logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=$rpId")
         }
         passkeyDao.deleteByRpId(rpId)
@@ -285,7 +304,7 @@ class PasskeyRepository(
         val passkeys = passkeyDao.getAllPasskeysSync()
         mdbxRepository?.deletePasskeys(passkeys)
         for (passkey in passkeys) {
-            deletePrivateKey(passkey.privateKeyAlias)
+            cleanupPrivateKey(passkey.privateKeyAlias)
         }
         logAudit("PASSKEY_CLEAR_ALL", "count=${passkeys.size}")
         passkeyDao.deleteAll()
@@ -293,7 +312,7 @@ class PasskeyRepository(
 
     suspend fun deletePasskeyLocalOnly(passkey: PasskeyEntry) {
         mdbxRepository?.deletePasskey(passkey)
-        deletePrivateKey(passkey.privateKeyAlias)
+        cleanupPrivateKey(passkey.privateKeyAlias)
         logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=${passkey.rpId}")
         passkeyDao.delete(passkey)
     }
@@ -332,6 +351,20 @@ class PasskeyRepository(
      */
     fun logAudit(action: String, details: String) {
         Log.i("PasskeyAudit", "[$action] detailsPresent=${details.isNotBlank()}")
+    }
+
+    private fun cleanupPrivateKey(keyReferenceOrAlias: String) {
+        context?.applicationContext?.let { appContext ->
+            PasskeyPrivateKeyStore.removeIfProtectedReference(appContext, keyReferenceOrAlias)
+        }
+        if (!PasskeyPrivateKeyStore.isProtectedReference(keyReferenceOrAlias)) {
+            deletePrivateKey(keyReferenceOrAlias)
+        }
+    }
+
+    private fun protectPrivateKeyForRoom(passkey: PasskeyEntry): PasskeyEntry {
+        val appContext = context?.applicationContext ?: return passkey
+        return PasskeyPrivateKeyStore.protectPasskey(appContext, passkey)
     }
 
     private suspend fun resolveExistingPasskey(passkey: PasskeyEntry): PasskeyEntry? {

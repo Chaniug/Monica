@@ -127,7 +127,7 @@ class PasskeyCreateActivity : FragmentActivity() {
     }
 
     private val repository: PasskeyRepository by lazy {
-        PasskeyRepository(database.passkeyDao(), mdbxVaultStore)
+        PasskeyRepository(database.passkeyDao(), mdbxVaultStore, applicationContext)
     }
 
     private val securityManager: SecurityManager by lazy {
@@ -775,7 +775,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 }
             }
             
-            // 将私钥编码为 Base64 存储
+            // Encode the key for compatibility, then store only a protected reference in Room.
             val privateKeyB64 = Base64.encodeToString(keyPair.private.encoded, Base64.NO_WRAP)
             val publicKeyB64 = Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP)
 
@@ -805,6 +805,13 @@ class PasskeyCreateActivity : FragmentActivity() {
             )
 
             // 保存到数据库
+            val protectedPrivateKeyRef = PasskeyPrivateKeyStore.protectForStorage(
+                context = applicationContext,
+                credentialId = credentialIdB64,
+                rpId = normalizedRpId,
+                userId = userIdB64,
+                keyMaterial = privateKeyB64
+            )
             val passkeyEntry = PasskeyEntry(
                 credentialId = credentialIdB64,
                 rpId = normalizedRpId,
@@ -813,7 +820,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 userName = userName,
                 userDisplayName = userDisplayName,
                 publicKey = publicKeyB64,
-                privateKeyAlias = privateKeyB64,  // 存储私钥而不是 keyAlias
+                privateKeyAlias = protectedPrivateKeyRef,
                 publicKeyAlgorithm = algorithm,
                 createdAt = System.currentTimeMillis(),
                 lastUsedAt = System.currentTimeMillis(),

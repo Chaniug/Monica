@@ -27,6 +27,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.attachments.model.Attachment
 import takagi.ru.monica.mdbx.MdbxDiagLogger
+import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.OneDriveMdbxFileSource
@@ -2006,7 +2007,7 @@ class MdbxVaultStore(
             .put("user_display_name", passkey.userDisplayName)
             .put("public_key_algorithm", passkey.publicKeyAlgorithm)
             .put("public_key", passkey.publicKey)
-            .put("private_key_alias", passkey.privateKeyAlias)
+            .put("private_key_alias", portablePasskeyPrivateKeyForMdbx(passkey))
             .put("transports", passkey.transports)
             .put("aaguid", passkey.aaguid)
             .put("sign_count", passkey.signCount)
@@ -2024,6 +2025,10 @@ class MdbxVaultStore(
             payloadJson = payload.toString(),
             deleted = false
         )
+    }
+
+    private fun portablePasskeyPrivateKeyForMdbx(passkey: PasskeyEntry): String {
+        return PasskeyPrivateKeyStore.resolve(context, passkey.privateKeyAlias).orEmpty()
     }
 
     private fun passwordEntryDeleteMutation(entry: PasswordEntry): MdbxEntryDeleteMutation? =

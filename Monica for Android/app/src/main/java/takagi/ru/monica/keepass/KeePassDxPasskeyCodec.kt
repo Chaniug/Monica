@@ -84,11 +84,12 @@ object KeePassDxPasskeyCodec {
 
     fun buildCustomFieldPairs(
         passkey: PasskeyEntry,
-        existingFieldValue: (String) -> String = { "" }
+        existingFieldValue: (String) -> String = { "" },
+        exportPrivateKeyPem: (String?) -> String? = PasskeyPrivateKeySupport::exportPem
     ): List<Pair<String, EntryValue>> {
         val normalizedCredentialId = PasskeyCredentialIdCodec.toWebAuthnId(passkey.credentialId)
             ?: passkey.credentialId
-        val privateKeyPem = PasskeyPrivateKeySupport.exportPem(passkey.privateKeyAlias)
+        val privateKeyPem = exportPrivateKeyPem(passkey.privateKeyAlias)
             ?: existingFieldValue(FIELD_PRIVATE_KEY)
         val backupState = if (passkey.isBackedUp) {
             "true"
