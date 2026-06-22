@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-21T21:41:54.054Z",
+  "generatedAt": "2026-06-22T22:16:12.989Z",
   "range": {
-    "from": "2025-06-22",
-    "to": "2026-06-21"
+    "from": "2025-06-23",
+    "to": "2026-06-22"
   },
   "activity": [
-    {
-      "date": "2025-06-22",
-      "count": 0
-    },
     {
       "date": "2025-06-23",
       "count": 0
@@ -1465,10 +1461,23 @@
     },
     {
       "date": "2026-06-21",
-      "count": 12
+      "count": 13
+    },
+    {
+      "date": "2026-06-22",
+      "count": 0
     }
   ],
   "latest": [
+    {
+      "sha": "6859a489fab7120cb95f9e569ad471b31ae40c20",
+      "shortSha": "6859a48",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-21T21:41:54Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/6859a489fab7120cb95f9e569ad471b31ae40c20"
+    },
     {
       "sha": "33f50986a3e9b5d1e328edf1926e335e0e3926c6",
       "shortSha": "33f5098",
@@ -1549,15 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-06-21T04:03:03Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/537b4fa3f11fae326295d3d362e8da872da5979f"
-    },
-    {
-      "sha": "92845d4cd2d94f89beea23391f0244be8ad956af",
-      "shortSha": "92845d4",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-21T03:19:32Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/92845d4cd2d94f89beea23391f0244be8ad956af"
     }
   ]
 }
