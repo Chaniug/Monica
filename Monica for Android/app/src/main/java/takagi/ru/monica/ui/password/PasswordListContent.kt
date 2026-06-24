@@ -293,6 +293,10 @@ private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
 private const val PASSWORD_EMPTY_STATE_DEBOUNCE_MS = 220L
 
+private fun QuickStatusKeePassSyncState.dialogSuppressionKey(): String {
+    return "$databaseId:$status:$phase:$coordinatorPhase:$coordinatorErrorKind"
+}
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun PasswordListInitialLoadingIndicator() {
@@ -556,15 +560,13 @@ fun PasswordListContent(
             val coordinatorShouldShow = coordinatorPhase in setOf(
                 SyncPhase.RUNNING,
                 SyncPhase.BLOCKED,
-                SyncPhase.FAILED,
                 SyncPhase.CONFLICT
             )
             val shouldShow = database.lastSyncStatus in setOf(
                 KeePassSyncStatus.PENDING_UPLOAD,
                 KeePassSyncStatus.SYNCING,
                 KeePassSyncStatus.REMOTE_CHANGED,
-                KeePassSyncStatus.CONFLICT,
-                KeePassSyncStatus.FAILED
+                KeePassSyncStatus.CONFLICT
             ) || phase in setOf(
                 KeePassSyncPhase.COMPARING,
                 KeePassSyncPhase.DOWNLOADING,
@@ -634,7 +636,7 @@ fun PasswordListContent(
             backgroundedKeePassSyncKey = null
             return@LaunchedEffect
         }
-        val stateKey = "${state.databaseId}:${state.status}:${state.phase}:${state.coordinatorPhase}:${state.coordinatorErrorKind}"
+        val stateKey = state.dialogSuppressionKey()
         if (!quickStatusBannerEnabled && stateKey != backgroundedKeePassSyncKey) {
             showQuickStatusKeePassSyncDialog = true
         }
@@ -1749,10 +1751,11 @@ fun PasswordListContent(
         showQuickStatusKeePassSyncDialog = showQuickStatusKeePassSyncDialog,
         quickStatusKeePassSyncState = quickStatusKeePassSyncState,
         onMoveKeePassSyncToBackground = { state ->
-            backgroundedKeePassSyncKey = "${state.databaseId}:${state.status}:${state.phase}"
+            backgroundedKeePassSyncKey = state.dialogSuppressionKey()
             showQuickStatusKeePassSyncDialog = false
         },
         onRunKeePassSyncNow = { state ->
+            backgroundedKeePassSyncKey = null
             state.onSync()
             showQuickStatusKeePassSyncDialog = false
         }

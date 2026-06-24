@@ -85,10 +85,19 @@ class LocalKeePassViewModel(
     companion object {
         private const val TAG = "LocalKeePassViewModel"
         private const val VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS = 60_000L
+        private const val VISIBLE_REMOTE_AUTO_SYNC_FAILURE_COOLDOWN_MS = 5 * 60_000L
+        private const val VISIBLE_REMOTE_AUTO_SYNC_FAILURE_MAX_ATTEMPTS = 3
         private const val VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY = KEEPASS_REMOTE_SYNC_DEDUPE_KEY
     }
+
+    private data class VisibleRemoteAutoSyncFailure(
+        val count: Int,
+        val nextAllowedAtMillis: Long
+    )
     
     private val context: Context get() = getApplication()
+    private val visibleRemoteAutoSyncFailures = mutableMapOf<Long, VisibleRemoteAutoSyncFailure>()
+    private val visibleRemoteAutoSyncFailureMutex = Mutex()
     
     /** 所有数据库列表 */
     val allDatabases: StateFlow<List<LocalKeePassDatabase>> = dao.getAllDatabases()
@@ -1306,6 +1315,9 @@ class LocalKeePassViewModel(
         SyncDiagnostics.queued(taskId, targetLog, triggerLog, detail = "silent=$silent")
         viewModelScope.launch {
             if (!silent) {
+                clearVisibleRemoteAutoSyncFailure(databaseId)
+            }
+            if (!silent) {
                 _operationState.value = OperationState.Loading("正在同步远端数据库...")
             }
 
@@ -1342,6 +1354,7 @@ class LocalKeePassViewModel(
             when (result) {
                 is SyncTaskAwaitResult.Completed -> {
                     val syncResult = result.value
+                    clearVisibleRemoteAutoSyncFailure(databaseId)
                     if (!silent) {
                         _operationState.value = OperationState.Success(syncResult.message)
                         logKeepassDatabaseUpdate(
@@ -1422,10 +1435,36 @@ class LocalKeePassViewModel(
                 SyncDiagnostics.blocked(taskId, targetLog, triggerLog, "conflict")
                 return@launch
             }
+            val now = System.currentTimeMillis()
+            val failureGate = visibleRemoteAutoSyncFailureMutex.withLock {
+                visibleRemoteAutoSyncFailures[databaseId]
+            }
+            if (failureGate != null) {
+                val remainingMs = failureGate.nextAllowedAtMillis - now
+                if (failureGate.count >= VISIBLE_REMOTE_AUTO_SYNC_FAILURE_MAX_ATTEMPTS) {
+                    SyncDiagnostics.skipped(
+                        taskId = taskId,
+                        target = targetLog,
+                        trigger = triggerLog,
+                        reason = "failure_limit",
+                        detail = "count=${failureGate.count} remainingMs=$remainingMs"
+                    )
+                    return@launch
+                }
+                if (remainingMs > 0L && database.lastSyncStatus == KeePassSyncStatus.FAILED) {
+                    SyncDiagnostics.skipped(
+                        taskId = taskId,
+                        target = targetLog,
+                        trigger = triggerLog,
+                        reason = "failed_status_cooldown",
+                        detail = "count=${failureGate.count} remainingMs=$remainingMs"
+                    )
+                    return@launch
+                }
+            }
 
             val syncTarget = SyncTarget.KeePassDatabase(databaseId)
             val shouldBypassThrottle = database.lastSyncStatus == KeePassSyncStatus.PENDING_UPLOAD ||
-                database.lastSyncStatus == KeePassSyncStatus.FAILED ||
                 database.lastSyncStatus == KeePassSyncStatus.REMOTE_CHANGED
             val throttleMs = if (shouldBypassThrottle) 0L else VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS
             val result = SyncTaskRunner.request(
@@ -1461,9 +1500,11 @@ class LocalKeePassViewModel(
                     withContext(Dispatchers.IO) {
                         syncRemoteDatabaseInternal(databaseId)
                     }
+                    clearVisibleRemoteAutoSyncFailure(databaseId)
                     SyncDiagnostics.success(taskId, targetLog, triggerLog, startedAt)
                 } catch (error: Exception) {
                     handleSyncRemoteFailure(databaseId, error)
+                    recordVisibleRemoteAutoSyncFailure(databaseId)
                     Log.w(TAG, "Visible KeePass remote auto-sync failed: databaseId=$databaseId", error)
                     SyncDiagnostics.failed(taskId, targetLog, triggerLog, startedAt, error)
                     throw error
@@ -1492,6 +1533,23 @@ class LocalKeePassViewModel(
                     )
                 }
             }
+        }
+    }
+
+    private suspend fun clearVisibleRemoteAutoSyncFailure(databaseId: Long) {
+        visibleRemoteAutoSyncFailureMutex.withLock {
+            visibleRemoteAutoSyncFailures.remove(databaseId)
+        }
+    }
+
+    private suspend fun recordVisibleRemoteAutoSyncFailure(databaseId: Long) {
+        val nextAllowedAtMillis = System.currentTimeMillis() + VISIBLE_REMOTE_AUTO_SYNC_FAILURE_COOLDOWN_MS
+        visibleRemoteAutoSyncFailureMutex.withLock {
+            val previous = visibleRemoteAutoSyncFailures[databaseId]
+            visibleRemoteAutoSyncFailures[databaseId] = VisibleRemoteAutoSyncFailure(
+                count = ((previous?.count ?: 0) + 1).coerceAtMost(Int.MAX_VALUE),
+                nextAllowedAtMillis = nextAllowedAtMillis
+            )
         }
     }
 
