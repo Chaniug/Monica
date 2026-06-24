@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-23T21:51:56.382Z",
+  "generatedAt": "2026-06-24T21:45:46.824Z",
   "range": {
-    "from": "2025-06-24",
-    "to": "2026-06-23"
+    "from": "2025-06-25",
+    "to": "2026-06-24"
   },
   "activity": [
-    {
-      "date": "2025-06-24",
-      "count": 0
-    },
     {
       "date": "2025-06-25",
       "count": 0
@@ -1465,10 +1461,50 @@
     },
     {
       "date": "2026-06-23",
-      "count": 0
+      "count": 1
+    },
+    {
+      "date": "2026-06-24",
+      "count": 3
     }
   ],
   "latest": [
+    {
+      "sha": "d4e5f417d8617505c7e5b8ba3d0db0b402a24c85",
+      "shortSha": "d4e5f41",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-24T05:56:40Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d4e5f417d8617505c7e5b8ba3d0db0b402a24c85"
+    },
+    {
+      "sha": "0d8fc5d89ef625a14bca1dee805ee5e50b423243",
+      "shortSha": "0d8fc5d",
+      "message": "Merge branch 'main' of https://github.com/Monica-Pass/Monica",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-24T05:56:03Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/0d8fc5d89ef625a14bca1dee805ee5e50b423243"
+    },
+    {
+      "sha": "c9abb3ac56ee6018834a956f5e1c570e34ad9726",
+      "shortSha": "c9abb3a",
+      "message": "fix: improve KeePass sync UX and reliability",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-24T05:54:47Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/c9abb3ac56ee6018834a956f5e1c570e34ad9726"
+    },
+    {
+      "sha": "b2f915166d8d3d48be54eee72290f913560bdd9c",
+      "shortSha": "b2f9151",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-23T21:51:56Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/b2f915166d8d3d48be54eee72290f913560bdd9c"
+    },
     {
       "sha": "766c32abb197b0551d757e4fb1356b31411a8cc8",
       "shortSha": "766c32a",
@@ -1522,42 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-06-21T06:01:22Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/960452303f879e70a68c3412942abb742dc89e66"
-    },
-    {
-      "sha": "b5ccc678d01b7c7ff35c5c78edacc69979b48c4a",
-      "shortSha": "b5ccc67",
-      "message": "fix: avoid autofill auth result reuse",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-21T05:24:08Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/b5ccc678d01b7c7ff35c5c78edacc69979b48c4a"
-    },
-    {
-      "sha": "2174b20c5a858cd671927de8903d2fb114f8a872",
-      "shortSha": "2174b20",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-21T05:10:29Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/2174b20c5a858cd671927de8903d2fb114f8a872"
-    },
-    {
-      "sha": "60523e4b1fc9d1c01918122f95f11c1256f845f3",
-      "shortSha": "60523e4",
-      "message": "fix: prevent autofill placeholder from filling",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-21T05:08:14Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/60523e4b1fc9d1c01918122f95f11c1256f845f3"
-    },
-    {
-      "sha": "0acdbce4adb0b75888bf1e0667701de27f1d0a87",
-      "shortSha": "0acdbce",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-21T04:05:04Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/0acdbce4adb0b75888bf1e0667701de27f1d0a87"
     }
   ]
 }
