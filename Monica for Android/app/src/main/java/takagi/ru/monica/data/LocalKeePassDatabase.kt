@@ -170,6 +170,10 @@ data class LocalKeePassDatabase(
     /** 最近同步错误 */
     @ColumnInfo(name = "last_sync_error")
     val lastSyncError: String? = null,
+
+    /** 最近同步状态更新时间 */
+    @ColumnInfo(name = "last_sync_state_updated_at")
+    val lastSyncStateUpdatedAt: Long = System.currentTimeMillis(),
     
     /** 是否为默认数据库 */
     @ColumnInfo(name = "is_default")
@@ -342,7 +346,8 @@ interface LocalKeePassDatabaseDao {
         UPDATE local_keepass_databases
         SET last_sync_status = :status,
             last_sync_error = :error,
-            last_synced_at = :syncedAt
+            last_synced_at = :syncedAt,
+            last_sync_state_updated_at = CAST(strftime('%s','now') AS INTEGER) * 1000
         WHERE id = :id
         """
     )

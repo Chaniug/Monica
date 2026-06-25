@@ -942,6 +942,8 @@
     <string name="passkey_bitwarden_move_blocked">此通行密钥无法迁移到 Bitwarden。</string>
     <string name="passkey_bitwarden_move_failed">Bitwarden 操作失败，未移动。</string>
     <string name="passkey_bitwarden_move_blocked_count">%1$d 个通行密钥无法迁移到 Bitwarden。</string>
+    <string name="passkey_keepass_credential_conflict">目标 KeePass 数据库已存在相同通行密钥。</string>
+    <string name="passkey_keepass_credential_conflict_count">%1$d 个通行密钥已存在于目标 KeePass 数据库。</string>
     <string name="passkey_copy_uses_move_hint">通行密钥是唯一凭据，复制将按安全移动处理。</string>
     <string name="keepass_copy_only_hint">KeePass 来源条目不能移动到其他数据库，只能复制。</string>
     
@@ -1097,7 +1099,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.290</string>
+    <string name="settings_version_number">V1.0.291</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -2187,6 +2189,8 @@
     <string name="keepass_remote_sync_status_remote_changed">远端已变化</string>
     <string name="keepass_remote_sync_status_conflict">存在冲突</string>
     <string name="keepass_remote_sync_status_failed">同步失败</string>
+    <string name="keepass_remote_sync_error">最近同步错误</string>
+    <string name="keepass_remote_sync_error_format">最近同步错误：%1$s</string>
     <string name="keepass_connection_status_unavailable_format">不可用：%1$s</string>
     <string name="keepass_connection_status_missing">数据库不存在</string>
     <string name="keepass_connection_status_needs_refresh">需要手动刷新</string>

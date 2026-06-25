@@ -29,18 +29,21 @@ fun LocalKeePassDatabase.writeOperationAvailability(): KeePassOperationAvailabil
     return when (lastSyncStatus) {
         KeePassSyncStatus.IN_SYNC,
         KeePassSyncStatus.PENDING_UPLOAD -> KeePassOperationAvailability(canOperate = true)
-        KeePassSyncStatus.SYNCING -> KeePassOperationAvailability(
-            canOperate = false,
-            reason = KeePassOperationBlockReason.SYNCING
-        )
+        KeePassSyncStatus.SYNCING -> {
+            if (hasLocalCopy && isSyncingStateStale()) {
+                KeePassOperationAvailability(canOperate = true)
+            } else {
+                KeePassOperationAvailability(
+                    canOperate = false,
+                    reason = KeePassOperationBlockReason.SYNCING
+                )
+            }
+        }
         KeePassSyncStatus.CONFLICT -> KeePassOperationAvailability(
             canOperate = false,
             reason = KeePassOperationBlockReason.CONFLICT
         )
-        KeePassSyncStatus.FAILED -> KeePassOperationAvailability(
-            canOperate = false,
-            reason = KeePassOperationBlockReason.FAILED
-        )
+        KeePassSyncStatus.FAILED -> KeePassOperationAvailability(canOperate = true)
         KeePassSyncStatus.LOCAL_ONLY,
         KeePassSyncStatus.REMOTE_CHANGED -> KeePassOperationAvailability(
             canOperate = false,
@@ -49,3 +52,12 @@ fun LocalKeePassDatabase.writeOperationAvailability(): KeePassOperationAvailabil
     }
 }
 
+private fun LocalKeePassDatabase.isSyncingStateStale(
+    now: Long = System.currentTimeMillis()
+): Boolean {
+    val updatedAt = lastSyncStateUpdatedAt
+    if (updatedAt <= 0L) return true
+    return now - updatedAt > STALE_SYNCING_OPERATION_BLOCK_TIMEOUT_MILLIS
+}
+
+private const val STALE_SYNCING_OPERATION_BLOCK_TIMEOUT_MILLIS = 10 * 60 * 1000L

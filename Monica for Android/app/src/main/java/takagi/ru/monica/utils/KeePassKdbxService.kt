@@ -3,6 +3,7 @@ package takagi.ru.monica.utils
 import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.Base64
 import android.util.Log
 import app.keemobile.kotpass.cryptography.EncryptedValue
 import app.keemobile.kotpass.cryptography.format.BaseCiphers
@@ -15,19 +16,25 @@ import app.keemobile.kotpass.database.header.KdfParameters
 import app.keemobile.kotpass.database.modifiers.binaries
 import app.keemobile.kotpass.database.modifiers.modifyBinaries
 import app.keemobile.kotpass.database.modifiers.modifyParentGroup
+import app.keemobile.kotpass.models.AutoTypeData
+import app.keemobile.kotpass.models.AutoTypeItem
 import app.keemobile.kotpass.models.BinaryData
 import app.keemobile.kotpass.models.BinaryReference
+import app.keemobile.kotpass.models.CustomDataValue
 import app.keemobile.kotpass.models.Entry
 import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
+import app.keemobile.kotpass.models.TimeData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.KeePassCipherAlgorithm
@@ -44,7 +51,6 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.isRemoteSource
 import takagi.ru.monica.data.resolvedActiveFilePath
 import takagi.ru.monica.data.resolvedActiveStorageLocation
-import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.CardWalletDataCodec
@@ -56,13 +62,42 @@ import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
+import takagi.ru.monica.keepass.KeePassChangeOperation
+import takagi.ru.monica.keepass.KeePassChangeSet
+import takagi.ru.monica.keepass.KeePassChangeSetApplier
+import takagi.ru.monica.keepass.KeePassChangeTarget
+import takagi.ru.monica.keepass.KeePassAttachmentChangePatch
+import takagi.ru.monica.keepass.KeePassEntryCreatePatch
+import takagi.ru.monica.keepass.KeePassFieldChangePatch
+import takagi.ru.monica.keepass.KeePassAutoTypeItemPatch
+import takagi.ru.monica.keepass.KeePassAutoTypePatch
+import takagi.ru.monica.keepass.KeePassBinaryPoolItemPatch
+import takagi.ru.monica.keepass.KeePassBinaryReferencePatch
+import takagi.ru.monica.keepass.KeePassCustomDataPatch
+import takagi.ru.monica.keepass.KeePassEntryFingerprint
+import takagi.ru.monica.keepass.KeePassFieldChange
+import takagi.ru.monica.keepass.KeePassEntryTreeSnapshot
+import takagi.ru.monica.keepass.KeePassGroupTreeChangePatch
+import takagi.ru.monica.keepass.KeePassGroupTreeSnapshot
+import takagi.ru.monica.keepass.KeePassPendingChangeBaseSnapshot
+import takagi.ru.monica.keepass.KeePassPendingChangeRepository
+import takagi.ru.monica.keepass.KeePassPendingFlushPlan
+import takagi.ru.monica.keepass.KeePassPendingFlushPlanner
+import takagi.ru.monica.keepass.KeePassRemoteRebase
+import takagi.ru.monica.keepass.KeePassStructureChangePatch
+import takagi.ru.monica.keepass.KeePassTimesPatch
+import takagi.ru.monica.keepass.KeePassManagedFieldScope
+import takagi.ru.monica.keepass.KeePassEntryFieldPatch
+import takagi.ru.monica.keepass.KeePassFieldRegistry
 import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
+import takagi.ru.monica.keepass.KeePassTotpCodec
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.attachments.executor.KeePassAttachmentRef
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.workers.KeePassRemoteUploadWorker
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -70,8 +105,7 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
-import java.net.URI
-import java.net.URLDecoder
+import java.time.Instant
 import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
@@ -248,48 +282,7 @@ internal fun extractKeePassCustomFieldsForPasswordEntry(
 private fun isReservedKeePassPasswordFieldName(key: String): Boolean {
     val normalized = key.trim()
     if (normalized.isBlank()) return true
-    if (normalized.startsWith("_etm_")) return true
-
-    val reservedFields = setOf(
-        "Title", "Name",
-        "UserName", "Username", "User", "Login",
-        "Password", "Pass", "pass", "pwd", "PWD", "密码", "口令",
-        "URL", "Url", "Website", "URI",
-        "Notes", "Note", "Comment",
-        "App Package Name", "AppPackageName", "MonicaAppPackageName",
-        "App Name", "AppName", "MonicaAppName",
-        "Email", "E-mail", "Mail",
-        "Phone", "Phone Number", "Telephone",
-        "Address", "Address Line",
-        "City", "State", "Province", "Postal Code", "PostalCode", "Zip Code", "ZipCode", "Country",
-        "Card Number", "CardNumber", "Credit Card Number", "CreditCardNumber",
-        "Card Holder", "CardHolder", "Credit Card Holder", "CreditCardHolder",
-        "Card Expiry", "CardExpiry", "Expiration Date", "Expiry Date",
-        "Card CVV", "CardCVV", "CVV", "CVC",
-        "Expiry Month", "Expiry Year", "Bank Name", "Card Type", "Billing Address",
-        "Brand", "Nickname", "Valid From Month", "Valid From Year", "PIN",
-        "IBAN", "SWIFT/BIC", "Routing Number", "Account Number", "Branch Code",
-        "Currency", "Customer Service Phone",
-        "SSO Provider", "SsoProvider", "MonicaSsoProvider", "MonicaSsoRefEntryId",
-        "otp", "TOTP Seed", "TOTP Settings",
-        "MonicaLocalId", "MonicaSecureItemId", "MonicaItemType", "MonicaItemData",
-        "MonicaImagePaths", "MonicaIsFavorite",
-        "MonicaPasskeyCredentialId", "MonicaPasskeyData", "MonicaPasskeyMode",
-        "MonicaSshAlgorithm", "MonicaSshKeySize", "MonicaSshPublicKey",
-        "MonicaSshPrivateKey", "MonicaSshFingerprint", "MonicaSshComment",
-        "MonicaSshFormat",
-        "SSID", "MonicaWifiData", "MonicaLoginType",
-        KeePassDxPasskeyCodec.FIELD_PASSKEY,
-        KeePassDxPasskeyCodec.FIELD_USERNAME,
-        KeePassDxPasskeyCodec.FIELD_PRIVATE_KEY,
-        KeePassDxPasskeyCodec.FIELD_CREDENTIAL_ID,
-        KeePassDxPasskeyCodec.FIELD_USER_HANDLE,
-        KeePassDxPasskeyCodec.FIELD_RELYING_PARTY,
-        KeePassDxPasskeyCodec.FIELD_FLAG_BE,
-        KeePassDxPasskeyCodec.FIELD_FLAG_BS
-    )
-    val reservedLower = reservedFields.mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
-    return normalized.lowercase(Locale.ROOT) in reservedLower
+    return KeePassFieldRegistry.isReservedPasswordProjectionField(normalized)
 }
 
 class KeePassKdbxService(
@@ -301,12 +294,14 @@ class KeePassKdbxService(
         private const val TAG = "KeePassKdbxService"
         // Keep unknown-source cache short, but keep known internal files effectively "always warm".
         private const val UNKNOWN_SOURCE_CACHE_TTL_MS = 60_000L
+        private const val PENDING_CHANGE_UPLOAD_RETRY_DELAY_MILLIS = 30_000L
         // Keep only the active database plus a tiny LRU warm set. Monica users may register many KDBX files.
         private const val MAX_WARM_CACHED_DATABASES = 2
         // Disable post-write full decode verification for normal writes to reduce save latency.
         // The database is still encoded by the library and written atomically/with rollback paths.
         private const val ENABLE_POST_WRITE_DECODE_VERIFICATION = false
         private const val FIELD_MONICA_LOCAL_ID = "MonicaLocalId"
+        private const val FIELD_MONICA_CONFLICT_COPY = "MonicaConflictCopy"
         private const val FIELD_MONICA_ITEM_ID = "MonicaSecureItemId"
         private const val FIELD_MONICA_ITEM_TYPE = "MonicaItemType"
         private const val FIELD_MONICA_ITEM_DATA = "MonicaItemData"
@@ -549,6 +544,7 @@ class KeePassKdbxService(
     private data class MutationPlan<T>(
         val updatedDatabase: KeePassDatabase,
         val result: T,
+        val beforeRemoteUpload: (suspend (LocalKeePassDatabase, KeePassDatabase) -> Unit)? = null,
         val afterWrite: (suspend (LocalKeePassDatabase, KeePassDatabase) -> Unit)? = null
     )
 
@@ -680,6 +676,20 @@ class KeePassKdbxService(
             }
             val groupInfo = mutateDatabase(databaseId) { loaded ->
                 val parentSegments = decodeKeePassPathSegments(parentPath)
+                val parentPathKey = parentPath?.takeIf { it.isNotBlank() }
+                val parentGroupUuid = parentPathKey?.let {
+                    findGroupUuidByPath(
+                        group = loaded.keePassDatabase.content.group,
+                        currentPathKey = null,
+                        targetPathKey = it
+                    )
+                } ?: loaded.keePassDatabase.content.group.uuid
+                val targetPath = buildKeePassPathKey(parentPathKey, normalizedName)
+                val existedBefore = findGroupUuidByPath(
+                    group = loaded.keePassDatabase.content.group,
+                    currentPathKey = null,
+                    targetPathKey = targetPath
+                ) != null
                 val result = addGroupToPath(
                     group = loaded.keePassDatabase.content.group,
                     parentSegments = parentSegments,
@@ -688,7 +698,30 @@ class KeePassKdbxService(
                 )
                 MutationPlan(
                     updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
-                    result = result.second
+                    result = result.second,
+                    beforeRemoteUpload = { database, _ ->
+                        val changeSet = if (!existedBefore) {
+                            KeePassChangeSet(
+                                databaseId = loaded.database.id,
+                                target = KeePassChangeTarget.GROUP,
+                                operation = KeePassChangeOperation.CREATE_GROUP,
+                                entryUuid = null,
+                                baseFingerprint = null,
+                                baseGroupPath = parentPathKey,
+                                baseGroupUuid = parentGroupUuid.toString(),
+                                structurePatch = KeePassStructureChangePatch(
+                                    sourceGroupPath = result.second.path,
+                                    sourceGroupUuid = result.second.uuid,
+                                    targetGroupPath = parentPathKey,
+                                    targetGroupUuid = parentGroupUuid.toString(),
+                                    groupName = normalizedName
+                                )
+                            )
+                        } else {
+                            null
+                        }
+                        enqueuePendingChangeSetsIfRemote(database, listOfNotNull(changeSet))
+                    }
                 )
             }
             Result.success(groupInfo)
@@ -712,6 +745,11 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("分组路径无效")
             }
             val groupInfo = mutateDatabase(databaseId) { loaded ->
+                val targetGroupUuid = findGroupUuidByPath(
+                    group = loaded.keePassDatabase.content.group,
+                    currentPathKey = null,
+                    targetPathKey = groupPath
+                ) ?: throw IllegalArgumentException("分组不存在: $groupPath")
                 val result = renameGroupByPath(
                     group = loaded.keePassDatabase.content.group,
                     pathSegments = pathSegments,
@@ -720,7 +758,30 @@ class KeePassKdbxService(
                 )
                 MutationPlan(
                     updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
-                    result = result.second
+                    result = result.second,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(
+                            database,
+                            listOf(
+                                KeePassChangeSet(
+                                    databaseId = loaded.database.id,
+                                    target = KeePassChangeTarget.GROUP,
+                                    operation = KeePassChangeOperation.RENAME_GROUP,
+                                    entryUuid = null,
+                                    baseFingerprint = null,
+                                    baseGroupPath = groupPath,
+                                    baseGroupUuid = targetGroupUuid.toString(),
+                                    structurePatch = KeePassStructureChangePatch(
+                                        sourceGroupPath = groupPath,
+                                        sourceGroupUuid = targetGroupUuid.toString(),
+                                        targetGroupPath = result.second.path,
+                                        targetGroupUuid = targetGroupUuid.toString(),
+                                        newGroupName = normalizedName
+                                    )
+                                )
+                            )
+                        )
+                    }
                 )
             }
             Result.success(groupInfo)
@@ -739,6 +800,11 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("分组路径无效")
             }
             mutateDatabase(databaseId) { loaded ->
+                val targetGroupUuid = findGroupUuidByPath(
+                    group = loaded.keePassDatabase.content.group,
+                    currentPathKey = null,
+                    targetPathKey = groupPath
+                ) ?: throw IllegalArgumentException("分组不存在: $groupPath")
                 val result = removeGroupByPath(
                     group = loaded.keePassDatabase.content.group,
                     pathSegments = pathSegments
@@ -748,7 +814,27 @@ class KeePassKdbxService(
                 }
                 MutationPlan(
                     updatedDatabase = loaded.keePassDatabase.modifyParentGroup { result.first },
-                    result = Unit
+                    result = Unit,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(
+                            database,
+                            listOf(
+                                KeePassChangeSet(
+                                    databaseId = loaded.database.id,
+                                    target = KeePassChangeTarget.GROUP,
+                                    operation = KeePassChangeOperation.DELETE_GROUP,
+                                    entryUuid = null,
+                                    baseFingerprint = null,
+                                    baseGroupPath = groupPath,
+                                    baseGroupUuid = targetGroupUuid.toString(),
+                                    structurePatch = KeePassStructureChangePatch(
+                                        sourceGroupPath = groupPath,
+                                        sourceGroupUuid = targetGroupUuid.toString()
+                                    )
+                                )
+                            )
+                        )
+                    }
                 )
             }
             Result.success(Unit)
@@ -798,6 +884,35 @@ class KeePassKdbxService(
                     } else {
                         getCachedLoadedDatabase(targetDatabaseId) ?: loadDatabase(targetDatabaseId)
                     }
+                    val sourceGroupUuid = findGroupUuidByPath(
+                        group = sourceLoaded.keePassDatabase.content.group,
+                        currentPathKey = null,
+                        targetPathKey = normalizedSourcePath
+                    ) ?: throw IllegalArgumentException("分组不存在: $groupPath")
+                    val sourceParentGroupUuid = sourceParentPath?.let {
+                        findGroupUuidByPath(
+                            group = sourceLoaded.keePassDatabase.content.group,
+                            currentPathKey = null,
+                            targetPathKey = it
+                        )
+                    } ?: sourceLoaded.keePassDatabase.content.group.uuid
+                    val targetParentGroupUuid = if (sourceDatabaseId == targetDatabaseId) {
+                        normalizedTargetParentPath?.let {
+                            findGroupUuidByPath(
+                                group = sourceLoaded.keePassDatabase.content.group,
+                                currentPathKey = null,
+                                targetPathKey = it
+                            )
+                        } ?: sourceLoaded.keePassDatabase.content.group.uuid
+                    } else {
+                        normalizedTargetParentPath?.let {
+                            findGroupUuidByPath(
+                                group = targetLoaded.keePassDatabase.content.group,
+                                currentPathKey = null,
+                                targetPathKey = it
+                            )
+                        } ?: targetLoaded.keePassDatabase.content.group.uuid
+                    }
 
                     val extracted = extractGroupByPath(
                         group = sourceLoaded.keePassDatabase.content.group,
@@ -809,16 +924,47 @@ class KeePassKdbxService(
 
                     val targetParentSegments = decodeKeePassPathSegments(normalizedTargetParentPath)
                     val groupToMove = extracted.removedGroup
-                    val inserted = insertGroupToPath(
-                        group = if (sourceDatabaseId == targetDatabaseId) {
-                            extracted.updatedGroup
-                        } else {
-                            targetLoaded.keePassDatabase.content.group
-                        },
-                        parentSegments = targetParentSegments,
-                        groupToInsert = groupToMove,
-                        currentPathKey = ""
-                    )
+                    val targetRootBeforeInsert = if (sourceDatabaseId == targetDatabaseId) {
+                        extracted.updatedGroup
+                    } else {
+                        targetLoaded.keePassDatabase.content.group
+                    }
+                    val existingTargetPath = if (sourceDatabaseId == targetDatabaseId) {
+                        null
+                    } else {
+                        findGroupPathByUuid(
+                            group = targetRootBeforeInsert,
+                            currentPathKey = null,
+                            targetUuid = groupToMove.uuid
+                        )
+                    }
+                    val inserted = if (existingTargetPath != null) {
+                        val expectedTargetPath = buildKeePassPathKey(normalizedTargetParentPath, groupToMove.name)
+                        if (existingTargetPath != expectedTargetPath) {
+                            throw IllegalArgumentException("目标数据库已存在相同 UUID 的不同分组: $existingTargetPath")
+                        }
+                        InsertedGroupResult(
+                            updatedGroup = targetRootBeforeInsert,
+                            groupInfo = buildGroupInfoFromPath(groupToMove, existingTargetPath)
+                        )
+                    } else {
+                        insertGroupToPath(
+                            group = targetRootBeforeInsert,
+                            parentSegments = targetParentSegments,
+                            groupToInsert = groupToMove,
+                            currentPathKey = ""
+                        )
+                    }
+                    val groupTreePatch = if (sourceDatabaseId == targetDatabaseId) {
+                        null
+                    } else {
+                        buildGroupTreeChangePatch(
+                            database = sourceLoaded.keePassDatabase,
+                            root = groupToMove,
+                            sourceRootGroupUuid = sourceGroupUuid,
+                            targetParentGroupUuid = targetParentGroupUuid
+                        )
+                    }
 
                     if (sourceDatabaseId == targetDatabaseId) {
                         val updatedDatabase = sourceLoaded.keePassDatabase.modifyParentGroup { inserted.updatedGroup }
@@ -827,24 +973,89 @@ class KeePassKdbxService(
                             credentials = sourceLoaded.credentials,
                             keePassDatabase = updatedDatabase,
                             sourceEtag = sourceLoaded.sourceEtag,
-                            sourceLastModified = sourceLoaded.sourceLastModified
+                            sourceLastModified = sourceLoaded.sourceLastModified,
+                            beforeRemoteUpload = { database, _ ->
+                                enqueuePendingChangeSetsIfRemote(
+                                    database,
+                                    listOf(
+                                        KeePassChangeSet(
+                                            databaseId = sourceLoaded.database.id,
+                                            target = KeePassChangeTarget.GROUP,
+                                            operation = KeePassChangeOperation.MOVE_GROUP,
+                                            entryUuid = null,
+                                            baseFingerprint = null,
+                                            baseGroupPath = sourceParentPath,
+                                            baseGroupUuid = sourceParentGroupUuid.toString(),
+                                            structurePatch = KeePassStructureChangePatch(
+                                                sourceGroupPath = normalizedSourcePath,
+                                                sourceGroupUuid = sourceGroupUuid.toString(),
+                                                targetGroupPath = normalizedTargetParentPath,
+                                                targetGroupUuid = targetParentGroupUuid.toString(),
+                                                groupName = groupToMove.name
+                                            )
+                                        )
+                                    )
+                                )
+                            }
                         )
                     } else {
-                        val targetDatabase = targetLoaded.keePassDatabase.modifyParentGroup { inserted.updatedGroup }
-                        writeDatabase(
-                            database = targetLoaded.database,
-                            credentials = targetLoaded.credentials,
-                            keePassDatabase = targetDatabase,
-                            sourceEtag = targetLoaded.sourceEtag,
-                            sourceLastModified = targetLoaded.sourceLastModified
-                        )
+                        // Write the target first; if source cleanup fails, preserving both trees is
+                        // safer than deleting source data before the target is durable. When retrying
+                        // after a target-success/source-failure split, skip target insertion if the
+                        // same group UUID already exists at the intended target path.
+                        if (existingTargetPath == null) {
+                            val targetDatabase = targetLoaded.keePassDatabase.modifyParentGroup { inserted.updatedGroup }
+                            val createTreeChangeSet = KeePassChangeSet(
+                                databaseId = targetLoaded.database.id,
+                                target = KeePassChangeTarget.GROUP,
+                                operation = KeePassChangeOperation.CREATE_GROUP_TREE,
+                                entryUuid = null,
+                                baseFingerprint = null,
+                                baseGroupPath = normalizedTargetParentPath,
+                                baseGroupUuid = targetParentGroupUuid.toString(),
+                                structurePatch = KeePassStructureChangePatch(
+                                    targetGroupPath = normalizedTargetParentPath,
+                                    targetGroupUuid = targetParentGroupUuid.toString(),
+                                    groupName = groupToMove.name
+                                ),
+                                groupTreePatch = groupTreePatch
+                            )
+                            writeDatabase(
+                                database = targetLoaded.database,
+                                credentials = targetLoaded.credentials,
+                                keePassDatabase = targetDatabase,
+                                sourceEtag = targetLoaded.sourceEtag,
+                                sourceLastModified = targetLoaded.sourceLastModified,
+                                beforeRemoteUpload = { database, _ ->
+                                    enqueuePendingChangeSetsIfRemote(database, listOf(createTreeChangeSet))
+                                }
+                            )
+                        }
                         val sourceDatabase = sourceLoaded.keePassDatabase.modifyParentGroup { extracted.updatedGroup }
+                        val deleteTreeChangeSet = KeePassChangeSet(
+                            databaseId = sourceLoaded.database.id,
+                            target = KeePassChangeTarget.GROUP,
+                            operation = KeePassChangeOperation.DELETE_GROUP_TREE,
+                            entryUuid = null,
+                            baseFingerprint = null,
+                            baseGroupPath = sourceParentPath,
+                            baseGroupUuid = sourceParentGroupUuid.toString(),
+                            structurePatch = KeePassStructureChangePatch(
+                                sourceGroupPath = normalizedSourcePath,
+                                sourceGroupUuid = sourceGroupUuid.toString(),
+                                groupName = groupToMove.name
+                            ),
+                            groupTreePatch = groupTreePatch
+                        )
                         writeDatabase(
                             database = sourceLoaded.database,
                             credentials = sourceLoaded.credentials,
                             keePassDatabase = sourceDatabase,
                             sourceEtag = sourceLoaded.sourceEtag,
-                            sourceLastModified = sourceLoaded.sourceLastModified
+                            sourceLastModified = sourceLoaded.sourceLastModified,
+                            beforeRemoteUpload = { database, _ ->
+                                enqueuePendingChangeSetsIfRemote(database, listOf(deleteTreeChangeSet))
+                            }
                         )
                     }
 
@@ -950,14 +1161,29 @@ class KeePassKdbxService(
             ) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var addedCount = 0
+                val pendingChangeSets = mutableListOf<KeePassChangeSet>()
                 entries.forEach { entry ->
                     val plainPassword = resolvePassword(entry)
                     val customFields = customFieldsByEntryId[entry.id].orEmpty()
-                    val updateResult = updateEntry(updatedDatabase, entry, plainPassword, customFields)
-                    if (updateResult.second) {
-                        updatedDatabase = updateResult.first
+                    val updateResult = updateEntry(
+                        keePassDatabase = updatedDatabase,
+                        databaseId = loaded.database.id,
+                        entry = entry,
+                        plainPassword = plainPassword,
+                        customFields = customFields
+                    )
+                    pendingChangeSets += updateResult.changeSets
+                    if (updateResult.changed) {
+                        updatedDatabase = updateResult.database
                     } else {
                         val newEntry = buildEntry(entry, plainPassword, customFields)
+                        buildCreateEntryChangeSet(
+                            database = updatedDatabase,
+                            databaseId = loaded.database.id,
+                            target = KeePassChangeTarget.PASSWORD,
+                            entry = newEntry,
+                            targetGroupPath = entry.keepassGroupPath
+                        )?.let { pendingChangeSets += it }
                         val updatedRoot = addEntryToGroupPath(
                             rootGroup = updatedDatabase.content.group,
                             groupPath = entry.keepassGroupPath,
@@ -970,6 +1196,9 @@ class KeePassKdbxService(
                 MutationPlan(
                     updatedDatabase = updatedDatabase,
                     result = addedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, pendingChangeSets)
+                    },
                     afterWrite = { database, writtenDatabase ->
                         val allEntries = mutableListOf<Entry>()
                         collectEntries(writtenDatabase.content.group, allEntries)
@@ -992,9 +1221,23 @@ class KeePassKdbxService(
         try {
             mutateDatabase(databaseId) { loaded ->
                 val plainPassword = resolvePassword(entry)
-                val updateResult = updateEntry(loaded.keePassDatabase, entry, plainPassword, customFields)
-                val updatedDatabase = if (updateResult.second) updateResult.first else {
+                val updateResult = updateEntry(
+                    keePassDatabase = loaded.keePassDatabase,
+                    databaseId = loaded.database.id,
+                    entry = entry,
+                    plainPassword = plainPassword,
+                    customFields = customFields
+                )
+                val pendingChangeSets = updateResult.changeSets.toMutableList()
+                val updatedDatabase = if (updateResult.changed) updateResult.database else {
                     val newEntry = buildEntry(entry, plainPassword, customFields)
+                    buildCreateEntryChangeSet(
+                        database = loaded.keePassDatabase,
+                        databaseId = loaded.database.id,
+                        target = KeePassChangeTarget.PASSWORD,
+                        entry = newEntry,
+                        targetGroupPath = entry.keepassGroupPath
+                    )?.let { pendingChangeSets += it }
                     val updatedRoot = addEntryToGroupPath(
                         rootGroup = loaded.keePassDatabase.content.group,
                         groupPath = entry.keepassGroupPath,
@@ -1002,7 +1245,13 @@ class KeePassKdbxService(
                     )
                     loaded.keePassDatabase.modifyParentGroup { updatedRoot }
                 }
-                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = Unit,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, pendingChangeSets)
+                    }
+                )
             }
             Result.success(Unit)
         } catch (e: Exception) {
@@ -1108,6 +1357,7 @@ class KeePassKdbxService(
                 val oldDb = loaded.keePassDatabase
                 val existingEntry = findEntryByUuid(oldDb.content.group, targetUuid)
                     ?: throw NoSuchElementException("Entry not found")
+                val baseFingerprint = buildConflictEntrySignature(existingEntry)
 
                 val binaryData: BinaryData = if (compressed) {
                     BinaryData.Uncompressed(memoryProtection, bytes).toCompressed()
@@ -1139,7 +1389,27 @@ class KeePassKdbxService(
                     sizeBytes = bytes.size.toLong(),
                     memoryProtection = memoryProtection
                 )
-                MutationPlan(updatedDatabase = updatedDatabase, result = resultInfo)
+                val changeSet = KeePassChangeSet(
+                    databaseId = loaded.database.id,
+                    target = KeePassChangeTarget.UNKNOWN_ENTRY,
+                    operation = KeePassChangeOperation.ADD_ATTACHMENT,
+                    entryUuid = targetUuid.toString(),
+                    baseFingerprint = baseFingerprint,
+                    attachmentPatch = KeePassAttachmentChangePatch(
+                        fileName = fileName,
+                        binaryHash = hash.hex(),
+                        protected = memoryProtection,
+                        compressed = compressed,
+                        contentBase64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    )
+                )
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = resultInfo,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, listOf(changeSet))
+                    }
+                )
             }
             Result.success(info)
         } catch (e: OutOfMemoryError) {
@@ -1164,6 +1434,7 @@ class KeePassKdbxService(
                 val oldDb = loaded.keePassDatabase
                 val existingEntry = findEntryByUuid(oldDb.content.group, targetUuid)
                     ?: throw NoSuchElementException("Entry not found")
+                val baseFingerprint = buildConflictEntrySignature(existingEntry)
                 val requestedRef = KeePassAttachmentRef.decode(hashHex)
                 val targetRef = existingEntry.binaries
                     .firstOrNull {
@@ -1190,7 +1461,26 @@ class KeePassKdbxService(
                 } else {
                     rootReplaced.modifyBinaries { pool -> pool - targetRef.hash }
                 }
-                MutationPlan(updatedDatabase = compacted, result = true)
+                val binaryData = oldDb.binaries[targetRef.hash]
+                val changeSet = KeePassChangeSet(
+                    databaseId = loaded.database.id,
+                    target = KeePassChangeTarget.UNKNOWN_ENTRY,
+                    operation = KeePassChangeOperation.REMOVE_ATTACHMENT,
+                    entryUuid = targetUuid.toString(),
+                    baseFingerprint = baseFingerprint,
+                    attachmentPatch = KeePassAttachmentChangePatch(
+                        fileName = targetRef.name,
+                        binaryHash = targetRef.hash.hex(),
+                        protected = binaryData?.memoryProtection ?: false
+                    )
+                )
+                MutationPlan(
+                    updatedDatabase = compacted,
+                    result = true,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, listOf(changeSet))
+                    }
+                )
             }
             Result.success(removed)
         } catch (e: Exception) {
@@ -1264,16 +1554,21 @@ class KeePassKdbxService(
                 databaseId = databaseId,
                 forceSyncWrite = forceSyncWrite
             ) { loaded ->
-                var updatedDatabase = loaded.keePassDatabase
-                var removedCount = 0
-                entries.forEach { entry ->
-                    val result = removeEntry(updatedDatabase, entry)
-                    updatedDatabase = result.first
-                    removedCount += result.second
-                }
+                val deleteResult = applyEntryStructureChanges(
+                    loaded = loaded,
+                    targets = entries,
+                    targetType = KeePassChangeTarget.PASSWORD,
+                    operation = KeePassChangeOperation.PERMANENT_DELETE,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesPasswordEntry(entry, target, resolutionContext)
+                    }
+                )
                 MutationPlan(
-                    updatedDatabase = updatedDatabase,
-                    result = removedCount,
+                    updatedDatabase = deleteResult.database,
+                    result = deleteResult.changedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, deleteResult.changeSets)
+                    },
                     afterWrite = { database, writtenDatabase ->
                         val allEntries = mutableListOf<Entry>()
                         collectEntries(writtenDatabase.content.group, allEntries)
@@ -1297,47 +1592,21 @@ class KeePassKdbxService(
                 databaseId = databaseId,
                 forceSyncWrite = forceSyncWrite
             ) { loaded ->
-                val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
-                    ?: throw IllegalStateException("KeePass recycle bin unavailable")
-                val resolutionContext = buildResolutionContext(loaded.keePassDatabase)
-                val recyclePath = findGroupPathByUuid(
-                    group = loaded.keePassDatabase.content.group,
-                    currentPathKey = null,
-                    targetUuid = recycleBinUuid
-                ) ?: throw IllegalStateException("KeePass recycle bin path unavailable")
-
-                var rootGroup = loaded.keePassDatabase.content.group
-                val removedContexts = mutableListOf<RemovedEntryContext>()
-                entries.forEach { entry ->
-                    val matcher: (Entry) -> Boolean = { existing ->
-                        matchesPasswordEntry(existing, entry, resolutionContext)
+                val moveResult = applyEntryStructureChanges(
+                    loaded = loaded,
+                    targets = entries,
+                    targetType = KeePassChangeTarget.PASSWORD,
+                    operation = KeePassChangeOperation.MOVE_TO_RECYCLE_BIN,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesPasswordEntry(entry, target, resolutionContext)
                     }
-                    val removed = removeAndCollectEntriesInGroup(
-                        group = rootGroup,
-                        matcher = matcher,
-                        inRecycleBin = false,
-                        recycleBinUuid = recycleBinUuid,
-                        removedEntries = removedContexts
-                    )
-                    rootGroup = removed.first
-                }
-
-                var movedCount = 0
-                removedContexts.forEach { context ->
-                    val entryWithPreviousParent = runCatching {
-                        context.entry.copy(previousParentGroup = context.previousParentUuid)
-                    }.getOrDefault(context.entry)
-                    rootGroup = addEntryToGroupPath(
-                        rootGroup = rootGroup,
-                        groupPath = recyclePath,
-                        entry = entryWithPreviousParent
-                    )
-                    movedCount++
-                }
-
+                )
                 MutationPlan(
-                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { rootGroup },
-                    result = movedCount,
+                    updatedDatabase = moveResult.database,
+                    result = moveResult.changedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, moveResult.changeSets)
+                    },
                     afterWrite = { database, writtenDatabase ->
                         val allEntries = mutableListOf<Entry>()
                         collectEntries(writtenDatabase.content.group, allEntries)
@@ -1346,6 +1615,46 @@ class KeePassKdbxService(
                 )
             }
             Result.success(movedCount)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    suspend fun restorePasswordEntriesFromRecycleBin(
+        databaseId: Long,
+        entries: List<PasswordEntry>,
+        forceSyncWrite: Boolean = false
+    ): Result<Map<Long, KeePassRestoreTarget>> = withContext(Dispatchers.IO) {
+        try {
+            val restoredTargets = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
+                val restoreResult = restoreEntriesFromRecycleBin(
+                    loaded = loaded,
+                    targets = entries,
+                    targetType = KeePassChangeTarget.PASSWORD,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesPasswordEntry(entry, target, resolutionContext)
+                    },
+                    roomId = { it.id },
+                    preferredGroupPath = { it.keepassGroupPath },
+                    preferredGroupUuid = { it.keepassGroupUuid }
+                )
+                MutationPlan(
+                    updatedDatabase = restoreResult.database,
+                    result = restoreResult.targetsByRoomId,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, restoreResult.changeSets)
+                    },
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
+            }
+            Result.success(restoredTargets)
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -1409,12 +1718,25 @@ class KeePassKdbxService(
             ) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var addedCount = 0
+                val pendingChangeSets = mutableListOf<KeePassChangeSet>()
                 items.forEach { item ->
-                    val updateResult = updateSecureItemInternal(updatedDatabase, item)
-                    if (updateResult.second) {
-                        updatedDatabase = updateResult.first
+                    val updateResult = updateSecureItemInternal(
+                        keePassDatabase = updatedDatabase,
+                        databaseId = loaded.database.id,
+                        item = item
+                    )
+                    pendingChangeSets += updateResult.changeSets
+                    if (updateResult.changed) {
+                        updatedDatabase = updateResult.database
                     } else {
                         val newEntry = buildSecureItemEntry(item)
+                        buildCreateEntryChangeSet(
+                            database = updatedDatabase,
+                            databaseId = loaded.database.id,
+                            target = KeePassChangeTarget.SECURE_ITEM,
+                            entry = newEntry,
+                            targetGroupPath = item.keepassGroupPath
+                        )?.let { pendingChangeSets += it }
                         val updatedRoot = addEntryToGroupPath(
                             rootGroup = updatedDatabase.content.group,
                             groupPath = item.keepassGroupPath,
@@ -1424,7 +1746,13 @@ class KeePassKdbxService(
                         addedCount++
                     }
                 }
-                MutationPlan(updatedDatabase = updatedDatabase, result = addedCount)
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = addedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, pendingChangeSets)
+                    }
+                )
             }
             Result.success(addedCount)
         } catch (e: Exception) {
@@ -1440,12 +1768,25 @@ class KeePassKdbxService(
             val addedCount = mutateDatabase(databaseId = databaseId) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var addedCount = 0
+                val pendingChangeSets = mutableListOf<KeePassChangeSet>()
                 passkeys.forEach { passkey ->
-                    val updateResult = updatePasskeyInternal(updatedDatabase, passkey)
-                    if (updateResult.second) {
-                        updatedDatabase = updateResult.first
+                    val updateResult = updatePasskeyInternal(
+                        keePassDatabase = updatedDatabase,
+                        databaseId = loaded.database.id,
+                        passkey = passkey
+                    )
+                    pendingChangeSets += updateResult.changeSets
+                    if (updateResult.changed) {
+                        updatedDatabase = updateResult.database
                     } else {
                         val newEntry = buildPasskeyEntry(passkey)
+                        buildCreateEntryChangeSet(
+                            database = updatedDatabase,
+                            databaseId = loaded.database.id,
+                            target = KeePassChangeTarget.PASSKEY,
+                            entry = newEntry,
+                            targetGroupPath = passkey.keepassGroupPath
+                        )?.let { pendingChangeSets += it }
                         val updatedRoot = addEntryToGroupPath(
                             rootGroup = updatedDatabase.content.group,
                             groupPath = passkey.keepassGroupPath,
@@ -1455,7 +1796,13 @@ class KeePassKdbxService(
                         addedCount++
                     }
                 }
-                MutationPlan(updatedDatabase = updatedDatabase, result = addedCount)
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = addedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, pendingChangeSets)
+                    }
+                )
             }
             Result.success(addedCount)
         } catch (e: Exception) {
@@ -1469,11 +1816,23 @@ class KeePassKdbxService(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             mutateDatabase(databaseId) { loaded ->
-                val updateResult = updateSecureItemInternal(loaded.keePassDatabase, item)
-                val updatedDatabase = if (updateResult.second) {
-                    updateResult.first
+                val updateResult = updateSecureItemInternal(
+                    keePassDatabase = loaded.keePassDatabase,
+                    databaseId = loaded.database.id,
+                    item = item
+                )
+                val pendingChangeSets = updateResult.changeSets.toMutableList()
+                val updatedDatabase = if (updateResult.changed) {
+                    updateResult.database
                 } else {
                     val newEntry = buildSecureItemEntry(item)
+                    buildCreateEntryChangeSet(
+                        database = loaded.keePassDatabase,
+                        databaseId = loaded.database.id,
+                        target = KeePassChangeTarget.SECURE_ITEM,
+                        entry = newEntry,
+                        targetGroupPath = item.keepassGroupPath
+                    )?.let { pendingChangeSets += it }
                     val updatedRoot = addEntryToGroupPath(
                         rootGroup = loaded.keePassDatabase.content.group,
                         groupPath = item.keepassGroupPath,
@@ -1481,7 +1840,13 @@ class KeePassKdbxService(
                     )
                     loaded.keePassDatabase.modifyParentGroup { updatedRoot }
                 }
-                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = Unit,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, pendingChangeSets)
+                    }
+                )
             }
             Result.success(Unit)
         } catch (e: Exception) {
@@ -1495,11 +1860,23 @@ class KeePassKdbxService(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             mutateDatabase(databaseId) { loaded ->
-                val updateResult = updatePasskeyInternal(loaded.keePassDatabase, passkey)
-                val updatedDatabase = if (updateResult.second) {
-                    updateResult.first
+                val updateResult = updatePasskeyInternal(
+                    keePassDatabase = loaded.keePassDatabase,
+                    databaseId = loaded.database.id,
+                    passkey = passkey
+                )
+                val pendingChangeSets = updateResult.changeSets.toMutableList()
+                val updatedDatabase = if (updateResult.changed) {
+                    updateResult.database
                 } else {
                     val newEntry = buildPasskeyEntry(passkey)
+                    buildCreateEntryChangeSet(
+                        database = loaded.keePassDatabase,
+                        databaseId = loaded.database.id,
+                        target = KeePassChangeTarget.PASSKEY,
+                        entry = newEntry,
+                        targetGroupPath = passkey.keepassGroupPath
+                    )?.let { pendingChangeSets += it }
                     val updatedRoot = addEntryToGroupPath(
                         rootGroup = loaded.keePassDatabase.content.group,
                         groupPath = passkey.keepassGroupPath,
@@ -1507,7 +1884,13 @@ class KeePassKdbxService(
                     )
                     loaded.keePassDatabase.modifyParentGroup { updatedRoot }
                 }
-                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
+                MutationPlan(
+                    updatedDatabase = updatedDatabase,
+                    result = Unit,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, pendingChangeSets)
+                    }
+                )
             }
             Result.success(Unit)
         } catch (e: Exception) {
@@ -1667,14 +2050,27 @@ class KeePassKdbxService(
                 databaseId = databaseId,
                 forceSyncWrite = forceSyncWrite
             ) { loaded ->
-                var updatedDatabase = loaded.keePassDatabase
-                var removedCount = 0
-                items.forEach { item ->
-                    val result = removeSecureItem(updatedDatabase, item)
-                    updatedDatabase = result.first
-                    removedCount += result.second
-                }
-                MutationPlan(updatedDatabase = updatedDatabase, result = removedCount)
+                val deleteResult = applyEntryStructureChanges(
+                    loaded = loaded,
+                    targets = items,
+                    targetType = KeePassChangeTarget.SECURE_ITEM,
+                    operation = KeePassChangeOperation.PERMANENT_DELETE,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesSecureItemEntry(entry, target, resolutionContext)
+                    }
+                )
+                MutationPlan(
+                    updatedDatabase = deleteResult.database,
+                    result = deleteResult.changedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, deleteResult.changeSets)
+                    },
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
             }
             Result.success(removedCount)
         } catch (e: Exception) {
@@ -1688,14 +2084,27 @@ class KeePassKdbxService(
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
             val removedCount = mutateDatabase(databaseId = databaseId) { loaded ->
-                var updatedDatabase = loaded.keePassDatabase
-                var removedCount = 0
-                passkeys.forEach { passkey ->
-                    val result = removePasskey(updatedDatabase, passkey)
-                    updatedDatabase = result.first
-                    removedCount += result.second
-                }
-                MutationPlan(updatedDatabase = updatedDatabase, result = removedCount)
+                val deleteResult = applyEntryStructureChanges(
+                    loaded = loaded,
+                    targets = passkeys,
+                    targetType = KeePassChangeTarget.PASSKEY,
+                    operation = KeePassChangeOperation.PERMANENT_DELETE,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesPasskeyEntry(entry, target, resolutionContext)
+                    }
+                )
+                MutationPlan(
+                    updatedDatabase = deleteResult.database,
+                    result = deleteResult.changedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, deleteResult.changeSets)
+                    },
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
             }
             Result.success(removedCount)
         } catch (e: Exception) {
@@ -1713,50 +2122,69 @@ class KeePassKdbxService(
                 databaseId = databaseId,
                 forceSyncWrite = forceSyncWrite
             ) { loaded ->
-                val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
-                    ?: throw IllegalStateException("KeePass recycle bin unavailable")
-                val resolutionContext = buildResolutionContext(loaded.keePassDatabase)
-                val recyclePath = findGroupPathByUuid(
-                    group = loaded.keePassDatabase.content.group,
-                    currentPathKey = null,
-                    targetUuid = recycleBinUuid
-                ) ?: throw IllegalStateException("KeePass recycle bin path unavailable")
-
-                var rootGroup = loaded.keePassDatabase.content.group
-                val removedContexts = mutableListOf<RemovedEntryContext>()
-                items.forEach { item ->
-                    val matcher: (Entry) -> Boolean = { existing ->
-                        matchesSecureItemEntry(existing, item, resolutionContext)
+                val moveResult = applyEntryStructureChanges(
+                    loaded = loaded,
+                    targets = items,
+                    targetType = KeePassChangeTarget.SECURE_ITEM,
+                    operation = KeePassChangeOperation.MOVE_TO_RECYCLE_BIN,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesSecureItemEntry(entry, target, resolutionContext)
                     }
-                    val removed = removeAndCollectEntriesInGroup(
-                        group = rootGroup,
-                        matcher = matcher,
-                        inRecycleBin = false,
-                        recycleBinUuid = recycleBinUuid,
-                        removedEntries = removedContexts
-                    )
-                    rootGroup = removed.first
-                }
-
-                var movedCount = 0
-                removedContexts.forEach { context ->
-                    val entryWithPreviousParent = runCatching {
-                        context.entry.copy(previousParentGroup = context.previousParentUuid)
-                    }.getOrDefault(context.entry)
-                    rootGroup = addEntryToGroupPath(
-                        rootGroup = rootGroup,
-                        groupPath = recyclePath,
-                        entry = entryWithPreviousParent
-                    )
-                    movedCount++
-                }
-
+                )
                 MutationPlan(
-                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { rootGroup },
-                    result = movedCount
+                    updatedDatabase = moveResult.database,
+                    result = moveResult.changedCount,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, moveResult.changeSets)
+                    },
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
                 )
             }
             Result.success(movedCount)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    suspend fun restoreSecureItemsFromRecycleBin(
+        databaseId: Long,
+        items: List<SecureItem>,
+        forceSyncWrite: Boolean = false
+    ): Result<Map<Long, KeePassRestoreTarget>> = withContext(Dispatchers.IO) {
+        try {
+            val restoredTargets = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
+                val restoreResult = restoreEntriesFromRecycleBin(
+                    loaded = loaded,
+                    targets = items,
+                    targetType = KeePassChangeTarget.SECURE_ITEM,
+                    matcher = { entry, target, resolutionContext ->
+                        matchesSecureItemEntry(entry, target, resolutionContext)
+                    },
+                    roomId = { it.id },
+                    preferredGroupPath = { it.keepassGroupPath },
+                    preferredGroupUuid = { it.keepassGroupUuid }
+                )
+                MutationPlan(
+                    updatedDatabase = restoreResult.database,
+                    result = restoreResult.targetsByRoomId,
+                    beforeRemoteUpload = { database, _ ->
+                        enqueuePendingChangeSetsIfRemote(database, restoreResult.changeSets)
+                    },
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
+            }
+            Result.success(restoredTargets)
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -1780,10 +2208,21 @@ class KeePassKdbxService(
         plainPassword: String,
         customFields: List<KeePassCustomFieldData> = emptyList()
     ): Entry {
-        val base = existingEntry.copy(
-            fields = buildEntryFields(entry, plainPassword, customFields)
-        )
+        val base = buildPasswordEntryFieldPatch(entry, plainPassword, customFields).applyTo(existingEntry)
         return applyPasswordEntryPresentation(base, entry)
+    }
+
+    private fun buildPasswordEntryFieldPatch(
+        entry: PasswordEntry,
+        plainPassword: String,
+        customFields: List<KeePassCustomFieldData> = emptyList()
+    ): KeePassEntryFieldPatch {
+        val replacementFields = buildEntryFields(entry, plainPassword, customFields)
+        return KeePassEntryFieldPatch.fromEntryFields(
+            replacementFields = replacementFields,
+            removeManagedField = KeePassFieldRegistry::isPasswordEntryOverlayField,
+            removeFieldNames = replacementFields.keys + customFields.map { it.title.trim() }
+        )
     }
 
     private fun applyPasswordEntryPresentation(
@@ -1801,8 +2240,29 @@ class KeePassKdbxService(
     private fun buildPasskeyEntry(passkey: PasskeyEntry): Entry {
         return Entry(
             uuid = UUID.randomUUID(),
-            fields = buildPasskeyFields(passkey)
+            fields = buildPasskeyFields(passkey),
+            times = buildPasskeyTimeData(passkey)
         )
+    }
+
+    private fun buildPasskeyTimeData(passkey: PasskeyEntry): TimeData {
+        val createdAt = epochMillisToInstant(passkey.createdAt)
+        val lastUsedAt = epochMillisToInstant(passkey.lastUsedAt.takeIf { it > 0L } ?: passkey.createdAt)
+        val now = Instant.now()
+        return TimeData(
+            creationTime = createdAt,
+            lastAccessTime = lastUsedAt,
+            lastModificationTime = now,
+            locationChanged = now,
+            expiryTime = createdAt,
+            expires = false,
+            usageCount = passkey.useCount
+        )
+    }
+
+    private fun epochMillisToInstant(value: Long): Instant {
+        return runCatching { Instant.ofEpochMilli(value.takeIf { it > 0L } ?: System.currentTimeMillis()) }
+            .getOrDefault(Instant.now())
     }
 
     private fun buildEntryFields(
@@ -1964,10 +2424,53 @@ class KeePassKdbxService(
         return EntryFields.of(*pairs.toTypedArray())
     }
 
+    private fun buildUpdatedPasskeyEntry(
+        existingEntry: Entry,
+        passkey: PasskeyEntry
+    ): Entry {
+        return buildPasskeyEntryFieldPatch(passkey, existingEntry).applyTo(existingEntry)
+    }
+
+    private fun buildPasskeyEntryFieldPatch(
+        passkey: PasskeyEntry,
+        existingEntry: Entry? = null
+    ): KeePassEntryFieldPatch {
+        val replacementFields = buildPasskeyFields(passkey, existingEntry)
+        return KeePassEntryFieldPatch.fromEntryFields(
+            replacementFields = replacementFields,
+            removeManagedField = KeePassFieldRegistry::isPasskeyEntryOverlayField,
+            removeFieldNames = replacementFields.keys
+        )
+    }
+
     private fun buildSecureItemEntry(item: SecureItem): Entry {
         return Entry(
             uuid = parseUuid(item.keepassEntryUuid) ?: UUID.randomUUID(),
             fields = buildSecureItemFields(item)
+        )
+    }
+
+    private fun buildUpdatedSecureItemEntry(
+        existingEntry: Entry,
+        item: SecureItem
+    ): Entry {
+        return buildSecureItemEntryFieldPatch(item).applyTo(existingEntry)
+    }
+
+    private fun buildSecureItemEntryFieldPatch(item: SecureItem): KeePassEntryFieldPatch {
+        val replacementFields = buildSecureItemFields(item)
+        val removeManagedField = if (item.itemType == ItemType.TOTP) {
+            { name: String ->
+                KeePassFieldRegistry.isSecureItemOverlayField(name) ||
+                    KeePassFieldRegistry.isKeePassTotpField(name)
+            }
+        } else {
+            KeePassFieldRegistry::isSecureItemOverlayField
+        }
+        return KeePassEntryFieldPatch.fromEntryFields(
+            replacementFields = replacementFields,
+            removeManagedField = removeManagedField,
+            removeFieldNames = replacementFields.keys
         )
     }
 
@@ -1996,11 +2499,35 @@ class KeePassKdbxService(
             }
         } else {
             pairs += FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(portableItemData))
+            if (item.itemType == ItemType.TOTP) {
+                appendKeePassTotpFields(pairs, item, portableItemData)
+            }
         }
         if (monicaId.isNotEmpty()) {
             pairs.add(FIELD_MONICA_ITEM_ID to EntryValue.Plain(monicaId))
         }
         return EntryFields.of(*pairs.toTypedArray())
+    }
+
+    private fun appendKeePassTotpFields(
+        pairs: MutableList<Pair<String, EntryValue>>,
+        item: SecureItem,
+        portableItemData: String
+    ) {
+        val totpData = TotpDataResolver.parseStoredItemData(
+            itemData = portableItemData,
+            fallbackIssuer = item.title,
+            fallbackAccountName = item.title
+        ) ?: return
+        val fields = KeePassTotpCodec.toKeePassFields(totpData, item.title)
+        fields.forEach { (name, value) ->
+            val entryValue = when (name) {
+                KeePassTotpCodec.FIELD_OTP,
+                KeePassTotpCodec.FIELD_TOTP_SEED -> EntryValue.Encrypted(EncryptedValue.fromString(value))
+                else -> EntryValue.Plain(value)
+            }
+            pairs += name to entryValue
+        }
     }
 
     private fun appendBankCardFields(
@@ -2082,16 +2609,18 @@ class KeePassKdbxService(
 
     private fun updateEntry(
         keePassDatabase: KeePassDatabase,
+        databaseId: Long?,
         entry: PasswordEntry,
         plainPassword: String,
         customFields: List<KeePassCustomFieldData> = emptyList()
-    ): Pair<KeePassDatabase, Boolean> {
+    ): KeePassEntryUpdateResult {
         val resolutionContext = buildResolutionContext(keePassDatabase)
-        var firstMatchedEntry: Entry? = null
+        val (entryContexts, _) = collectEntryContexts(keePassDatabase)
+        var firstMatchedContext: EntryTraversalContext? = null
         val matcher: (Entry) -> Boolean = { existing ->
             val matches = matchesPasswordEntry(existing, entry, resolutionContext)
-            if (matches && firstMatchedEntry == null) {
-                firstMatchedEntry = existing
+            if (matches && firstMatchedContext == null) {
+                firstMatchedContext = entryContexts.firstOrNull { it.entry.uuid == existing.uuid }
             }
             matches
         }
@@ -2099,11 +2628,17 @@ class KeePassKdbxService(
         val removeResult = removeEntryInGroup(rootGroup, matcher)
         val removedCount = removeResult.second
         if (removedCount <= 0) {
-            return keePassDatabase to false
+            return KeePassEntryUpdateResult(
+                database = keePassDatabase,
+                changed = false,
+                changeSets = emptyList()
+            )
         }
 
-        val newEntry = firstMatchedEntry?.let { existing ->
-            buildUpdatedEntry(existing, entry, plainPassword, customFields)
+        val matchedContext = firstMatchedContext
+        val fieldPatch = buildPasswordEntryFieldPatch(entry, plainPassword, customFields)
+        val newEntry = matchedContext?.entry?.let { existing ->
+            applyPasswordEntryPresentation(fieldPatch.applyTo(existing), entry)
         } ?: buildEntry(entry, plainPassword, customFields)
         val updatedRoot = addEntryToGroupPath(
             rootGroup = removeResult.first,
@@ -2111,19 +2646,42 @@ class KeePassKdbxService(
             entry = newEntry
         )
         val updatedDatabase = keePassDatabase.modifyParentGroup { updatedRoot }
-        return updatedDatabase to true
+        return KeePassEntryUpdateResult(
+            database = updatedDatabase,
+            changed = true,
+            changeSets = buildFieldUpdateChangeSets(
+                database = keePassDatabase,
+                databaseId = databaseId,
+                target = KeePassChangeTarget.PASSWORD,
+                matchedContext = matchedContext,
+                targetGroupPath = entry.keepassGroupPath,
+                fieldPatch = fieldPatch.toChangePatch(
+                    managedScope = KeePassManagedFieldScope.PASSWORD,
+                    baseEntry = matchedContext?.entry
+                ),
+                includeMoveChange = true
+            )
+        )
     }
 
     private fun updateSecureItemInternal(
         keePassDatabase: KeePassDatabase,
+        databaseId: Long?,
         item: SecureItem
-    ): Pair<KeePassDatabase, Boolean> {
+    ): KeePassEntryUpdateResult {
         val resolutionContext = buildResolutionContext(keePassDatabase)
+        val (entryContexts, _) = collectEntryContexts(keePassDatabase)
+        var matchedContext: EntryTraversalContext? = null
+        val fieldPatch = buildSecureItemEntryFieldPatch(item)
         val matcher: (Entry) -> Boolean = { existing ->
-            matchesSecureItemEntry(existing, item, resolutionContext)
+            val matches = matchesSecureItemEntry(existing, item, resolutionContext)
+            if (matches && matchedContext == null) {
+                matchedContext = entryContexts.firstOrNull { it.entry.uuid == existing.uuid }
+            }
+            matches
         }
         val updater: (Entry) -> Entry = { existing ->
-            existing.copy(fields = buildSecureItemFields(item))
+            fieldPatch.applyTo(existing)
         }
         val result = updateEntryInGroup(keePassDatabase.content.group, matcher, updater)
         val updatedDatabase = if (result.second) {
@@ -2131,35 +2689,90 @@ class KeePassKdbxService(
         } else {
             keePassDatabase
         }
-        return updatedDatabase to result.second
+        return KeePassEntryUpdateResult(
+            database = updatedDatabase,
+            changed = result.second,
+            changeSets = if (result.second) {
+                buildFieldUpdateChangeSets(
+                    database = keePassDatabase,
+                    databaseId = databaseId,
+                    target = KeePassChangeTarget.SECURE_ITEM,
+                    matchedContext = matchedContext,
+                    targetGroupPath = item.keepassGroupPath,
+                    fieldPatch = fieldPatch.toChangePatch(
+                        managedScope = KeePassManagedFieldScope.SECURE_ITEM,
+                        baseEntry = matchedContext?.entry
+                    ),
+                    includeMoveChange = false
+                )
+            } else {
+                emptyList()
+            }
+        )
     }
 
     private fun updatePasskeyInternal(
         keePassDatabase: KeePassDatabase,
+        databaseId: Long?,
         passkey: PasskeyEntry
-    ): Pair<KeePassDatabase, Boolean> {
+    ): KeePassEntryUpdateResult {
         val resolutionContext = buildResolutionContext(keePassDatabase)
+        val (entryContexts, _) = collectEntryContexts(keePassDatabase)
+        var matchedContext: EntryTraversalContext? = null
         val matcher: (Entry) -> Boolean = { existing ->
-            matchesPasskeyEntry(existing, passkey, resolutionContext)
+            val matches = matchesPasskeyEntry(existing, passkey, resolutionContext)
+            if (matches && matchedContext == null) {
+                matchedContext = entryContexts.firstOrNull { it.entry.uuid == existing.uuid }
+            }
+            matches
         }
-        val updater: (Entry) -> Entry = { existing ->
-            existing.copy(fields = buildPasskeyFields(passkey, existing))
+        val rootGroup = keePassDatabase.content.group
+        val removeResult = removeEntryInGroup(rootGroup, matcher)
+        if (removeResult.second <= 0) {
+            return KeePassEntryUpdateResult(
+                database = keePassDatabase,
+                changed = false,
+                changeSets = emptyList()
+            )
         }
-        val result = updateEntryInGroup(keePassDatabase.content.group, matcher, updater)
-        val updatedDatabase = if (result.second) {
-            keePassDatabase.modifyParentGroup { result.first }
-        } else {
-            keePassDatabase
-        }
-        return updatedDatabase to result.second
+        val existingEntry = matchedContext?.entry
+            ?: throw IllegalStateException("Matched KeePass passkey entry context missing")
+        val fieldPatch = buildPasskeyEntryFieldPatch(passkey, existingEntry)
+        val updatedEntry = fieldPatch.applyTo(existingEntry)
+        val updatedRoot = addEntryToGroupPath(
+            rootGroup = removeResult.first,
+            groupPath = passkey.keepassGroupPath,
+            entry = updatedEntry
+        )
+        val updatedDatabase = keePassDatabase.modifyParentGroup { updatedRoot }
+        return KeePassEntryUpdateResult(
+            database = updatedDatabase,
+            changed = true,
+            changeSets = buildFieldUpdateChangeSets(
+                database = keePassDatabase,
+                databaseId = databaseId,
+                target = KeePassChangeTarget.PASSKEY,
+                matchedContext = matchedContext,
+                targetGroupPath = passkey.keepassGroupPath,
+                fieldPatch = fieldPatch.toChangePatch(
+                    managedScope = KeePassManagedFieldScope.PASSKEY,
+                    baseEntry = matchedContext?.entry
+                ),
+                includeMoveChange = true
+            )
+        )
     }
 
     private fun upsertPasskey(
         keePassDatabase: KeePassDatabase,
         passkey: PasskeyEntry
     ): KeePassDatabase {
-        val updateResult = updatePasskeyInternal(keePassDatabase, passkey)
-        if (updateResult.second) return updateResult.first
+        val updateResult = updatePasskeyInternal(
+            keePassDatabase = keePassDatabase,
+            databaseId = null,
+            passkey = passkey
+        )
+        if (updateResult.changed) return updateResult.database
 
         val newEntry = buildPasskeyEntry(passkey)
         val updatedRoot = addEntryToGroupPath(
@@ -2168,6 +2781,103 @@ class KeePassKdbxService(
             entry = newEntry
         )
         return keePassDatabase.modifyParentGroup { updatedRoot }
+    }
+
+    private fun buildFieldUpdateChangeSets(
+        database: KeePassDatabase,
+        databaseId: Long?,
+        target: KeePassChangeTarget,
+        matchedContext: EntryTraversalContext?,
+        targetGroupPath: String?,
+        fieldPatch: KeePassFieldChangePatch,
+        includeMoveChange: Boolean
+    ): List<KeePassChangeSet> {
+        if (databaseId == null || databaseId <= 0 || matchedContext == null) {
+            return emptyList()
+        }
+        val baseFingerprint = buildConflictEntrySignature(matchedContext.entry)
+        val entryUuid = matchedContext.entry.uuid.toString()
+        val sourceGroupUuid = matchedContext.groupUuid?.toString()
+        val changes = mutableListOf(
+            KeePassChangeSet(
+                databaseId = databaseId,
+                target = target,
+                operation = KeePassChangeOperation.FIELD_PATCH,
+                entryUuid = entryUuid,
+                baseFingerprint = baseFingerprint,
+                baseGroupPath = matchedContext.groupPath,
+                baseGroupUuid = sourceGroupUuid,
+                fieldPatch = fieldPatch
+            )
+        )
+        if (includeMoveChange && matchedContext.groupUuid != null) {
+            val targetPath = targetGroupPath?.takeIf { it.isNotBlank() }
+            val targetGroupUuid = if (targetPath == null) {
+                database.content.group.uuid
+            } else {
+                findGroupUuidByPath(
+                    group = database.content.group,
+                    currentPathKey = null,
+                    targetPathKey = targetPath
+                )
+            }
+            if (targetGroupUuid != null && targetGroupUuid != matchedContext.groupUuid) {
+                changes += KeePassChangeSet(
+                    databaseId = databaseId,
+                    target = target,
+                    operation = KeePassChangeOperation.MOVE_ENTRY,
+                    entryUuid = entryUuid,
+                    baseFingerprint = baseFingerprint,
+                    baseGroupPath = matchedContext.groupPath,
+                    baseGroupUuid = sourceGroupUuid,
+                    structurePatch = KeePassStructureChangePatch(
+                        sourceGroupPath = matchedContext.groupPath,
+                        sourceGroupUuid = sourceGroupUuid,
+                        targetGroupPath = targetPath,
+                        targetGroupUuid = targetGroupUuid.toString()
+                    )
+                )
+            }
+        }
+        return changes
+    }
+
+    private fun buildCreateEntryChangeSet(
+        database: KeePassDatabase,
+        databaseId: Long,
+        target: KeePassChangeTarget,
+        entry: Entry,
+        targetGroupPath: String?
+    ): KeePassChangeSet? {
+        val resolvedTargetPath = targetGroupPath?.takeIf { it.isNotBlank() }
+        val targetGroupUuid = if (resolvedTargetPath == null) {
+            database.content.group.uuid
+        } else {
+            findGroupUuidByPath(
+                group = database.content.group,
+                currentPathKey = null,
+                targetPathKey = resolvedTargetPath
+            )
+        } ?: return null
+        return KeePassChangeSet(
+            databaseId = databaseId,
+            target = target,
+            operation = KeePassChangeOperation.CREATE_ENTRY,
+            entryUuid = entry.uuid.toString(),
+            baseFingerprint = null,
+            entryPatch = KeePassEntryCreatePatch(
+                targetGroupPath = resolvedTargetPath,
+                targetGroupUuid = targetGroupUuid.toString(),
+                fields = entry.fields.map { (name, value) ->
+                    takagi.ru.monica.keepass.KeePassFieldChange(
+                        name = name,
+                        value = runCatching { value.content }.getOrDefault(""),
+                        protected = value is EntryValue.Encrypted
+                    )
+                },
+                iconName = entry.icon?.name
+            )
+        )
     }
 
     private fun removeEntry(
@@ -2194,23 +2904,6 @@ class KeePassKdbxService(
         val resolutionContext = buildResolutionContext(keePassDatabase)
         val matcher: (Entry) -> Boolean = { existing ->
             matchesSecureItemEntry(existing, item, resolutionContext)
-        }
-        val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
-        val updatedDatabase = if (result.second > 0) {
-            keePassDatabase.modifyParentGroup { result.first }
-        } else {
-            keePassDatabase
-        }
-        return updatedDatabase to result.second
-    }
-
-    private fun removePasskey(
-        keePassDatabase: KeePassDatabase,
-        passkey: PasskeyEntry
-    ): Pair<KeePassDatabase, Int> {
-        val resolutionContext = buildResolutionContext(keePassDatabase)
-        val matcher: (Entry) -> Boolean = { existing ->
-            matchesPasskeyEntry(existing, passkey, resolutionContext)
         }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
         val updatedDatabase = if (result.second > 0) {
@@ -2296,6 +2989,252 @@ class KeePassKdbxService(
         }
 
         return group.copy(entries = keptEntries, groups = newGroups) to removedCount
+    }
+
+    private data class KeePassRecycleRestoreResult(
+        val database: KeePassDatabase,
+        val targetsByRoomId: Map<Long, KeePassRestoreTarget>,
+        val changeSets: List<KeePassChangeSet>
+    )
+
+    private data class KeePassStructureApplyResult(
+        val database: KeePassDatabase,
+        val changedCount: Int,
+        val changeSets: List<KeePassChangeSet>
+    )
+
+    private data class KeePassEntryUpdateResult(
+        val database: KeePassDatabase,
+        val changed: Boolean,
+        val changeSets: List<KeePassChangeSet>
+    )
+
+    private fun <T> applyEntryStructureChanges(
+        loaded: LoadedDatabase,
+        targets: List<T>,
+        targetType: KeePassChangeTarget,
+        operation: KeePassChangeOperation,
+        matcher: (Entry, T, KeePassEntryResolutionContext) -> Boolean
+    ): KeePassStructureApplyResult {
+        require(
+            operation == KeePassChangeOperation.MOVE_TO_RECYCLE_BIN ||
+                operation == KeePassChangeOperation.PERMANENT_DELETE
+        ) {
+            "Unsupported KeePass structure operation for entry apply: $operation"
+        }
+        if (targets.isEmpty()) {
+            return KeePassStructureApplyResult(
+                database = loaded.keePassDatabase,
+                changedCount = 0,
+                changeSets = emptyList()
+            )
+        }
+
+        val recycleBinUuid = if (operation == KeePassChangeOperation.MOVE_TO_RECYCLE_BIN) {
+            resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
+                ?: throw IllegalStateException("KeePass recycle bin unavailable")
+        } else {
+            resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
+        }
+        val recycleBinPath = recycleBinUuid?.let {
+            findGroupPathByUuid(
+                group = loaded.keePassDatabase.content.group,
+                currentPathKey = null,
+                targetUuid = it
+            )
+        }
+        if (operation == KeePassChangeOperation.MOVE_TO_RECYCLE_BIN && recycleBinPath == null) {
+            throw IllegalStateException("KeePass recycle bin path unavailable")
+        }
+
+        val (entryContexts, hasRecycleBinMeta) = collectEntryContexts(loaded.keePassDatabase)
+        val resolutionContext = KeePassFieldReferenceResolver.buildContext(entryContexts.map { it.entry })
+        val applier = KeePassChangeSetApplier()
+        var currentDatabase = loaded.keePassDatabase
+        var changedCount = 0
+        val appliedChangeSets = mutableListOf<KeePassChangeSet>()
+        val usedEntryUuids = mutableSetOf<UUID>()
+
+        targets.forEach { target ->
+            val context = entryContexts.firstOrNull { candidate ->
+                candidate.entry.uuid !in usedEntryUuids &&
+                    candidate.matchesStructureOperationScope(
+                        operation = operation,
+                        hasRecycleBinMeta = hasRecycleBinMeta
+                    ) &&
+                    matcher(candidate.entry, target, resolutionContext)
+            } ?: return@forEach
+            val parentUuid = context.groupUuid
+                ?: throw IllegalStateException("KeePass entry parent group unavailable for ${context.entry.uuid}")
+
+            val structurePatch = when (operation) {
+                KeePassChangeOperation.MOVE_TO_RECYCLE_BIN -> KeePassStructureChangePatch(
+                    sourceGroupPath = context.groupPath,
+                    sourceGroupUuid = parentUuid.toString(),
+                    targetGroupPath = recycleBinPath,
+                    targetGroupUuid = recycleBinUuid!!.toString(),
+                    recycleBinGroupUuid = recycleBinUuid.toString(),
+                    previousParentGroupUuid = parentUuid.toString()
+                )
+                KeePassChangeOperation.PERMANENT_DELETE -> KeePassStructureChangePatch(
+                    sourceGroupPath = context.groupPath,
+                    sourceGroupUuid = parentUuid.toString(),
+                    recycleBinGroupUuid = recycleBinUuid?.toString(),
+                    previousParentGroupUuid = context.entry.previousParentGroup?.toString()
+                )
+                else -> error("Unsupported KeePass structure operation: $operation")
+            }
+
+            val changeSet = KeePassChangeSet(
+                databaseId = loaded.database.id,
+                target = targetType,
+                operation = operation,
+                entryUuid = context.entry.uuid.toString(),
+                baseFingerprint = buildConflictEntrySignature(context.entry),
+                baseGroupPath = context.groupPath,
+                baseGroupUuid = parentUuid.toString(),
+                structurePatch = structurePatch
+            )
+
+            currentDatabase = applier.apply(currentDatabase, changeSet).updatedDatabase
+            usedEntryUuids += context.entry.uuid
+            appliedChangeSets += changeSet
+            changedCount++
+        }
+
+        return KeePassStructureApplyResult(
+            database = currentDatabase,
+            changedCount = changedCount,
+            changeSets = appliedChangeSets
+        )
+    }
+
+    private fun EntryTraversalContext.matchesStructureOperationScope(
+        operation: KeePassChangeOperation,
+        hasRecycleBinMeta: Boolean
+    ): Boolean {
+        return when (operation) {
+            KeePassChangeOperation.MOVE_TO_RECYCLE_BIN -> !isInKeePassRecycleBin(hasRecycleBinMeta)
+            KeePassChangeOperation.PERMANENT_DELETE -> true
+            else -> false
+        }
+    }
+
+    private fun <T> restoreEntriesFromRecycleBin(
+        loaded: LoadedDatabase,
+        targets: List<T>,
+        targetType: KeePassChangeTarget,
+        matcher: (Entry, T, KeePassEntryResolutionContext) -> Boolean,
+        roomId: (T) -> Long,
+        preferredGroupPath: (T) -> String?,
+        preferredGroupUuid: (T) -> String?
+    ): KeePassRecycleRestoreResult {
+        if (targets.isEmpty()) {
+            return KeePassRecycleRestoreResult(
+                database = loaded.keePassDatabase,
+                targetsByRoomId = emptyMap(),
+                changeSets = emptyList()
+            )
+        }
+
+        val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
+            ?: throw IllegalStateException("KeePass recycle bin unavailable")
+        val (entryContexts, hasRecycleBinMeta) = collectEntryContexts(loaded.keePassDatabase)
+        val resolutionContext = KeePassFieldReferenceResolver.buildContext(entryContexts.map { it.entry })
+        val groupContextIndex = buildGroupTraversalContextIndex(loaded.keePassDatabase)
+        val applier = KeePassChangeSetApplier()
+        var currentDatabase = loaded.keePassDatabase
+        val restoredTargets = linkedMapOf<Long, KeePassRestoreTarget>()
+        val appliedChangeSets = mutableListOf<KeePassChangeSet>()
+        val usedEntryUuids = mutableSetOf<UUID>()
+
+        targets.forEach { target ->
+            val targetRoomId = roomId(target)
+            val context = entryContexts.firstOrNull { candidate ->
+                candidate.entry.uuid !in usedEntryUuids &&
+                    candidate.isInKeePassRecycleBin(hasRecycleBinMeta) &&
+                    matcher(candidate.entry, target, resolutionContext)
+            } ?: return@forEach
+
+            val restoreTarget = resolveRestoreTargetFromEntryContext(
+                entryContext = context,
+                hasRecycleBinMeta = hasRecycleBinMeta,
+                groupContextIndex = groupContextIndex
+            ).withFallback(
+                preferredGroupPath = preferredGroupPath(target),
+                preferredGroupUuid = preferredGroupUuid(target),
+                groupContextIndex = groupContextIndex
+            )
+            val previousParentUuid = context.entry.previousParentGroup
+                ?: parseUuid(restoreTarget.groupUuid)
+                ?: throw IllegalStateException("KeePass recycle bin restore target unavailable for ${context.entry.uuid}")
+
+            val changeSet = KeePassChangeSet(
+                databaseId = loaded.database.id,
+                target = targetType,
+                operation = KeePassChangeOperation.RESTORE_FROM_RECYCLE_BIN,
+                entryUuid = context.entry.uuid.toString(),
+                baseFingerprint = buildConflictEntrySignature(context.entry),
+                baseGroupPath = context.groupPath,
+                baseGroupUuid = context.groupUuid?.toString(),
+                structurePatch = KeePassStructureChangePatch(
+                    sourceGroupPath = context.groupPath,
+                    sourceGroupUuid = context.groupUuid?.toString(),
+                    targetGroupPath = restoreTarget.groupPath,
+                    targetGroupUuid = restoreTarget.groupUuid ?: previousParentUuid.toString(),
+                    recycleBinGroupUuid = recycleBinUuid.toString(),
+                    previousParentGroupUuid = previousParentUuid.toString()
+                )
+            )
+
+            currentDatabase = applier.apply(currentDatabase, changeSet).updatedDatabase
+            usedEntryUuids += context.entry.uuid
+            appliedChangeSets += changeSet
+            restoredTargets[targetRoomId] = restoreTarget.copy(
+                groupUuid = restoreTarget.groupUuid ?: previousParentUuid.toString()
+            )
+        }
+
+        return KeePassRecycleRestoreResult(
+            database = currentDatabase,
+            targetsByRoomId = restoredTargets,
+            changeSets = appliedChangeSets
+        )
+    }
+
+    private fun EntryTraversalContext.isInKeePassRecycleBin(hasRecycleBinMeta: Boolean): Boolean {
+        return if (hasRecycleBinMeta) {
+            isInRecycleBinByMeta
+        } else {
+            isLikelyRecycleBinPath(groupPath)
+        }
+    }
+
+    private fun KeePassRestoreTarget.withFallback(
+        preferredGroupPath: String?,
+        preferredGroupUuid: String?,
+        groupContextIndex: Map<UUID, GroupTraversalContext>
+    ): KeePassRestoreTarget {
+        if (!groupUuid.isNullOrBlank() || !groupPath.isNullOrBlank()) {
+            return this
+        }
+        val preferredUuid = parseUuid(preferredGroupUuid)
+        if (preferredUuid != null) {
+            val preferredContext = groupContextIndex[preferredUuid]
+            if (preferredContext != null && !preferredContext.isInRecycleBinByMeta) {
+                return KeePassRestoreTarget(
+                    groupPath = preferredContext.pathKey,
+                    groupUuid = preferredContext.groupUuid.toString()
+                )
+            }
+        }
+        if (!preferredGroupPath.isNullOrBlank() && !isLikelyRecycleBinPath(preferredGroupPath)) {
+            return KeePassRestoreTarget(
+                groupPath = preferredGroupPath,
+                groupUuid = preferredGroupUuid
+            )
+        }
+        return this
     }
 
     private fun addEntryToGroupPath(
@@ -3046,6 +3985,9 @@ class KeePassKdbxService(
         groupUuid: UUID?,
         resolutionContext: KeePassEntryResolutionContext? = null
     ): PasskeyEntry? {
+        if (isMonicaConflictCopy(entry, resolutionContext)) {
+            return null
+        }
         val title = getFieldValue(entry, "Title", resolutionContext)
         val notes = getFieldValue(entry, "Notes", resolutionContext)
         val rawCredentialId = getFieldValue(entry, FIELD_MONICA_PASSKEY_CREDENTIAL_ID, resolutionContext)
@@ -3076,7 +4018,12 @@ class KeePassKdbxService(
             notes = notes,
             databaseId = databaseId,
             groupPath = groupPath,
-            groupUuid = groupUuid?.toString()
+            groupUuid = groupUuid?.toString(),
+            createdAt = entry.times?.creationTime?.toEpochMilli() ?: System.currentTimeMillis(),
+            lastUsedAt = entry.times?.lastAccessTime?.toEpochMilli()
+                ?: entry.times?.creationTime?.toEpochMilli()
+                ?: System.currentTimeMillis(),
+            useCount = entry.times?.usageCount ?: 0
         )
 
         return passkey?.copy(
@@ -3145,45 +4092,8 @@ class KeePassKdbxService(
             if (fallback.isNullOrBlank()) fallback = value
         }
 
-        val standardFields = setOf(
-            "Title", "UserName", "Password", "URL", "Notes",
-            "Username", "User", "Login", "Url", "Website", "URI", "Note", "Comment",
-            FIELD_APP_PACKAGE_NAME, "AppPackageName", "MonicaAppPackageName",
-            FIELD_APP_NAME, "AppName", "MonicaAppName",
-            FIELD_EMAIL, "E-mail", "Mail",
-            FIELD_PHONE, "Phone Number", "Telephone",
-            FIELD_ADDRESS_LINE, "Address Line",
-            FIELD_CITY, FIELD_STATE, "Province", FIELD_POSTAL_CODE, "PostalCode", "Zip Code", "ZipCode",
-            FIELD_COUNTRY,
-            FIELD_CARD_NUMBER, "CardNumber", "Credit Card Number", "CreditCardNumber",
-            FIELD_CARD_HOLDER, "CardHolder", "Credit Card Holder", "CreditCardHolder",
-            FIELD_CARD_EXPIRY, "CardExpiry", "Expiration Date", "Expiry Date",
-            FIELD_CARD_CVV, "CardCVV", "CVV", "CVC",
-            "Expiry Month", "Expiry Year", FIELD_BANK_NAME, FIELD_CARD_TYPE,
-            FIELD_BILLING_ADDRESS, FIELD_BRAND, FIELD_NICKNAME,
-            FIELD_VALID_FROM_MONTH, FIELD_VALID_FROM_YEAR, FIELD_PIN, FIELD_IBAN,
-            FIELD_SWIFT_BIC, FIELD_ROUTING_NUMBER, FIELD_ACCOUNT_NUMBER,
-            FIELD_BRANCH_CODE, FIELD_CURRENCY, FIELD_CUSTOMER_SERVICE_PHONE,
-            FIELD_SSO_PROVIDER, "SsoProvider", "MonicaSsoProvider", FIELD_MONICA_SSO_REF_ENTRY_ID,
-            "otp", "TOTP Seed", "TOTP Settings",
-            FIELD_MONICA_LOCAL_ID, FIELD_MONICA_ITEM_ID,
-            FIELD_MONICA_ITEM_TYPE, FIELD_MONICA_ITEM_DATA,
-            FIELD_MONICA_IMAGE_PATHS, FIELD_MONICA_IS_FAVORITE,
-            FIELD_MONICA_PASSKEY_CREDENTIAL_ID, FIELD_MONICA_PASSKEY_DATA,
-            FIELD_MONICA_PASSKEY_MODE,
-            FIELD_WIFI_SSID, FIELD_MONICA_WIFI_DATA, FIELD_MONICA_LOGIN_TYPE,
-            KeePassDxPasskeyCodec.FIELD_PASSKEY,
-            KeePassDxPasskeyCodec.FIELD_USERNAME,
-            KeePassDxPasskeyCodec.FIELD_PRIVATE_KEY,
-            KeePassDxPasskeyCodec.FIELD_CREDENTIAL_ID,
-            KeePassDxPasskeyCodec.FIELD_USER_HANDLE,
-            KeePassDxPasskeyCodec.FIELD_RELYING_PARTY,
-            KeePassDxPasskeyCodec.FIELD_FLAG_BE,
-            KeePassDxPasskeyCodec.FIELD_FLAG_BS
-        )
-        val standardFieldsLower = standardFields.mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
         entry.fields.forEach { (key, value) ->
-            if (key.lowercase(Locale.ROOT) in standardFieldsLower || key.startsWith("_etm_")) return@forEach
+            if (!KeePassFieldRegistry.isPasswordSecretFallbackCandidateField(key)) return@forEach
             if (value is EntryValue.Encrypted) {
                 val content = KeePassFieldReferenceResolver.resolveValue(
                     rawValue = runCatching { value.content }.getOrDefault(""),
@@ -3287,158 +4197,35 @@ class KeePassKdbxService(
         }
     }
 
+    private fun isMonicaConflictCopy(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        val marker = getFieldValue(entry, FIELD_MONICA_CONFLICT_COPY, resolutionContext)
+            .trim()
+            .lowercase(Locale.ROOT)
+        return marker == "true" || marker == "1" || marker == "yes"
+    }
+
     private fun parseStandardTotpFromEntry(
         entry: Entry,
         resolutionContext: KeePassEntryResolutionContext? = null
     ): TotpData? {
-        val otpField = getFieldValueIgnoreCase(entry, resolutionContext, "otp")
-        val seedField = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Seed", "TOTPSeed")
-        val settingsField = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Settings", "TOTPSettings")
-        if (otpField.isBlank() && seedField.isBlank()) return null
-
-        val title = getFieldValue(entry, "Title", resolutionContext)
-        val username = getFieldValue(entry, "UserName", resolutionContext)
-        val url = getFieldValue(entry, "URL", resolutionContext)
-
-        parseOtpAuthUri(otpField, title, username, url)?.let { return it }
-
-        val seed = normalizeTotpSecret(
-            when {
-                seedField.isNotBlank() -> seedField
-                otpField.isNotBlank() && !otpField.contains("://") -> otpField
-                else -> ""
-            }
-        )
-        if (seed.isBlank()) return null
-
-        val settings = parseTotpSettings(settingsField)
-        return TotpData(
-            secret = seed,
-            issuer = title,
-            accountName = username,
-            period = settings.period,
-            digits = settings.digits,
-            algorithm = settings.algorithm,
-            otpType = settings.otpType,
-            counter = settings.counter,
-            link = url
-        )
-    }
-
-    private data class TotpSettingsParsed(
-        val period: Int = 30,
-        val digits: Int = 6,
-        val algorithm: String = "SHA1",
-        val otpType: OtpType = OtpType.TOTP,
-        val counter: Long = 0L
-    )
-
-    private fun parseTotpSettings(settings: String): TotpSettingsParsed {
-        if (settings.isBlank()) return TotpSettingsParsed()
-
-        var period = 30
-        var digits = 6
-        var algorithm = "SHA1"
-        var otpType = OtpType.TOTP
-        var counter = 0L
-
-        val tokens = settings.split(";", ",", " ")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-
-        tokens.forEach { token ->
-            if (token.contains("=")) {
-                val parts = token.split("=", limit = 2)
-                val key = parts[0].trim().lowercase(Locale.ROOT)
-                val value = parts.getOrNull(1)?.trim().orEmpty()
-                when (key) {
-                    "period", "step", "time_step" -> value.toIntOrNull()?.let { period = it }
-                    "digits", "length" -> value.toIntOrNull()?.let { digits = it }
-                    "algorithm", "algo", "digest" -> if (value.isNotBlank()) algorithm = value.uppercase(Locale.ROOT)
-                    "counter" -> value.toLongOrNull()?.let {
-                        counter = it
-                        otpType = OtpType.HOTP
-                    }
-                    "type" -> if (value.equals("hotp", ignoreCase = true)) otpType = OtpType.HOTP
-                }
-            } else {
-                token.toIntOrNull()?.let { number ->
-                    when {
-                        period == 30 -> period = number
-                        digits == 6 -> digits = number
-                    }
-                }
-                if (token.startsWith("SHA", ignoreCase = true)) {
-                    algorithm = token.uppercase(Locale.ROOT)
-                }
-            }
-        }
-
-        return TotpSettingsParsed(
-            period = period,
-            digits = digits,
-            algorithm = algorithm,
-            otpType = otpType,
-            counter = counter
-        )
-    }
-
-    private fun parseOtpAuthUri(
-        uri: String,
-        fallbackIssuer: String,
-        fallbackAccount: String,
-        fallbackLink: String
-    ): TotpData? {
-        if (!uri.startsWith("otpauth://", ignoreCase = true)) return null
-        return runCatching {
-            val parsed = URI(uri)
-            val typeRaw = parsed.host?.lowercase(Locale.ROOT).orEmpty()
-            val otpType = if (typeRaw == "hotp") OtpType.HOTP else OtpType.TOTP
-
-            val decodedLabel = URLDecoder.decode(parsed.path.trimStart('/'), "UTF-8")
-            val (labelIssuer, labelAccount) = if (decodedLabel.contains(":")) {
-                val parts = decodedLabel.split(":", limit = 2)
-                parts[0] to parts[1]
-            } else {
-                "" to decodedLabel
-            }
-
-            val params = mutableMapOf<String, String>()
-            parsed.query?.split("&")?.forEach { pair ->
-                val kv = pair.split("=", limit = 2)
-                if (kv.size == 2) {
-                    params[kv[0].lowercase(Locale.ROOT)] = URLDecoder.decode(kv[1], "UTF-8")
-                }
-            }
-
-            val secret = normalizeTotpSecret(params["secret"].orEmpty())
-            if (secret.isBlank()) return null
-
-            val issuer = params["issuer"].orEmpty().ifBlank { labelIssuer }.ifBlank { fallbackIssuer }
-            val account = labelAccount.ifBlank { fallbackAccount }
-            val algorithm = params["algorithm"]?.uppercase(Locale.ROOT) ?: "SHA1"
-            val digits = params["digits"]?.toIntOrNull() ?: 6
-            val period = params["period"]?.toIntOrNull() ?: 30
-            val counter = params["counter"]?.toLongOrNull() ?: 0L
-
-            TotpData(
-                secret = secret,
-                issuer = issuer,
-                accountName = account,
-                period = period,
-                digits = digits,
-                algorithm = algorithm,
-                otpType = otpType,
-                counter = counter,
-                link = fallbackLink
+        return KeePassTotpCodec.parse(
+            KeePassTotpCodec.Fields(
+                otp = getFieldValueIgnoreCase(entry, resolutionContext, "otp"),
+                seed = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Seed", "TOTPSeed"),
+                settings = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Settings", "TOTPSettings"),
+                period = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Period", "TOTPPeriod"),
+                digits = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Digits", "TOTPDigits"),
+                algorithm = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Algorithm", "TOTPAlgorithm"),
+                counter = getFieldValueIgnoreCase(entry, resolutionContext, "HOTP Counter", "HOTPCounter"),
+                type = getFieldValueIgnoreCase(entry, resolutionContext, "OTP Type", "OTPType", "TOTP Type", "TOTPType"),
+                issuer = getFieldValue(entry, "Title", resolutionContext),
+                accountName = getFieldValue(entry, "UserName", resolutionContext),
+                link = getFieldValue(entry, "URL", resolutionContext)
             )
-        }.getOrNull()
-    }
-
-    private fun normalizeTotpSecret(value: String): String {
-        return value
-            .replace(Regex("[\\s\\-]"), "")
-            .uppercase(Locale.ROOT)
+        )
     }
 
     private fun collectEntries(group: Group, entries: MutableList<Entry>) {
@@ -3863,6 +4650,19 @@ class KeePassKdbxService(
         val groupInfo: KeePassGroupInfo
     )
 
+    private fun buildGroupInfoFromPath(
+        group: Group,
+        pathKey: String
+    ): KeePassGroupInfo {
+        return KeePassGroupInfo(
+            name = group.name,
+            path = pathKey,
+            uuid = group.uuid.toString(),
+            depth = decodeKeePassPathSegments(pathKey).size - 1,
+            displayPath = decodeKeePassPathForDisplay(pathKey)
+        )
+    }
+
     private fun insertGroupToPath(
         group: Group,
         parentSegments: List<String>,
@@ -3911,6 +4711,137 @@ class KeePassKdbxService(
         )
     }
 
+    private fun buildGroupTreeChangePatch(
+        database: KeePassDatabase,
+        root: Group,
+        sourceRootGroupUuid: UUID?,
+        targetParentGroupUuid: UUID?
+    ): KeePassGroupTreeChangePatch {
+        val referencedBinaryHashes = linkedSetOf<String>()
+        val snapshot = root.toGroupTreeSnapshot(referencedBinaryHashes)
+        val binaryPool = referencedBinaryHashes.map { hashHex ->
+            val hash = hashHex.toByteStringHash()
+            val binaryData = database.binaries[hash]
+                ?: throw IllegalStateException("KeePass binary pool is missing group tree attachment: $hashHex")
+            KeePassBinaryPoolItemPatch(
+                hash = hashHex,
+                protected = binaryData.memoryProtection,
+                compressed = true,
+                contentBase64 = Base64.encodeToString(
+                    binaryData.inputStream().use { it.readBytes() },
+                    Base64.NO_WRAP
+                )
+            )
+        }
+        return KeePassGroupTreeChangePatch(
+            root = snapshot,
+            binaryPool = binaryPool,
+            sourceRootGroupUuid = sourceRootGroupUuid?.toString(),
+            targetParentGroupUuid = targetParentGroupUuid?.toString()
+        )
+    }
+
+    private fun Group.toGroupTreeSnapshot(referencedBinaryHashes: MutableSet<String>): KeePassGroupTreeSnapshot {
+        return KeePassGroupTreeSnapshot(
+            uuid = uuid.toString(),
+            name = name,
+            notes = notes,
+            iconName = icon.name,
+            customIconUuid = customIconUuid?.toString(),
+            expanded = expanded,
+            defaultAutoTypeSequence = defaultAutoTypeSequence.orEmpty(),
+            enableAutoType = enableAutoType.name,
+            enableSearching = enableSearching.name,
+            lastTopVisibleEntryUuid = lastTopVisibleEntry?.toString(),
+            previousParentGroupUuid = previousParentGroup?.toString(),
+            tags = tags,
+            times = times?.toKeePassTimesPatch(),
+            customData = customData.toKeePassCustomDataPatchList(),
+            entries = entries.map { it.toEntryTreeSnapshot(referencedBinaryHashes) },
+            groups = groups.map { it.toGroupTreeSnapshot(referencedBinaryHashes) }
+        )
+    }
+
+    private fun Entry.toEntryTreeSnapshot(referencedBinaryHashes: MutableSet<String>): KeePassEntryTreeSnapshot {
+        return KeePassEntryTreeSnapshot(
+            uuid = uuid.toString(),
+            fields = fields.map { (name, value) ->
+                KeePassFieldChange(
+                    name = name,
+                    value = value.content,
+                    protected = value is EntryValue.Encrypted
+                )
+            },
+            binaries = binaries.map { reference ->
+                val hashHex = reference.hash.hex()
+                referencedBinaryHashes += hashHex
+                KeePassBinaryReferencePatch(
+                    name = reference.name,
+                    hash = hashHex
+                )
+            },
+            history = history.map { it.toEntryTreeSnapshot(referencedBinaryHashes) },
+            iconName = icon.name,
+            customIconUuid = customIconUuid?.toString(),
+            foregroundColor = foregroundColor,
+            backgroundColor = backgroundColor,
+            overrideUrl = overrideUrl,
+            autoType = autoType?.toKeePassAutoTypePatch(),
+            tags = tags,
+            times = times?.toKeePassTimesPatch(),
+            customData = customData.toKeePassCustomDataPatchList(),
+            previousParentGroupUuid = previousParentGroup?.toString(),
+            qualityCheck = qualityCheck
+        )
+    }
+
+    private fun TimeData.toKeePassTimesPatch(): KeePassTimesPatch {
+        return KeePassTimesPatch(
+            creationTimeEpochMillis = creationTime?.toEpochMilli(),
+            lastModificationTimeEpochMillis = lastModificationTime?.toEpochMilli(),
+            lastAccessTimeEpochMillis = lastAccessTime?.toEpochMilli(),
+            expiryTimeEpochMillis = expiryTime?.toEpochMilli(),
+            expires = expires,
+            usageCount = usageCount,
+            locationChangedEpochMillis = locationChanged?.toEpochMilli()
+        )
+    }
+
+    private fun Map<String, CustomDataValue>.toKeePassCustomDataPatchList(): List<KeePassCustomDataPatch> {
+        return map { (key, value) ->
+            KeePassCustomDataPatch(
+                key = key,
+                value = value.value,
+                lastModifiedEpochMillis = value.lastModified?.toEpochMilli()
+            )
+        }
+    }
+
+    private fun AutoTypeData.toKeePassAutoTypePatch(): KeePassAutoTypePatch {
+        return KeePassAutoTypePatch(
+            enabled = enabled,
+            obfuscation = obfuscation.name,
+            defaultSequence = defaultSequence.orEmpty(),
+            items = items.map { it.toKeePassAutoTypeItemPatch() }
+        )
+    }
+
+    private fun AutoTypeItem.toKeePassAutoTypeItemPatch(): KeePassAutoTypeItemPatch {
+        return KeePassAutoTypeItemPatch(
+            window = window,
+            keystrokeSequence = keystrokeSequence
+        )
+    }
+
+    private fun String.toByteStringHash(): ByteString {
+        val normalized = trim()
+        require(normalized.length % 2 == 0) { "Invalid hex length" }
+        val bytes = ByteArray(normalized.length / 2) { index ->
+            normalized.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        }
+        return bytes.toByteString()
+    }
+
     private inline fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {
         for (index in indices) {
             if (predicate(index, this[index])) return true
@@ -3935,7 +4866,8 @@ class KeePassKdbxService(
                     credentials = loaded.credentials,
                     keePassDatabase = plan.updatedDatabase,
                     sourceEtag = loaded.sourceEtag,
-                    sourceLastModified = loaded.sourceLastModified
+                    sourceLastModified = loaded.sourceLastModified,
+                    beforeRemoteUpload = plan.beforeRemoteUpload
                 )
                 plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
                 plan.result
@@ -4168,7 +5100,8 @@ class KeePassKdbxService(
         credentials: Credentials,
         keePassDatabase: KeePassDatabase,
         sourceEtag: String? = null,
-        sourceLastModified: String? = null
+        sourceLastModified: String? = null,
+        beforeRemoteUpload: (suspend (LocalKeePassDatabase, KeePassDatabase) -> Unit)? = null
     ) {
         val bytes = encodeDatabase(keePassDatabase)
         if (ENABLE_POST_WRITE_DECODE_VERIFICATION) {
@@ -4183,6 +5116,7 @@ class KeePassKdbxService(
         var resolvedSourceLastModified = sourceLastModified
         var resolvedDatabase = keePassDatabase
         if (database.isRemoteSource()) {
+            beforeRemoteUpload?.invoke(database, resolvedDatabase)
             markRemoteWritePending(database, bytes)
             enqueueRemoteWorkingCopyUpload(database.id)
         }
@@ -4197,6 +5131,37 @@ class KeePassKdbxService(
                 sourceSignature = updatedSignature
             )
         )
+    }
+
+    private fun keePassPendingChangeRepository(): KeePassPendingChangeRepository {
+        return KeePassPendingChangeRepository(
+            PasswordDatabase.getDatabase(context).keepassPendingChangeDao()
+        )
+    }
+
+    private suspend fun enqueuePendingChangeSetsIfRemote(
+        database: LocalKeePassDatabase,
+        changeSets: List<KeePassChangeSet>
+    ) {
+        if (changeSets.isEmpty() || !database.isRemoteSource() || database.sourceId == null) {
+            return
+        }
+        val remoteDb = PasswordDatabase.getDatabase(context)
+        val syncState = remoteDb.keepassRemoteSyncStateDao().getState(database.id)
+        val workingHashAtChange = runCatching {
+            GoogleDriveKeePassSupport.sha256Hex(readDatabaseSnapshot(database).bytes)
+        }.getOrNull()
+        val baseSnapshot = KeePassPendingChangeBaseSnapshot(
+            remoteVersionToken = syncState?.remoteVersionToken,
+            remoteEtag = syncState?.remoteEtag,
+            remoteLastModified = syncState?.remoteLastModified,
+            baseHash = syncState?.baseHash,
+            workingHashAtChange = workingHashAtChange
+        )
+        val repository = keePassPendingChangeRepository()
+        changeSets.forEach { changeSet ->
+            repository.enqueue(changeSet, baseSnapshot)
+        }
     }
 
     private suspend fun syncRemoteWorkingCopy(
@@ -4438,11 +5403,25 @@ class KeePassKdbxService(
             return
         }
 
+        val pendingRepository = keePassPendingChangeRepository()
+        val pendingPlan = KeePassPendingFlushPlanner(pendingRepository).prepare(databaseId)
+        pendingPlan.blocked.forEach { blocked ->
+            pendingRepository.markBlocked(
+                id = blocked.pendingId,
+                reason = "${blocked.reason}: ${blocked.message}"
+            )
+        }
+        pendingPlan.ready.forEach { item ->
+            pendingRepository.markInProgress(item.pendingId)
+        }
+
+        var conflictFileSource: KeePassFileSource? = null
         try {
             syncService.markUploadInProgress(databaseId, workingHash)
             val remoteSource = remoteSourceDao.getSourceById(database.sourceId)
                 ?: throw IllegalStateException("远端来源不存在")
             val fileSource = createRemoteFileSource(database, remoteSource)
+            conflictFileSource = fileSource
             val expectedRemoteVersion = when (database.sourceType) {
                 KeePassDatabaseSourceType.REMOTE_ONEDRIVE,
                 KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE,
@@ -4472,6 +5451,12 @@ class KeePassKdbxService(
                     baseHash = workingHash,
                     workingHash = workingHash
                 )
+                pendingPlan.ready.forEach { item ->
+                    pendingRepository.markCompleted(item.pendingId)
+                }
+                pendingPlan.blocked.forEach { item ->
+                    pendingRepository.markCompleted(item.pendingId)
+                }
             } else {
                 syncService.markUploadedButLocalChanged(
                     databaseId = database.id,
@@ -4480,17 +5465,66 @@ class KeePassKdbxService(
                     baseHash = workingHash,
                     workingHash = latestHash
                 )
+                pendingPlan.ready.forEach { item ->
+                    pendingRepository.markCompleted(item.pendingId)
+                }
+                pendingPlan.blocked.forEach { item ->
+                    pendingRepository.markCompleted(item.pendingId)
+                }
                 enqueueRemoteWorkingCopyUpload(database.id)
             }
         } catch (error: Exception) {
             val latestHash = readRemoteWorkingCopyBytes(database)
                 ?.let { GoogleDriveKeePassSupport.sha256Hex(it) }
                 ?: workingHash
-            if (isRemoteVersionConflict(error)) {
+            val fileSource = conflictFileSource
+            var rebaseFailure: Throwable? = null
+            if (isRemoteVersionConflict(error) && fileSource != null) {
+                val rebaseResult = runCatching {
+                    rebasePendingChangesOntoLatestRemote(
+                        database = database,
+                        fileSource = fileSource,
+                        syncService = syncService,
+                        pendingPlan = pendingPlan,
+                        originalWorkingHash = workingHash
+                    )
+                }.onFailure { failure ->
+                    rebaseFailure = failure
+                }.getOrNull()
+                if (rebaseResult != null) {
+                    pendingPlan.ready.forEach { item ->
+                        pendingRepository.markCompleted(item.pendingId)
+                    }
+                    val currentWorkingBytes = readRemoteWorkingCopyBytes(database)
+                    val currentWorkingHash = currentWorkingBytes
+                        ?.let { GoogleDriveKeePassSupport.sha256Hex(it) }
+                        ?: rebaseResult.rebasedHash
+                    if (currentWorkingHash == rebaseResult.rebasedHash) {
+                        syncService.markSynchronized(
+                            databaseId = database.id,
+                            versionToken = rebaseResult.writeResult.versionToken,
+                            etag = rebaseResult.writeResult.etag,
+                            baseHash = rebaseResult.rebasedHash,
+                            workingHash = rebaseResult.rebasedHash
+                        )
+                    } else {
+                        syncService.markUploadedButLocalChanged(
+                            databaseId = database.id,
+                            versionToken = rebaseResult.writeResult.versionToken,
+                            etag = rebaseResult.writeResult.etag,
+                            baseHash = rebaseResult.rebasedHash,
+                            workingHash = currentWorkingHash
+                        )
+                        enqueueRemoteWorkingCopyUpload(database.id)
+                    }
+                    return
+                }
                 syncService.markConflict(
                     databaseId = database.id,
                     workingHash = latestHash,
-                    failureMessage = error.message ?: "远端文件已变化，请先同步"
+                    failureMessage = rebaseFailure?.message
+                        ?: error.message
+                        ?: "远端文件已变化，请先同步"
                 )
             } else {
                 syncService.markLocalChanges(database.id, latestHash)
@@ -4500,8 +5534,75 @@ class KeePassKdbxService(
                     failureMessage = error.message ?: "远端后台同步失败"
                 )
             }
+            pendingPlan.ready.forEach { item ->
+                pendingRepository.markFailed(
+                    id = item.pendingId,
+                    error = rebaseFailure ?: error,
+                    retryDelayMillis = PENDING_CHANGE_UPLOAD_RETRY_DELAY_MILLIS
+                )
+            }
             throw error
         }
+    }
+
+    private data class KeePassRemoteRebaseResult(
+        val writeResult: FileSourceWriteResult,
+        val rebasedHash: String
+    )
+
+    private suspend fun rebasePendingChangesOntoLatestRemote(
+        database: LocalKeePassDatabase,
+        fileSource: KeePassFileSource,
+        syncService: RemoteKeePassSyncService,
+        pendingPlan: KeePassPendingFlushPlan,
+        originalWorkingHash: String
+    ): KeePassRemoteRebaseResult? {
+        if (!pendingPlan.hasReadyChanges) {
+            return null
+        }
+        KeePassRemoteRebase.requireNoBlockedChanges(pendingPlan)
+        val remoteStat = fileSource.stat()
+        val currentRemoteVersion = remoteStat.etag ?: remoteStat.versionToken
+        if (currentRemoteVersion.isNullOrBlank()) {
+            return null
+        }
+
+        syncService.markDownloading(database.id, originalWorkingHash)
+        val credentials = loadDatabase(database.id).credentials
+        val remoteBytes = fileSource.read()
+        val remoteDatabase = decodeDatabase(
+            bytes = remoteBytes,
+            credentials = credentials,
+            sourceName = "databaseId=${database.id}:pending-rebase"
+        )
+        val rebaseResult = KeePassRemoteRebase.applyReadyChanges(remoteDatabase, pendingPlan)
+            ?: return null
+        val rebasedBytes = encodeDatabase(rebaseResult.updatedDatabase)
+        val rebasedHash = GoogleDriveKeePassSupport.sha256Hex(rebasedBytes)
+        val writeResult = fileSource.write(
+            bytes = rebasedBytes,
+            expectedVersion = currentRemoteVersion
+        )
+        updateOneDriveRemoteSourceBindingIfNeeded(
+            database = database,
+            writeResult = writeResult
+        )
+
+        database.cacheCopyPath?.let { cachePath ->
+            writeInternalRelative(cachePath, rebasedBytes)
+        }
+        val latestWorkingHash = readRemoteWorkingCopyBytes(database)
+            ?.let { GoogleDriveKeePassSupport.sha256Hex(it) }
+        if (latestWorkingHash == null || latestWorkingHash == originalWorkingHash) {
+            database.workingCopyPath?.let { workingCopyPath ->
+                writeInternalRelative(workingCopyPath, rebasedBytes)
+            }
+        }
+
+        return KeePassRemoteRebaseResult(
+            writeResult = writeResult,
+            rebasedHash = rebasedHash
+        )
     }
 
     private suspend fun createRemoteFileSource(
@@ -4857,10 +5958,15 @@ class KeePassKdbxService(
     private fun buildRemoteConflictCopy(entry: Entry): Entry {
         val currentTitle = getFieldValue(entry, "Title").ifBlank { "Untitled" }
         val normalizedConflictTitle = normalizeRemoteConflictTitle(currentTitle)
+        var hasConflictMarker = false
         val updatedFields = entry.fields
             .mapNotNull { (key, value) ->
                 if (key == FIELD_MONICA_LOCAL_ID || key == FIELD_MONICA_ITEM_ID) {
                     return@mapNotNull null
+                }
+                if (key == FIELD_MONICA_CONFLICT_COPY) {
+                    hasConflictMarker = true
+                    return@mapNotNull key to EntryValue.Plain("true")
                 }
                 if (key == "Title") {
                     key to EntryValue.Plain(normalizedConflictTitle)
@@ -4871,6 +5977,9 @@ class KeePassKdbxService(
             .toMutableList()
         if (updatedFields.none { it.first == "Title" }) {
             updatedFields += "Title" to EntryValue.Plain(normalizedConflictTitle)
+        }
+        if (!hasConflictMarker) {
+            updatedFields += FIELD_MONICA_CONFLICT_COPY to EntryValue.Plain("true")
         }
         return entry.copy(
             uuid = UUID.randomUUID(),
@@ -4907,17 +6016,7 @@ class KeePassKdbxService(
     }
 
     private fun buildConflictEntrySignature(entry: Entry): String {
-        val normalizedFieldPairs = entry.fields
-            .map { (key, value) ->
-                val normalizedValue = if (key == "Title") {
-                    normalizeRemoteConflictTitleForSignature(getFieldValue(entry, key))
-                } else {
-                    getFieldValue(entry, key)
-                }
-                key.lowercase(Locale.ROOT) to normalizedValue
-            }
-            .sortedBy { it.first }
-        return normalizedFieldPairs.joinToString("\u001F") { (key, value) -> "$key=$value" }
+        return KeePassEntryFingerprint.build(entry)
     }
 
     private fun normalizeRemoteConflictTitle(title: String): String {

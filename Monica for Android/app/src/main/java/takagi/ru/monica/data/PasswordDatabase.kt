@@ -8,6 +8,8 @@ import androidx.room.TypeConverters
 import takagi.ru.monica.attachments.data.AttachmentDao
 import takagi.ru.monica.attachments.model.Attachment
 import takagi.ru.monica.data.bitwarden.*
+import takagi.ru.monica.keepass.KeePassPendingChange
+import takagi.ru.monica.keepass.KeePassPendingChangeDao
 
 /**
  * Room database for storing password entries and secure items
@@ -38,9 +40,11 @@ import takagi.ru.monica.data.bitwarden.*
         Attachment::class,
         // MDBX 数据库格式
         LocalMdbxDatabase::class,
-        MdbxRemoteSource::class
+        MdbxRemoteSource::class,
+        // KeePass entry-level pending changes
+        KeePassPendingChange::class
     ],
-    version = 69,
+    version = 72,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -69,6 +73,9 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun bitwardenConflictBackupDao(): BitwardenConflictBackupDao
     abstract fun bitwardenPendingOperationDao(): BitwardenPendingOperationDao
     abstract fun bitwardenSyncRawEntryRecordDao(): BitwardenSyncRawEntryRecordDao
+
+    // KeePass 增量变更队列
+    abstract fun keepassPendingChangeDao(): KeePassPendingChangeDao
 
     // Attachment DAO（跨来源统一附件元数据）
     abstract fun attachmentDao(): AttachmentDao
@@ -2076,6 +2083,95 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_69_70 = object : androidx.room.migration.Migration(69, 70) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 69→70: KeePass pending changes")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS keepass_pending_changes (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            database_id INTEGER NOT NULL,
+                            change_id TEXT NOT NULL,
+                            entry_uuid TEXT,
+                            operation TEXT NOT NULL,
+                            target TEXT NOT NULL,
+                            base_fingerprint TEXT,
+                            base_group_path TEXT,
+                            base_group_uuid TEXT,
+                            payload_json TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'PENDING',
+                            retry_count INTEGER NOT NULL DEFAULT 0,
+                            max_retries INTEGER NOT NULL DEFAULT 3,
+                            next_attempt_at INTEGER,
+                            last_attempt_at INTEGER,
+                            last_error TEXT,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            completed_at INTEGER,
+                            FOREIGN KEY(database_id) REFERENCES local_keepass_databases(id) ON DELETE CASCADE ON UPDATE NO ACTION
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_database_id ON keepass_pending_changes(database_id)")
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_keepass_pending_changes_change_id ON keepass_pending_changes(change_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_status ON keepass_pending_changes(status)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_operation ON keepass_pending_changes(operation)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_entry_uuid ON keepass_pending_changes(entry_uuid)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_database_id_status_next_attempt_at ON keepass_pending_changes(database_id, status, next_attempt_at)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_database_id_entry_uuid_status ON keepass_pending_changes(database_id, entry_uuid, status)")
+                    android.util.Log.i("PasswordDatabase", "Migration 69→70 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 69→70 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_70_71 = object : androidx.room.migration.Migration(70, 71) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 70→71: KeePass pending base snapshots")
+                    addColumnIfMissing(database, "keepass_pending_changes", "base_remote_version_token", "TEXT")
+                    addColumnIfMissing(database, "keepass_pending_changes", "base_remote_etag", "TEXT")
+                    addColumnIfMissing(database, "keepass_pending_changes", "base_remote_last_modified", "INTEGER")
+                    addColumnIfMissing(database, "keepass_pending_changes", "base_hash", "TEXT")
+                    addColumnIfMissing(database, "keepass_pending_changes", "working_hash_at_change", "TEXT")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_base_remote_etag ON keepass_pending_changes(base_remote_etag)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_keepass_pending_changes_base_hash ON keepass_pending_changes(base_hash)")
+                    android.util.Log.i("PasswordDatabase", "Migration 70→71 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 70→71 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_71_72 = object : androidx.room.migration.Migration(71, 72) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 71→72: KeePass sync state updated timestamp")
+                    addColumnIfMissing(
+                        database,
+                        "local_keepass_databases",
+                        "last_sync_state_updated_at",
+                        "INTEGER NOT NULL DEFAULT 0"
+                    )
+                    database.execSQL(
+                        """
+                        UPDATE local_keepass_databases
+                        SET last_sync_state_updated_at = COALESCE(last_synced_at, last_accessed_at, created_at, 0)
+                        WHERE last_sync_state_updated_at = 0
+                        """.trimIndent()
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 71→72 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 71→72 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         private fun addColumnIfMissing(
             database: androidx.sqlite.db.SupportSQLiteDatabase,
             tableName: String,
@@ -2173,7 +2269,10 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_65_66,   // MDBX key file URI for real unlock flows
                         MIGRATION_66_67,   // MDBX category linkage
                         MIGRATION_67_68,   // MDBX folder ownership
-                        MIGRATION_68_69    // Redact sensitive operation log history
+                        MIGRATION_68_69,   // Redact sensitive operation log history
+                        MIGRATION_69_70,   // KeePass entry-level pending changes
+                        MIGRATION_70_71,   // KeePass pending base snapshots
+                        MIGRATION_71_72    // KeePass sync state updated timestamp
                     )
                     // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
                     // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。

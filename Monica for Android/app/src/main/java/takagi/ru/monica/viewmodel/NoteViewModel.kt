@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.keepass.KeePassCrossDatabaseTransfer
 import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
@@ -405,13 +406,25 @@ class NoteViewModel(
                 createdAt = createdAt,
                 updatedAt = Date()
             )
-            repository.updateItem(item)
+            val keepassSync = keepassSecureItemUpdateExecutor.syncUpdatedItem(
+                existingItem = existingItem,
+                updatedItem = item,
+                persistUpdate = { persistedItem ->
+                    repository.updateItem(persistedItem)
+                }
+            )
+            if (keepassSync.isFailure) {
+                Log.e(
+                    "NoteViewModel",
+                    "KeePass note update failed before local update: ${keepassSync.exceptionOrNull()?.message}"
+                )
+                return@launch
+            }
             requestBitwardenMutationSync(bitwardenVaultId)
             val removedImageIds = existingItem
                 ?.let { extractImageRefs(it) - extractImageRefs(item) }
                 .orEmpty()
             cleanupUnreferencedNoteImagesInternal(removedImageIds)
-            keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = item)
             
             // 记录更新操作 - 始终记录，即使没有检测到字段变更
             val changes = mutableListOf<FieldChange>()
@@ -758,9 +771,21 @@ class NoteViewModel(
             syncStatus = transition.syncStatus,
             updatedAt = Date()
         )
-        repository.updateItem(updated)
+        val keepassSync = keepassSecureItemUpdateExecutor.syncUpdatedItem(
+            existingItem = item,
+            updatedItem = updated,
+            persistUpdate = { persistedItem ->
+                repository.updateItem(persistedItem)
+            }
+        )
+        if (keepassSync.isFailure) {
+            Log.e(
+                "NoteViewModel",
+                "KeePass note move failed before local update: ${keepassSync.exceptionOrNull()?.message}"
+            )
+            return false
+        }
         requestBitwardenMutationSync(bitwardenVaultId)
-        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updated)
         return true
     }
 
@@ -818,7 +843,10 @@ class NoteViewModel(
         }
 
         if (sourceDelete.isFailure) {
-            repository.deleteItemById(newId)
+            Log.e(
+                "NoteViewModel",
+                "Note move to Monica local kept target copy after source cleanup failed; sourceId=${item.id} targetId=$newId error=${sourceDelete.exceptionOrNull()?.message}"
+            )
             return Result.failure(
                 sourceDelete.exceptionOrNull() ?: IllegalStateException("删除源笔记失败")
             )
@@ -865,11 +893,11 @@ class NoteViewModel(
 
         return KeePassMutationIdentity(
             groupPath = resolvedGroupPath,
-            entryUuid = if (sameDatabase) {
-                existingItem?.keepassEntryUuid ?: UUID.randomUUID().toString()
-            } else {
-                UUID.randomUUID().toString()
-            },
+            entryUuid = KeePassCrossDatabaseTransfer.secureItemTargetEntryUuid(
+                item = existingItem,
+                databaseId = targetDatabaseId,
+                groupPath = resolvedGroupPath
+            ),
             groupUuid = if (groupUnchanged) existingItem?.keepassGroupUuid else null
         )
     }

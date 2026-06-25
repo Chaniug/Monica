@@ -120,6 +120,12 @@ class KeePassCompatibilityBridge(
         forceSyncWrite: Boolean = false
     ) = workspaceRepository.movePasswordEntriesToRecycleBin(databaseId, entries, forceSyncWrite)
 
+    suspend fun restoreLegacyPasswordEntriesFromRecycleBin(
+        databaseId: Long,
+        entries: List<PasswordEntry>,
+        forceSyncWrite: Boolean = false
+    ) = workspaceRepository.restorePasswordEntriesFromRecycleBin(databaseId, entries, forceSyncWrite)
+
     suspend fun resolveLegacyRestoreGroupPathForPassword(
         databaseId: Long,
         entry: PasswordEntry
@@ -145,6 +151,12 @@ class KeePassCompatibilityBridge(
         items: List<SecureItem>,
         forceSyncWrite: Boolean = false
     ) = workspaceRepository.moveSecureItemsToRecycleBin(databaseId, items, forceSyncWrite)
+
+    suspend fun restoreLegacySecureItemsFromRecycleBin(
+        databaseId: Long,
+        items: List<SecureItem>,
+        forceSyncWrite: Boolean = false
+    ) = workspaceRepository.restoreSecureItemsFromRecycleBin(databaseId, items, forceSyncWrite)
 
     suspend fun resolveLegacyRestoreGroupPathForSecureItem(
         databaseId: Long,

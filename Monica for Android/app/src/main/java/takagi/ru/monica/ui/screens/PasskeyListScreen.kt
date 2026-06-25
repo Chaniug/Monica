@@ -77,6 +77,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.keepass.KeePassPasskeyCredentialConflictException
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.ui.PasswordListCategoryChipMenuBottomActions
@@ -773,25 +774,6 @@ fun PasskeyListScreen(
             }
         }
 
-        val isLeavingCurrentCipher =
-            currentVaultId != null &&
-                !currentCipherId.isNullOrBlank() &&
-                currentVaultId != targetVaultId
-
-        if (isLeavingCurrentCipher) {
-            val queueResult = bitwardenRepository.queueCipherDelete(
-                vaultId = currentVaultId!!,
-                cipherId = currentCipherId!!,
-                itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
-            )
-            if (queueResult.isFailure) {
-                return Result.failure(
-                    queueResult.exceptionOrNull()
-                        ?: IllegalStateException("Queue Bitwarden delete failed")
-                )
-            }
-        }
-
         val moved = when (target) {
             UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
                 categoryId = null,
@@ -881,6 +863,8 @@ fun PasskeyListScreen(
             is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> PasskeyEntry.MODE_BW_COMPAT
             is UnifiedMoveCategoryTarget.KeePassDatabaseTarget,
             is UnifiedMoveCategoryTarget.KeePassGroupTarget -> PasskeyEntry.MODE_KEEPASS_COMPAT
+            is UnifiedMoveCategoryTarget.MdbxDatabaseTarget,
+            is UnifiedMoveCategoryTarget.MdbxFolderTarget -> passkey.passkeyMode
             else -> if (passkey.isKeePassCompatible()) {
                 PasskeyEntry.MODE_KEEPASS_COMPAT
             } else {
@@ -897,6 +881,30 @@ fun PasskeyListScreen(
         )
     }
 
+    suspend fun queueSourceBitwardenDeleteAfterPasskeyMove(
+        passkey: PasskeyEntry,
+        target: UnifiedMoveCategoryTarget
+    ): Result<Unit> {
+        val currentVaultId = passkey.bitwardenVaultId
+        val currentCipherId = passkey.bitwardenCipherId
+        val targetVaultId = when (target) {
+            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+            else -> null
+        }
+        val isLeavingCurrentCipher =
+            currentVaultId != null &&
+                !currentCipherId.isNullOrBlank() &&
+                currentVaultId != targetVaultId
+        if (!isLeavingCurrentCipher) return Result.success(Unit)
+
+        return bitwardenRepository.queueCipherDelete(
+            vaultId = currentVaultId!!,
+            cipherId = currentCipherId!!,
+            itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+        ).map { Unit }
+    }
+
     suspend fun persistStorageTarget(passkey: PasskeyEntry, target: UnifiedMoveCategoryTarget): Result<Unit> {
         val updateResult = applyStorageTarget(passkey, target)
         if (updateResult.isFailure) {
@@ -906,27 +914,23 @@ fun PasskeyListScreen(
             )
         }
         val moved = updateResult.getOrThrow()
-        val mdbxTarget: Pair<Long, String?>? = when (target) {
-            is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId to null
-            is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.databaseId to target.folderId
-            else -> null
-        }
-        if (mdbxTarget != null && passkey.id > 0L) {
-            return viewModel.updateMdbxDatabaseForPasskeys(
-                recordIds = listOf(passkey.id),
-                databaseId = mdbxTarget.first,
-                folderId = mdbxTarget.second
-            )
-        }
         val persisted = viewModel.updatePasskey(moved)
-        return if (persisted.isSuccess) {
-            Result.success(Unit)
-        } else {
-            Result.failure(
+        if (persisted.isFailure) {
+            return Result.failure(
                 persisted.exceptionOrNull()
                     ?: IllegalStateException("Passkey update failed")
             )
         }
+
+        val queueDelete = queueSourceBitwardenDeleteAfterPasskeyMove(passkey, target)
+        if (queueDelete.isFailure) {
+            return Result.failure(
+                queueDelete.exceptionOrNull()
+                    ?: IllegalStateException("Queue Bitwarden delete failed")
+            )
+        }
+
+        return Result.success(Unit)
     }
 
     suspend fun deletePasskeyWithBinding(passkey: PasskeyEntry): Boolean {
@@ -1594,20 +1598,11 @@ fun PasskeyListScreen(
             passwordViewModel?.getMdbxFolders(databaseId) ?: flowOf(emptyList())
         },
         allowCopy = true,
-        allowMove = passkeyToMoveCategory?.isKeePassOwned() != true,
+        allowMove = true,
         onTargetSelected = { target, action ->
             val passkey = passkeyToMoveCategory ?: return@UnifiedMoveToCategoryBottomSheet
             scope.launch {
-                val effectiveAction = if (action == UnifiedMoveAction.MOVE && passkey.isKeePassOwned()) {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.keepass_copy_only_hint),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    UnifiedMoveAction.COPY
-                } else {
-                    action
-                }
+                val effectiveAction = action
                 if (effectiveAction == UnifiedMoveAction.COPY && action == UnifiedMoveAction.COPY) {
                     Toast.makeText(
                         context,
@@ -1617,12 +1612,11 @@ fun PasskeyListScreen(
                 }
                 val persistResult = persistStorageTarget(passkey, target)
                 if (persistResult.isFailure) {
-                    val messageRes = if (persistResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
-                        R.string.passkey_bitwarden_move_blocked
-                    } else {
-                        R.string.passkey_bitwarden_move_failed
-                    }
-                    Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        context.getString(passkeyMoveFailureMessageRes(persistResult.exceptionOrNull())),
+                        Toast.LENGTH_SHORT
+                    ).show()
                     return@launch
                 }
 
@@ -1655,9 +1649,7 @@ fun PasskeyListScreen(
             passwordViewModel?.getMdbxFolders(databaseId) ?: flowOf(emptyList())
         },
         allowCopy = true,
-        allowMove = combinedPasskeys
-            .filter { selectedPasskeys.contains(it.managementKey()) }
-            .none { it.isKeePassOwned() },
+        allowMove = true,
         onTargetSelected = { target, action ->
             scope.launch {
                 val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.managementKey()) }
@@ -1666,17 +1658,9 @@ fun PasskeyListScreen(
                 var movedCount = 0
                 var failedCount = 0
                 var blockedCount = 0
+                var keepassConflictCount = 0
 
-                val effectiveAction = if (action == UnifiedMoveAction.MOVE && movable.any { it.isKeePassOwned() }) {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.keepass_copy_only_hint),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    UnifiedMoveAction.COPY
-                } else {
-                    action
-                }
+                val effectiveAction = action
 
                 if (effectiveAction == UnifiedMoveAction.COPY && action == UnifiedMoveAction.COPY) {
                     Toast.makeText(
@@ -1691,22 +1675,29 @@ fun PasskeyListScreen(
                     if (persistResult.isSuccess) {
                         movedCount++
                     } else {
-                        if (persistResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
-                            blockedCount++
-                        } else {
-                            failedCount++
+                        when (persistResult.exceptionOrNull()) {
+                            is PasskeyBitwardenMoveBlockedException -> blockedCount++
+                            is KeePassPasskeyCredentialConflictException -> keepassConflictCount++
+                            else -> failedCount++
                         }
                     }
                 }
 
                 val baseMessage = context.getString(R.string.selected_items, movedCount)
-                val skippedTotal = lockedCount + failedCount + blockedCount
+                val skippedTotal = lockedCount + failedCount + blockedCount + keepassConflictCount
                 val toastMessage = if (skippedTotal > 0) "$baseMessage，跳过$skippedTotal" else baseMessage
                 Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
                 if (blockedCount > 0) {
                     Toast.makeText(
                         context,
                         context.getString(R.string.passkey_bitwarden_move_blocked_count, blockedCount),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                if (keepassConflictCount > 0) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.passkey_keepass_credential_conflict_count, keepassConflictCount),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -2550,6 +2541,14 @@ private fun SafeAnimatedVisibility(
 
 private class PasskeyBitwardenMoveBlockedException :
     IllegalStateException("Passkey cannot be migrated to Bitwarden")
+
+private fun passkeyMoveFailureMessageRes(error: Throwable?): Int {
+    return when (error) {
+        is PasskeyBitwardenMoveBlockedException -> R.string.passkey_bitwarden_move_blocked
+        is KeePassPasskeyCredentialConflictException -> R.string.passkey_keepass_credential_conflict
+        else -> R.string.passkey_bitwarden_move_failed
+    }
+}
 
 private fun isPasskeyMigratableToBitwarden(context: Context, passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false

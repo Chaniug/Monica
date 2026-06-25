@@ -186,6 +186,18 @@ class KeePassWorkspaceRepository(
         )
     }
 
+    suspend fun restorePasswordEntriesFromRecycleBin(
+        databaseId: Long,
+        entries: List<PasswordEntry>,
+        forceSyncWrite: Boolean = false
+    ): Result<Map<Long, KeePassRestoreTarget>> {
+        return service.restorePasswordEntriesFromRecycleBin(
+            databaseId = databaseId,
+            entries = entries,
+            forceSyncWrite = forceSyncWrite
+        )
+    }
+
     suspend fun resolveRestoreGroupPathForPassword(
         databaseId: Long,
         entry: PasswordEntry
@@ -262,6 +274,18 @@ class KeePassWorkspaceRepository(
         forceSyncWrite: Boolean = false
     ): Result<Int> {
         return service.moveSecureItemsToRecycleBin(
+            databaseId = databaseId,
+            items = items,
+            forceSyncWrite = forceSyncWrite
+        )
+    }
+
+    suspend fun restoreSecureItemsFromRecycleBin(
+        databaseId: Long,
+        items: List<SecureItem>,
+        forceSyncWrite: Boolean = false
+    ): Result<Map<Long, KeePassRestoreTarget>> {
+        return service.restoreSecureItemsFromRecycleBin(
             databaseId = databaseId,
             items = items,
             forceSyncWrite = forceSyncWrite

@@ -34,7 +34,10 @@ object KeePassDxPasskeyCodec {
         notes: String,
         databaseId: Long,
         groupPath: String?,
-        groupUuid: String?
+        groupUuid: String?,
+        createdAt: Long = System.currentTimeMillis(),
+        lastUsedAt: Long = createdAt,
+        useCount: Int = 0
     ): PasskeyEntry? {
         val username = getField(FIELD_USERNAME).trim()
         val privateKeyPem = getField(FIELD_PRIVATE_KEY)
@@ -61,9 +64,9 @@ object KeePassDxPasskeyCodec {
             publicKeyAlgorithm = decodedPrivateKey.publicKeyAlgorithm,
             publicKey = "",
             privateKeyAlias = Base64.encodeToString(decodedPrivateKey.pkcs8Bytes, Base64.NO_WRAP),
-            createdAt = System.currentTimeMillis(),
-            lastUsedAt = System.currentTimeMillis(),
-            useCount = 0,
+            createdAt = createdAt,
+            lastUsedAt = lastUsedAt,
+            useCount = useCount,
             iconUrl = null,
             isDiscoverable = true,
             isUserVerificationRequired = true,

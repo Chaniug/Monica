@@ -513,6 +513,98 @@ class AttachmentFacade(
     }
 
     /**
+     * Before a KeePass-backed password leaves KDBX ownership, make every active
+     * KeePass attachment self-contained in Monica's local encrypted store, then
+     * rewrite its source to LOCAL. If bytes cannot be materialized, callers must
+     * keep the source KDBX entry intact.
+     */
+    suspend fun materializeKeePassAttachmentsForLocal(
+        passwordId: Long,
+        databaseId: Long,
+        entryUuid: String
+    ): Int = withContext(Dispatchers.IO) {
+        if (passwordId <= 0 || entryUuid.isBlank()) return@withContext 0
+        val sources = repository.listByParentAndSource(passwordId, AttachmentSource.KEEPASS)
+        if (sources.isEmpty()) return@withContext 0
+
+        val keepassContext = KeePassContext(databaseId = databaseId, entryUuid = entryUuid)
+        sources.forEach { source ->
+            ensureLocalCacheForTransfer(source, keepassContext)
+        }
+
+        val unresolved = repository.listByParentAndSource(passwordId, AttachmentSource.KEEPASS)
+            .filter { it.localPath.isNullOrBlank() || it.wrappedCek.isNullOrBlank() }
+        if (unresolved.isNotEmpty()) {
+            throw AttachmentError.IoError
+        }
+
+        repository.convertSourceToLocal(passwordId, AttachmentSource.KEEPASS)
+    }
+
+    /**
+     * Copy all active attachments with available bytes into a target KDBX entry.
+     *
+     * For a move, pass [targetPasswordId] equal to [sourcePasswordId]; existing
+     * Room rows are converted to KEEPASS metadata. For a pure KDBX copy with no
+     * Room target yet, pass null and the next KeePass projection reconcile will
+     * discover the KDBX attachments.
+     */
+    suspend fun copyAttachmentsToKeePassEntry(
+        sourcePasswordId: Long,
+        targetPasswordId: Long?,
+        targetDatabaseId: Long,
+        targetEntryUuid: String,
+        sourceKeepassDatabaseId: Long? = null,
+        sourceKeepassEntryUuid: String? = null
+    ): Int = withContext(Dispatchers.IO) {
+        if (sourcePasswordId <= 0 || targetEntryUuid.isBlank()) return@withContext 0
+        val sources = repository.listByPassword(sourcePasswordId)
+        if (sources.isEmpty()) return@withContext 0
+
+        val sourceKeepassContext = if (
+            sourceKeepassDatabaseId != null &&
+            !sourceKeepassEntryUuid.isNullOrBlank()
+        ) {
+            KeePassContext(sourceKeepassDatabaseId, sourceKeepassEntryUuid)
+        } else {
+            null
+        }
+
+        var copied = 0
+        sources.forEach { source ->
+            val ready = ensureLocalCacheForTransfer(source, sourceKeepassContext)
+            val bytes = localExecutor.openDecrypted(ready).use { it.readBytes() }
+            val uploaded = keepassExecutor.upload(
+                parentPasswordId = targetPasswordId ?: sourcePasswordId,
+                databaseId = targetDatabaseId,
+                entryUuid = targetEntryUuid,
+                fileName = ready.fileName,
+                mimeType = ready.mimeType,
+                sourceBytes = bytes
+            )
+
+            if (targetPasswordId != null && targetPasswordId > 0) {
+                val now = System.currentTimeMillis()
+                val metadata = uploaded.copy(
+                    id = if (targetPasswordId == sourcePasswordId) source.id else 0,
+                    parentPasswordId = targetPasswordId,
+                    createdAt = if (targetPasswordId == sourcePasswordId) source.createdAt else now,
+                    updatedAt = now,
+                    isDeleted = false,
+                    deletedAt = null
+                )
+                if (targetPasswordId == sourcePasswordId) {
+                    repository.update(metadata)
+                } else {
+                    repository.insert(metadata)
+                }
+            }
+            copied++
+        }
+        copied
+    }
+
+    /**
      * 清理已被 Room 遗弃的本地密文文件（例如通过 `ON DELETE CASCADE` 因密码永久删除
      * 被带走元数据，但磁盘上的 `<uuid>.enc` 没人兜底清理时）。
      *
@@ -551,6 +643,31 @@ class AttachmentFacade(
         val resolver = context.applicationContext.contentResolver
         val input = resolver.openInputStream(uri) ?: throw AttachmentError.IoError
         return input.use { it.readBytes() }
+    }
+
+    private suspend fun ensureLocalCacheForTransfer(
+        attachment: Attachment,
+        sourceKeepassContext: KeePassContext?
+    ): Attachment {
+        if (!attachment.localPath.isNullOrBlank() &&
+            !attachment.wrappedCek.isNullOrBlank() &&
+            storage.exists(attachment.localPath)
+        ) {
+            return attachment
+        }
+
+        if (attachment.sourceEnum == AttachmentSource.KEEPASS && sourceKeepassContext != null) {
+            val downloaded = keepassExecutor.download(
+                existing = attachment,
+                databaseId = sourceKeepassContext.databaseId,
+                entryUuid = sourceKeepassContext.entryUuid
+            )
+            val fixed = downloaded.copy(id = attachment.id)
+            repository.update(fixed)
+            return fixed
+        }
+
+        throw AttachmentError.IoError
     }
 
     private suspend fun mirrorAttachmentToMdbx(attachment: Attachment) {

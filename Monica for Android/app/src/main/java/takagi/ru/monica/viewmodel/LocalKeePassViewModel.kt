@@ -42,6 +42,7 @@ import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.attachments.AttachmentContainer
+import takagi.ru.monica.keepass.KeePassCrossDatabaseTransfer
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
@@ -2090,6 +2091,7 @@ class LocalKeePassViewModel(
         databaseId: Long,
         entries: List<PasswordEntry>,
         decryptPassword: (String) -> String,
+        sourceEntries: List<PasswordEntry>? = null,
         onItemProcessed: ((Int, Int) -> Unit)? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
@@ -2104,9 +2106,17 @@ class LocalKeePassViewModel(
                 onItemProcessed?.invoke(1, total)
             }
 
+            val targetEntries = entries.map { entry ->
+                KeePassCrossDatabaseTransfer.bindPasswordToTarget(
+                    entry = entry,
+                    databaseId = databaseId,
+                    groupPath = entry.keepassGroupPath,
+                    forceNewEntryUuid = entry.id <= 0
+                )
+            }
             val result = compatibilityBridge.upsertLegacyPasswordEntries(
                 databaseId = databaseId,
-                entries = entries,
+                entries = targetEntries,
                 resolvePassword = { entry ->
                     try {
                         decryptPassword(entry.password)
@@ -2117,6 +2127,17 @@ class LocalKeePassViewModel(
             )
 
             if (result.isSuccess) {
+                try {
+                    copyPasswordAttachmentsToKdbx(
+                        sources = sourceEntries ?: entries,
+                        targets = targetEntries,
+                        targetDatabaseId = databaseId,
+                        targetParentId = null
+                    )
+                } catch (e: Exception) {
+                    rollbackKeePassTargets(databaseId, targetEntries)
+                    throw e
+                }
                 onItemProcessed?.invoke(total, total)
             }
             result
@@ -2150,15 +2171,12 @@ class LocalKeePassViewModel(
                 }
             }
 
-            fun normalizeForTarget(entry: PasswordEntry): PasswordEntry {
-                return entry.copy(
-                    keepassDatabaseId = databaseId,
-                    keepassGroupPath = groupPath,
-                    bitwardenVaultId = null,
-                    bitwardenCipherId = null,
-                    bitwardenFolderId = null,
-                    bitwardenRevisionDate = null,
-                    bitwardenLocalModified = false
+            fun normalizeForTarget(entry: PasswordEntry, forceNewEntryUuid: Boolean = false): PasswordEntry {
+                return KeePassCrossDatabaseTransfer.bindPasswordToTarget(
+                    entry = entry,
+                    databaseId = databaseId,
+                    groupPath = groupPath,
+                    forceNewEntryUuid = forceNewEntryUuid
                 )
             }
 
@@ -2173,12 +2191,24 @@ class LocalKeePassViewModel(
                 if (processed <= 0 && total > 1) {
                     onItemProcessed?.invoke(1, total)
                 }
+                val targetEntries = externalEntries.map { normalizeForTarget(it) }
                 compatibilityBridge.upsertLegacyPasswordEntries(
                     databaseId = databaseId,
-                    entries = externalEntries.map(::normalizeForTarget),
+                    entries = targetEntries,
                     resolvePassword = resolvePassword,
                     forceSyncWrite = true
                 ).getOrThrow()
+                try {
+                    copyPasswordAttachmentsToKdbx(
+                        sources = externalEntries,
+                        targets = targetEntries,
+                        targetDatabaseId = databaseId,
+                        targetParentId = { source -> source.id }
+                    )
+                } catch (e: Exception) {
+                    rollbackKeePassTargets(databaseId, targetEntries)
+                    throw e
+                }
                 reportProcessed(externalEntries.size)
             }
 
@@ -2189,7 +2219,7 @@ class LocalKeePassViewModel(
                 }
                 compatibilityBridge.upsertLegacyPasswordEntries(
                     databaseId = databaseId,
-                    entries = sameDatabaseEntries.map(::normalizeForTarget),
+                    entries = sameDatabaseEntries.map { normalizeForTarget(it) },
                     resolvePassword = resolvePassword
                 ).getOrThrow()
                 reportProcessed(sameDatabaseEntries.size)
@@ -2202,15 +2232,9 @@ class LocalKeePassViewModel(
                 if (processed <= 0 && total > 1) {
                     onItemProcessed?.invoke(1, total)
                 }
-                val targetEntries = crossDatabaseEntriesBySource
-                    .values
-                    .flatten()
-                    .map { entry ->
-                        normalizeForTarget(entry).copy(
-                            keepassEntryUuid = null,
-                            keepassGroupUuid = null
-                        )
-                    }
+                val crossDatabaseSourceEntries = crossDatabaseEntriesBySource.values.flatten()
+                val targetEntries = crossDatabaseSourceEntries
+                    .map { entry -> normalizeForTarget(entry, forceNewEntryUuid = true) }
 
                 compatibilityBridge.upsertLegacyPasswordEntries(
                     databaseId = databaseId,
@@ -2218,6 +2242,18 @@ class LocalKeePassViewModel(
                     resolvePassword = resolvePassword,
                     forceSyncWrite = true
                 ).getOrThrow()
+
+                try {
+                    copyPasswordAttachmentsToKdbx(
+                        sources = crossDatabaseSourceEntries,
+                        targets = targetEntries,
+                        targetDatabaseId = databaseId,
+                        targetParentId = { source -> source.id }
+                    )
+                } catch (e: Exception) {
+                    rollbackKeePassTargets(databaseId, targetEntries)
+                    throw e
+                }
 
                 crossDatabaseEntriesBySource.forEach { (sourceDatabaseId, sourceEntries) ->
                     compatibilityBridge.deleteLegacyPasswordEntries(
@@ -2247,6 +2283,7 @@ class LocalKeePassViewModel(
                 .groupBy { it.keepassDatabaseId }
                 .forEach { (databaseId, databaseEntries) ->
                     val resolvedDatabaseId = databaseId ?: return@forEach
+                    materializeKeePassAttachmentsForLocal(databaseEntries)
                     compatibilityBridge.deleteLegacyPasswordEntries(
                         databaseId = resolvedDatabaseId,
                         entries = databaseEntries
@@ -2272,6 +2309,69 @@ class LocalKeePassViewModel(
             Result.success(keepassEntries.size)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private suspend fun copyPasswordAttachmentsToKdbx(
+        sources: List<PasswordEntry>,
+        targets: List<PasswordEntry>,
+        targetDatabaseId: Long,
+        targetParentId: ((PasswordEntry) -> Long?)? = null
+    ) {
+        if (sources.isEmpty() || targets.isEmpty()) return
+        val facade = AttachmentContainer.facade(context)
+        sources.zip(targets).forEach { (source, target) ->
+            val targetUuid = target.keepassEntryUuid?.takeIf { it.isNotBlank() } ?: return@forEach
+            facade.copyAttachmentsToKeePassEntry(
+                sourcePasswordId = source.id,
+                targetPasswordId = targetParentId?.invoke(source),
+                targetDatabaseId = targetDatabaseId,
+                targetEntryUuid = targetUuid,
+                sourceKeepassDatabaseId = source.keepassDatabaseId,
+                sourceKeepassEntryUuid = source.keepassEntryUuid
+            )
+        }
+    }
+
+    private suspend fun materializeKeePassAttachmentsForLocal(entries: List<PasswordEntry>) {
+        if (entries.isEmpty()) return
+        val facade = AttachmentContainer.facade(context)
+        val repository = AttachmentContainer.repository(context)
+        entries.forEach { entry ->
+            val databaseId = entry.keepassDatabaseId ?: return@forEach
+            val entryUuid = entry.keepassEntryUuid
+            if (entryUuid.isNullOrBlank()) {
+                val hasKeePassAttachments = repository
+                    .listByParentAndSource(
+                        passwordId = entry.id,
+                        source = takagi.ru.monica.attachments.model.AttachmentSource.KEEPASS
+                    )
+                    .isNotEmpty()
+                if (hasKeePassAttachments) {
+                    throw IllegalStateException("KeePass attachment transfer requires entry uuid")
+                }
+                return@forEach
+            }
+            facade.materializeKeePassAttachmentsForLocal(
+                passwordId = entry.id,
+                databaseId = databaseId,
+                entryUuid = entryUuid
+            )
+        }
+    }
+
+    private suspend fun rollbackKeePassTargets(
+        databaseId: Long,
+        targets: List<PasswordEntry>
+    ) {
+        if (targets.isEmpty()) return
+        runCatching {
+            compatibilityBridge.deleteLegacyPasswordEntries(
+                databaseId = databaseId,
+                entries = targets
+            )
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to rollback KeePass target after attachment transfer failure: ${error.message}")
         }
     }
     

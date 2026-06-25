@@ -674,7 +674,8 @@ private fun KeePassDatabaseCard(
                     color = statusColor
                 )
                 if (database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV ||
-                    database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE
+                    database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE ||
+                    database.sourceType == KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE
                 ) {
                     Text(
                         text = stringResource(
@@ -684,6 +685,18 @@ private fun KeePassDatabaseCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = remoteSyncStatusColor(database.lastSyncStatus)
                     )
+                    if (database.shouldShowRemoteSyncError()) {
+                        Text(
+                            text = stringResource(
+                                R.string.keepass_remote_sync_error_format,
+                                database.lastSyncError.orEmpty()
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 if (verificationState is LocalKeePassViewModel.VerificationState.Verified) {
                     Text(
@@ -826,6 +839,11 @@ private fun remoteSyncStatusColor(status: KeePassSyncStatus): Color {
         KeePassSyncStatus.FAILED -> MaterialTheme.colorScheme.error
         KeePassSyncStatus.LOCAL_ONLY -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+}
+
+private fun LocalKeePassDatabase.shouldShowRemoteSyncError(): Boolean {
+    return lastSyncError?.isNotBlank() == true &&
+        lastSyncStatus in setOf(KeePassSyncStatus.CONFLICT, KeePassSyncStatus.FAILED)
 }
 
 /**
@@ -1975,6 +1993,16 @@ private fun DatabaseDetailBottomSheet(
                             label = stringResource(R.string.keepass_remote_sync_status),
                             value = remoteSyncStatusLabel(database.lastSyncStatus)
                         )
+                        if (database.shouldShowRemoteSyncError()) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 12.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                            InfoRow(
+                                label = stringResource(R.string.keepass_remote_sync_error),
+                                value = database.lastSyncError.orEmpty()
+                            )
+                        }
 
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 12.dp),

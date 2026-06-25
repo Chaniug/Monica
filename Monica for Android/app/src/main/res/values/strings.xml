@@ -946,6 +946,8 @@
     <string name="passkey_bitwarden_move_blocked">This passkey cannot be moved to Bitwarden.</string>
     <string name="passkey_bitwarden_move_failed">Bitwarden action failed, item was not moved.</string>
     <string name="passkey_bitwarden_move_blocked_count">%1$d passkeys cannot be migrated to Bitwarden.</string>
+    <string name="passkey_keepass_credential_conflict">Target KeePass database already contains this passkey.</string>
+    <string name="passkey_keepass_credential_conflict_count">%1$d passkeys already exist in the target KeePass database.</string>
     <string name="passkey_copy_uses_move_hint">Passkeys are unique credentials. Copy uses safe move behavior.</string>
     <string name="keepass_copy_only_hint">KeePass source items can only be copied to other databases.</string>
     <string name="note_has_image">Has image attachment</string>
@@ -1132,7 +1134,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.290</string>
+    <string name="settings_version_number">V1.0.291</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -2341,6 +2343,8 @@
     <string name="keepass_remote_sync_status_remote_changed">Remote changed</string>
     <string name="keepass_remote_sync_status_conflict">Conflict</string>
     <string name="keepass_remote_sync_status_failed">Sync failed</string>
+    <string name="keepass_remote_sync_error">Last sync error</string>
+    <string name="keepass_remote_sync_error_format">Last sync error: %1$s</string>
     <string name="keepass_connection_status_unavailable_format">Unavailable: %1$s</string>
     <string name="keepass_connection_status_missing">database not found</string>
     <string name="keepass_connection_status_needs_refresh">manual refresh required</string>

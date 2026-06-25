@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.keepass.KeePassCrossDatabaseTransfer
 import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
@@ -436,12 +437,21 @@ class DocumentViewModel(
                     bitwardenRevisionDate = transition.revisionDate,
                     syncStatus = transition.syncStatus
                 )
-                repository.updateItem(finalUpdatedItem)
-                requestBitwardenMutationSync(bitwardenVaultId)
-                keepassSecureItemUpdateExecutor.syncUpdatedItem(
+                val keepassSync = keepassSecureItemUpdateExecutor.syncUpdatedItem(
                     existingItem = existingItem,
-                    updatedItem = finalUpdatedItem
+                    updatedItem = finalUpdatedItem,
+                    persistUpdate = { persistedItem ->
+                        repository.updateItem(persistedItem)
+                    }
                 )
+                if (keepassSync.isFailure) {
+                    Log.e(
+                        "DocumentViewModel",
+                        "KeePass document update failed before local update: ${keepassSync.exceptionOrNull()?.message}"
+                    )
+                    return@launch
+                }
+                requestBitwardenMutationSync(bitwardenVaultId)
                 
                 // 记录更新操作 - 始终记录，即使没有检测到字段变更
                 OperationLogger.logUpdate(
@@ -521,9 +531,21 @@ class DocumentViewModel(
             bitwardenRevisionDate = transition.revisionDate,
             syncStatus = transition.syncStatus
         )
-        repository.updateItem(finalUpdatedItem)
+        val keepassSync = keepassSecureItemUpdateExecutor.syncUpdatedItem(
+            existingItem = existingItem,
+            updatedItem = finalUpdatedItem,
+            persistUpdate = { persistedItem ->
+                repository.updateItem(persistedItem)
+            }
+        )
+        if (keepassSync.isFailure) {
+            Log.e(
+                "DocumentViewModel",
+                "KeePass document move failed before local update: ${keepassSync.exceptionOrNull()?.message}"
+            )
+            return false
+        }
         requestBitwardenMutationSync(bitwardenVaultId)
-        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = finalUpdatedItem)
         return true
     }
 
@@ -818,7 +840,10 @@ class DocumentViewModel(
         }
 
         if (sourceDelete.isFailure) {
-            repository.deleteItemById(newId)
+            Log.e(
+                "DocumentViewModel",
+                "Document move to Monica local kept target copy after source cleanup failed; sourceId=${item.id} targetId=$newId error=${sourceDelete.exceptionOrNull()?.message}"
+            )
             return Result.failure(
                 sourceDelete.exceptionOrNull() ?: IllegalStateException("删除证件源失败")
             )
@@ -865,11 +890,11 @@ class DocumentViewModel(
 
         return KeePassMutationIdentity(
             groupPath = resolvedGroupPath,
-            entryUuid = if (sameDatabase) {
-                existingItem?.keepassEntryUuid ?: UUID.randomUUID().toString()
-            } else {
-                UUID.randomUUID().toString()
-            },
+            entryUuid = KeePassCrossDatabaseTransfer.secureItemTargetEntryUuid(
+                item = existingItem,
+                databaseId = targetDatabaseId,
+                groupPath = resolvedGroupPath
+            ),
             groupUuid = if (groupUnchanged) existingItem?.keepassGroupUuid else null
         )
     }

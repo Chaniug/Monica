@@ -20,15 +20,15 @@ class KeePassPasswordEntryAttachmentRegressionGuardTest {
         assertTrue(
             "Updating a KeePass password entry must remember the matched Entry before removing it, " +
                 "otherwise Entry.binaries is lost when the entry is rebuilt.",
-            updateBody.contains("firstMatchedEntry")
+            updateBody.contains("firstMatchedContext")
         )
         assertTrue(
-            "Updating a KeePass password entry must rebuild from the existing Entry, not from a fresh Entry.",
-            updateBody.contains("buildUpdatedEntry(existing")
+            "Updating a KeePass password entry must patch the existing Entry, not replace it with a fresh Entry.",
+            updateBody.contains("fieldPatch.applyTo(existing)")
         )
         assertTrue(
-            "buildUpdatedEntry must copy the existing Entry so attachments in Entry.binaries survive.",
-            rebuildBody.contains("existingEntry.copy(")
+            "KeePass field patch must copy the existing Entry so attachments in Entry.binaries survive.",
+            source.contains("return entry.copy(")
         )
     }
 

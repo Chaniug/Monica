@@ -123,7 +123,8 @@ internal suspend fun executeMixedPasswordBatchMove(
 ): MixedPasswordBatchMoveResult {
     val passwordActionResolution = resolvePasswordBatchMoveAction(
         requestedAction = action,
-        selectedEntries = selectedEntries
+        selectedEntries = selectedEntries,
+        target = target
     )
     val forceSupplementaryCopy =
         action == UnifiedMoveAction.MOVE && aggregateSelection.hasKeePassOwned
@@ -476,11 +477,13 @@ internal suspend fun executeMixedPasswordBatchMove(
                     val localIds = selectedEntries.filter { it.isLocalOnlyEntry() }.map { it.id }
 
                     if (keepassEntries.isNotEmpty()) {
-                        val result = localKeePassViewModel.movePasswordEntriesToMonicaLocal(keepassEntries)
+                        val keepassIds = keepassEntries.map { it.id }
+                        val result = viewModel.moveKeePassPasswordsToMonicaCategoryAwait(
+                            ids = keepassIds,
+                            categoryId = null
+                        )
                         if (result.isSuccess) {
-                            val keepassIds = keepassEntries.map { it.id }
                             viewModel.unarchivePasswordsAwait(keepassIds)
-                            viewModel.movePasswordsToCategoryAwait(keepassIds, null)
                             successCount += keepassIds.size
                         } else {
                             failedCount += keepassEntries.size
@@ -517,11 +520,13 @@ internal suspend fun executeMixedPasswordBatchMove(
                     val localIds = selectedEntries.filter { it.isLocalOnlyEntry() }.map { it.id }
 
                     if (keepassEntries.isNotEmpty()) {
-                        val result = localKeePassViewModel.movePasswordEntriesToMonicaLocal(keepassEntries)
+                        val keepassIds = keepassEntries.map { it.id }
+                        val result = viewModel.moveKeePassPasswordsToMonicaCategoryAwait(
+                            ids = keepassIds,
+                            categoryId = target.categoryId
+                        )
                         if (result.isSuccess) {
-                            val keepassIds = keepassEntries.map { it.id }
                             viewModel.unarchivePasswordsAwait(keepassIds)
-                            viewModel.movePasswordsToCategoryAwait(keepassIds, target.categoryId)
                             successCount += keepassIds.size
                         } else {
                             failedCount += keepassEntries.size
@@ -738,7 +743,7 @@ internal suspend fun executeMixedPasswordBatchMove(
                 if (moved) successCount++ else failedCount++
                 reportProgress()
             } else {
-                bankCardViewModel.moveCardToStorage(
+                val moved = bankCardViewModel.moveCardToStorage(
                     id = item.id,
                     categoryId = targetCategoryId,
                     keepassDatabaseId = targetKeepassDatabaseId,
@@ -748,7 +753,7 @@ internal suspend fun executeMixedPasswordBatchMove(
                     mdbxDatabaseId = targetMdbxDatabaseId,
                     mdbxFolderId = targetMdbxFolderId
                 )
-                successCount++
+                if (moved) successCount++ else failedCount++
                 reportProgress()
             }
         }
@@ -777,7 +782,7 @@ internal suspend fun executeMixedPasswordBatchMove(
                 if (moved) successCount++ else failedCount++
                 reportProgress()
             } else {
-                documentViewModel.moveDocumentToStorage(
+                val moved = documentViewModel.moveDocumentToStorage(
                     id = item.id,
                     categoryId = targetCategoryId,
                     keepassDatabaseId = targetKeepassDatabaseId,
@@ -787,7 +792,7 @@ internal suspend fun executeMixedPasswordBatchMove(
                     mdbxDatabaseId = targetMdbxDatabaseId,
                     mdbxFolderId = targetMdbxFolderId
                 )
-                successCount++
+                if (moved) successCount++ else failedCount++
                 reportProgress()
             }
         }
@@ -814,69 +819,29 @@ internal suspend fun executeMixedPasswordBatchMove(
         }
 
         if (!isMonicaLocalTarget) {
-            val totpIds = aggregateSelection.totpItems.map(SecureItem::id)
-            when (target) {
-                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
-                    if (totpIds.isNotEmpty()) {
-                        aggregateUiState.totpViewModel?.moveToBitwardenFolder(totpIds, target.vaultId, "")
-                        successCount += totpIds.size
-                        reportProgress(totpIds.size)
-                    }
+            aggregateSelection.totpItems.forEach { item ->
+                val totpViewModel = aggregateUiState.totpViewModel
+                if (totpViewModel == null) {
+                    failedCount++
+                    reportProgress()
+                    return@forEach
                 }
-
-                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
-                    if (totpIds.isNotEmpty()) {
-                        aggregateUiState.totpViewModel?.moveToBitwardenFolder(
-                            totpIds,
-                            target.vaultId,
-                            target.folderId
-                        )
-                        successCount += totpIds.size
-                        reportProgress(totpIds.size)
-                    }
+                val moved = totpViewModel.moveTotpToStorage(
+                    id = item.id,
+                    categoryId = targetCategoryId,
+                    keepassDatabaseId = targetKeepassDatabaseId,
+                    keepassGroupPath = targetKeepassGroupPath,
+                    bitwardenVaultId = targetBitwardenVaultId,
+                    bitwardenFolderId = targetBitwardenFolderId,
+                    mdbxDatabaseId = targetMdbxDatabaseId,
+                    mdbxFolderId = targetMdbxFolderId
+                )
+                if (moved) {
+                    successCount++
+                } else {
+                    failedCount++
                 }
-
-                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
-                    if (totpIds.isNotEmpty()) {
-                        aggregateUiState.totpViewModel?.moveToKeePassDatabase(totpIds, target.databaseId)
-                        successCount += totpIds.size
-                        reportProgress(totpIds.size)
-                    }
-                }
-
-                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
-                    if (totpIds.isNotEmpty()) {
-                        aggregateUiState.totpViewModel?.moveToKeePassGroup(
-                            totpIds,
-                            target.databaseId,
-                            target.groupPath
-                        )
-                        successCount += totpIds.size
-                        reportProgress(totpIds.size)
-                    }
-                }
-
-                is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
-                    if (totpIds.isNotEmpty()) {
-                        aggregateUiState.totpViewModel?.moveToMdbxDatabase(totpIds, target.databaseId)
-                        successCount += totpIds.size
-                        reportProgress(totpIds.size)
-                    }
-                }
-
-                is UnifiedMoveCategoryTarget.MdbxFolderTarget -> {
-                    if (totpIds.isNotEmpty()) {
-                        aggregateUiState.totpViewModel?.moveToMdbxDatabase(
-                            totpIds,
-                            target.databaseId,
-                            target.folderId
-                        )
-                        successCount += totpIds.size
-                        reportProgress(totpIds.size)
-                    }
-                }
-
-                else -> Unit
+                reportProgress()
             }
         }
 
@@ -913,9 +878,27 @@ internal suspend fun executeMixedPasswordBatchMove(
             context = context
         )
         when {
-            updateResult.isSuccess &&
-                aggregateUiState.passkeyViewModel?.updatePasskey(updateResult.getOrThrow())?.isSuccess == true -> {
-                successCount++
+            updateResult.isSuccess -> {
+                val updatedPasskey = updateResult.getOrThrow()
+                val persisted = aggregateUiState.passkeyViewModel?.updatePasskey(updatedPasskey)
+                if (persisted?.isSuccess == true) {
+                    val queueDelete = queuePasswordPagePasskeyBitwardenDeleteAfterMove(
+                        source = passkey,
+                        target = target,
+                        bitwardenRepository = bitwardenRepository
+                    )
+                    if (queueDelete.isFailure) {
+                        android.util.Log.e(
+                            "PasswordBatchMoveMixed",
+                            "Bitwarden source delete failed after passkey move: ${queueDelete.exceptionOrNull()?.message}"
+                        )
+                        failedCount++
+                    } else {
+                        successCount++
+                    }
+                } else {
+                    failedCount++
+                }
             }
 
             updateResult.exceptionOrNull() is PasswordPagePasskeyBitwardenMoveBlockedException -> {
@@ -981,27 +964,8 @@ internal suspend fun applyPasswordPagePasskeyStorageTarget(
         val canMoveToBitwarden = withContext(Dispatchers.IO) {
             isPasswordPagePasskeyMigratableToBitwarden(context, passkey)
         }
-        if (!canMoveToBitwarden) {
+    if (!canMoveToBitwarden) {
             return Result.failure(PasswordPagePasskeyBitwardenMoveBlockedException())
-        }
-    }
-
-    val isLeavingCurrentCipher =
-        currentVaultId != null &&
-            !currentCipherId.isNullOrBlank() &&
-            currentVaultId != targetVaultId
-
-    if (isLeavingCurrentCipher) {
-        val queueResult = bitwardenRepository.queueCipherDelete(
-            vaultId = currentVaultId,
-            cipherId = currentCipherId!!,
-            itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
-        )
-        if (queueResult.isFailure) {
-            return Result.failure(
-                queueResult.exceptionOrNull()
-                    ?: IllegalStateException("Queue Bitwarden delete failed")
-            )
         }
     }
 
@@ -1116,6 +1080,31 @@ internal suspend fun applyPasswordPagePasskeyStorageTarget(
             bitwardenCipherId = if (keepExistingCipher) currentCipherId else null,
             syncStatus = resolvedSyncStatus
         )
+    )
+}
+
+private suspend fun queuePasswordPagePasskeyBitwardenDeleteAfterMove(
+    source: PasskeyEntry,
+    target: UnifiedMoveCategoryTarget,
+    bitwardenRepository: BitwardenRepository
+): Result<Unit> {
+    val currentVaultId = source.bitwardenVaultId
+    val currentCipherId = source.bitwardenCipherId
+    val targetVaultId = when (target) {
+        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+        else -> null
+    }
+    val isLeavingCurrentCipher =
+        currentVaultId != null &&
+            !currentCipherId.isNullOrBlank() &&
+            currentVaultId != targetVaultId
+    if (!isLeavingCurrentCipher) return Result.success(Unit)
+
+    return bitwardenRepository.queueCipherDelete(
+        vaultId = currentVaultId,
+        cipherId = currentCipherId!!,
+        itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
     )
 }
 

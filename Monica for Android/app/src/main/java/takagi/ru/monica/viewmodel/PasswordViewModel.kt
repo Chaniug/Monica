@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import takagi.ru.monica.bitwarden.BitwardenMutationStateHelper
 import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
 import takagi.ru.monica.bitwarden.service.BitwardenSyncSnapshotPreviewParser
+import takagi.ru.monica.attachments.AttachmentContainer
+import takagi.ru.monica.attachments.model.AttachmentSource
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.domain.provider.BitwardenPasswordProvider
 import takagi.ru.monica.domain.provider.DefaultPasswordProvider
@@ -16,8 +18,10 @@ import takagi.ru.monica.domain.provider.PasswordProviderRegistry
 import takagi.ru.monica.domain.provider.PasswordSource
 import takagi.ru.monica.domain.provider.MdbxPasswordProvider
 import takagi.ru.monica.keepass.KeePassPasswordCreateExecutor
+import takagi.ru.monica.keepass.KeePassCrossDatabaseTransfer
 import takagi.ru.monica.keepass.KeePassPasswordUpdateExecutor
 import takagi.ru.monica.keepass.KeePassPasswordDeleteExecutor
+import takagi.ru.monica.keepass.KeePassTotpProjectionMatcher
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.CustomFieldDraft
@@ -139,6 +143,7 @@ class PasswordViewModel(
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
     private val decryptLock = Any()
+    private val appContext: Context? = context?.applicationContext
     private val bitwardenSnapshotPreviewParser = BitwardenSyncSnapshotPreviewParser()
 
     companion object {
@@ -1587,16 +1592,23 @@ class PasswordViewModel(
         val existingTotp = secureRepo.getItemsByType(ItemType.TOTP).first()
         resolvedSnapshots.forEach { snapshot ->
             val incoming = snapshot.item
+            val existingByUuid = incoming.keepassEntryUuid
+                ?.takeIf { it.isNotBlank() }
+                ?.let { entryUuid -> secureRepo.getItemByKeePassUuid(databaseId, entryUuid) }
             val existingBySource = snapshot.sourceMonicaId
                 ?.takeIf { it > 0 }
                 ?.let { sourceId -> secureRepo.getItemById(sourceId) }
                 ?.takeIf { it.itemType == ItemType.TOTP }
-
-            val existing = existingBySource ?: existingTotp.firstOrNull {
-                it.itemType == ItemType.TOTP &&
-                    it.keepassDatabaseId == databaseId &&
-                    it.keepassGroupPath == incoming.keepassGroupPath &&
-                    it.title == incoming.title
+            val incomingIdentityKey = parseStoredTotpData(incoming)?.let(::buildTotpCopyIdentityKey)
+            val existing = KeePassTotpProjectionMatcher.findExistingProjection(
+                databaseId = databaseId,
+                incoming = incoming,
+                existingTotp = existingTotp,
+                existingByUuid = existingByUuid,
+                existingBySource = existingBySource,
+                incomingIdentityKey = incomingIdentityKey
+            ) { candidate ->
+                parseStoredTotpData(candidate)?.let(::buildTotpCopyIdentityKey)
             }
 
                 if (existing == null) {
@@ -1611,6 +1623,8 @@ class PasswordViewModel(
                         imagePaths = incoming.imagePaths,
                         keepassDatabaseId = incoming.keepassDatabaseId,
                         keepassGroupPath = incoming.keepassGroupPath,
+                        keepassEntryUuid = incoming.keepassEntryUuid,
+                        keepassGroupUuid = incoming.keepassGroupUuid,
                         isDeleted = isInRecycleBin,
                         deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                         updatedAt = Date()
@@ -2020,11 +2034,34 @@ class PasswordViewModel(
 
     suspend fun movePasswordsToCategoryAwait(ids: List<Long>, categoryId: Long?) {
         if (ids.isEmpty()) return
+        val entries = repository.getPasswordsByIds(ids)
         repository.updateCategoryForPasswords(ids, categoryId)
         // Moving a password to a Monica category must stay local-only.
         // Category linkage may be used by other sync workflows, but it must not
         // silently convert password ownership during a local move action.
         repository.updateKeePassDatabaseForPasswords(ids, null)
+        deleteMovedKeePassPasswordSources(entries, "category")
+    }
+
+    suspend fun moveKeePassPasswordsToMonicaCategoryAwait(
+        ids: List<Long>,
+        categoryId: Long?
+    ): Result<Int> {
+        if (ids.isEmpty()) return Result.success(0)
+        return runCatching {
+            val entries = repository.getPasswordsByIds(ids)
+            val keepassEntries = entries.filter { it.keepassDatabaseId != null }
+            if (keepassEntries.isEmpty()) return@runCatching 0
+
+            repository.updateCategoryForPasswords(keepassEntries.map { it.id }, categoryId)
+            repository.updateKeePassDatabaseForPasswords(keepassEntries.map { it.id }, null)
+
+            val sourceDeleted = deleteMovedKeePassPasswordSources(keepassEntries, "monica_local")
+            if (!sourceDeleted) {
+                throw IllegalStateException("KeePass source cleanup failed after moving password to Monica local")
+            }
+            keepassEntries.size
+        }
     }
     
     fun movePasswordsToKeePassDatabase(ids: List<Long>, databaseId: Long?) {
@@ -2042,22 +2079,26 @@ class PasswordViewModel(
         movePasswordsToKeePassInternal(
             ids = ids,
             buildUpdatedEntry = { entry ->
-                entry.copy(
-                    keepassDatabaseId = databaseId,
-                    keepassGroupPath = null,
-                    keepassEntryUuid = null,
-                    keepassGroupUuid = null,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    bitwardenCipherId = null,
-                    bitwardenRevisionDate = null,
-                    bitwardenLocalModified = false,
-                    updatedAt = Date()
-                )
-            },
-            applyBatchForRemaining = { remainingIds ->
-                repository.clearBitwardenBindingForPasswords(remainingIds)
-                repository.updateKeePassDatabaseForPasswords(remainingIds, databaseId)
+                if (databaseId == null) {
+                    entry.copy(
+                        keepassDatabaseId = null,
+                        keepassGroupPath = null,
+                        keepassEntryUuid = null,
+                        keepassGroupUuid = null,
+                        bitwardenVaultId = null,
+                        bitwardenFolderId = null,
+                        bitwardenCipherId = null,
+                        bitwardenRevisionDate = null,
+                        bitwardenLocalModified = false,
+                        updatedAt = Date()
+                    )
+                } else {
+                    KeePassCrossDatabaseTransfer.bindPasswordToTarget(
+                        entry = entry,
+                        databaseId = databaseId,
+                        groupPath = null
+                    ).copy(updatedAt = Date())
+                }
             }
         )
     }
@@ -2077,22 +2118,11 @@ class PasswordViewModel(
         movePasswordsToKeePassInternal(
             ids = ids,
             buildUpdatedEntry = { entry ->
-                entry.copy(
-                    keepassDatabaseId = databaseId,
-                    keepassGroupPath = groupPath,
-                    keepassEntryUuid = null,
-                    keepassGroupUuid = null,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    bitwardenCipherId = null,
-                    bitwardenRevisionDate = null,
-                    bitwardenLocalModified = false,
-                    updatedAt = Date()
-                )
-            },
-            applyBatchForRemaining = { remainingIds ->
-                repository.clearBitwardenBindingForPasswords(remainingIds)
-                repository.updateKeePassGroupForPasswords(remainingIds, databaseId, groupPath)
+                KeePassCrossDatabaseTransfer.bindPasswordToTarget(
+                    entry = entry,
+                    databaseId = databaseId,
+                    groupPath = groupPath
+                ).copy(updatedAt = Date())
             }
         )
     }
@@ -2106,41 +2136,57 @@ class PasswordViewModel(
     suspend fun movePasswordsToMdbxDatabaseAwait(ids: List<Long>, databaseId: Long?, folderId: String? = null) {
         if (ids.isEmpty()) return
         val targetId = databaseId ?: return
+        val entries = repository.getPasswordsByIds(ids)
         repository.updateMdbxDatabaseForPasswords(ids, targetId, folderId)
+        deleteMovedKeePassPasswordSources(entries, "mdbx")
     }
 
 
     private suspend fun movePasswordsToKeePassInternal(
         ids: List<Long>,
-        buildUpdatedEntry: (PasswordEntry) -> PasswordEntry,
-        applyBatchForRemaining: suspend (List<Long>) -> Unit
+        buildUpdatedEntry: (PasswordEntry) -> PasswordEntry
     ) {
         val entries = repository.getPasswordsByIds(ids)
-        val entriesWithRemoteCipher = entries.filter { it.hasBitwardenCipherBinding() }
-        val handledIds = mutableSetOf<Long>()
-
-        entriesWithRemoteCipher.forEach { entry ->
-            val vaultId = entry.bitwardenVaultId
-            val cipherId = entry.bitwardenCipherId
-            if (vaultId == null || cipherId.isNullOrBlank()) return@forEach
-
-            val queueResult = bitwardenRepository?.queueCipherDelete(
-                vaultId = vaultId,
-                cipherId = cipherId,
-                entryId = entry.id
-            ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
-            if (queueResult.isFailure) {
-                throw queueResult.exceptionOrNull()
-                    ?: IllegalStateException("排队删除 Bitwarden 条目失败")
+        entries.forEach { entry ->
+            val updatedEntry = buildUpdatedEntry(entry)
+            val customFields = resolveKeePassCustomFieldsForSync(
+                entryId = entry.id,
+                customFieldsOverride = null
+            )
+            val keepassSync = keepassPasswordUpdateExecutor.syncUpdatedEntry(
+                existingEntry = entry,
+                updatedEntry = updatedEntry,
+                resolvePassword = { candidate ->
+                    decodePasswordOrNull(candidate.password) ?: candidate.password
+                },
+                customFields = customFields,
+                persistUpdate = { persistedEntry ->
+                    repository.updatePasswordEntry(persistedEntry)
+                }
+            )
+            if (keepassSync.isFailure) {
+                Log.e(
+                    "PasswordViewModel",
+                    "KeePass password move failed before local update: ${keepassSync.exceptionOrNull()?.message}"
+                )
+                return@forEach
             }
 
-            repository.updatePasswordEntry(buildUpdatedEntry(entry))
-            handledIds += entry.id
-        }
+            if (entry.hasBitwardenCipherBinding()) {
+                val vaultId = entry.bitwardenVaultId
+                val cipherId = entry.bitwardenCipherId
+                if (vaultId == null || cipherId.isNullOrBlank()) return@forEach
 
-        val remainingIds = ids.filterNot { handledIds.contains(it) }
-        if (remainingIds.isNotEmpty()) {
-            applyBatchForRemaining(remainingIds)
+                val queueResult = bitwardenRepository?.queueCipherDelete(
+                    vaultId = vaultId,
+                    cipherId = cipherId,
+                    entryId = entry.id
+                ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+                if (queueResult.isFailure) {
+                    throw queueResult.exceptionOrNull()
+                        ?: IllegalStateException("排队删除 Bitwarden 条目失败")
+                }
+            }
         }
     }
 
@@ -2152,9 +2198,65 @@ class PasswordViewModel(
 
     suspend fun movePasswordsToBitwardenFolderAwait(ids: List<Long>, vaultId: Long, folderId: String) {
         if (ids.isEmpty()) return
+        val entries = repository.getPasswordsByIds(ids)
         // Clear KeePass binding first so the same entry can switch storage target.
         repository.updateKeePassDatabaseForPasswords(ids, null)
         repository.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
+        deleteMovedKeePassPasswordSources(entries, "bitwarden")
+    }
+
+    private suspend fun deleteMovedKeePassPasswordSources(
+        entries: List<PasswordEntry>,
+        target: String
+    ): Boolean {
+        val keepassEntries = entries.filter { it.keepassDatabaseId != null }
+        if (keepassEntries.isEmpty()) return true
+        val attachmentsReady = runCatching {
+            materializeMovedKeePassAttachments(keepassEntries)
+        }.onFailure { error ->
+            Log.e(
+                "PasswordViewModel",
+                "KeePass source delete blocked after password move to $target because attachments are not local-safe: ${error.message}"
+            )
+        }.isSuccess
+        if (!attachmentsReady) return false
+
+        val deleted = keepassPasswordDeleteExecutor.deleteBatch(
+            entries = keepassEntries,
+            useRecycleBin = false
+        )
+        if (!deleted) {
+            Log.e(
+                "PasswordViewModel",
+                "KeePass source delete failed after password move to $target; target data was kept"
+            )
+        }
+        return deleted
+    }
+
+    private suspend fun materializeMovedKeePassAttachments(entries: List<PasswordEntry>) {
+        if (entries.isEmpty()) return
+        val context = appContext ?: return
+        val facade = AttachmentContainer.facade(context)
+        val attachmentRepository = AttachmentContainer.repository(context)
+        entries.forEach { entry ->
+            val databaseId = entry.keepassDatabaseId ?: return@forEach
+            val entryUuid = entry.keepassEntryUuid
+            if (entryUuid.isNullOrBlank()) {
+                val hasKeePassAttachments = attachmentRepository
+                    .listByParentAndSource(entry.id, AttachmentSource.KEEPASS)
+                    .isNotEmpty()
+                if (hasKeePassAttachments) {
+                    throw IllegalStateException("KeePass attachment transfer requires entry uuid")
+                }
+                return@forEach
+            }
+            facade.materializeKeePassAttachmentsForLocal(
+                passwordId = entry.id,
+                databaseId = databaseId,
+                entryUuid = entryUuid
+            )
+        }
     }
     
     fun authenticate(password: String): Boolean {
@@ -2322,13 +2424,20 @@ class PasswordViewModel(
         entry: PasswordEntry,
         categoryId: Long?
     ): Long? {
-        return createPasswordEntryInternal(
+        val newId = createPasswordEntryInternal(
             entry = buildMonicaLocalCopy(entry, categoryId),
             includeDetailedLog = false,
             skipCategoryBinding = true,
             // 源条目的 password 已经是 Monica SecurityManager 加密过的密文，直接复用
             passwordAlreadyEncrypted = true
         )
+        if (newId != null) {
+            copyCustomFieldsForEntryCopy(
+                sourceEntryId = entry.id,
+                targetEntryId = newId
+            )
+        }
+        return newId
     }
 
     suspend fun moveBitwardenPasswordToMonicaLocal(
@@ -2462,27 +2571,36 @@ class PasswordViewModel(
             pendingEntry = entryToUpdate,
             incomingPassword = entryToUpdate.password
         )
-        repository.updatePasswordEntry(
-            entryToUpdate.copy(
-                password = resolvedPassword,
-                authenticatorKey = encodeAuthenticatorKeyForStorage(entryToUpdate.authenticatorKey),
-                updatedAt = Date()
-            )
+        val persistedEntry = entryToUpdate.copy(
+            password = resolvedPassword,
+            authenticatorKey = encodeAuthenticatorKeyForStorage(entryToUpdate.authenticatorKey),
+            updatedAt = Date()
         )
+
+        val keepassSync = keepassPasswordUpdateExecutor.syncUpdatedEntry(
+            existingEntry = oldEntry,
+            updatedEntry = persistedEntry,
+            resolvePassword = { entryToUpdate.password },
+            customFields = resolveKeePassCustomFieldsForSync(
+                entryId = entryToUpdate.id,
+                customFieldsOverride = customFieldsOverride
+            ),
+            persistUpdate = { updated ->
+                repository.updatePasswordEntry(updated)
+            }
+        )
+        if (keepassSync.isFailure) {
+            Log.e(
+                "PasswordViewModel",
+                "KeePass password update failed before local update: ${keepassSync.exceptionOrNull()?.message}"
+            )
+            return false
+        }
 
         if (oldEntry != null && oldPassword.isNotBlank() && oldPassword != entryToUpdate.password) {
             savePasswordHistorySnapshot(entryToUpdate.id, oldPassword)
         }
 
-        keepassPasswordUpdateExecutor.syncUpdatedEntry(
-            existingEntry = oldEntry,
-            updatedEntry = entryToUpdate,
-            resolvePassword = { it.password },
-            customFields = resolveKeePassCustomFieldsForSync(
-                entryId = entryToUpdate.id,
-                customFieldsOverride = customFieldsOverride
-            )
-        )
         entryToUpdate.bitwardenVaultId?.let { vaultId ->
             bitwardenRepository?.requestLocalMutationSync(vaultId)
         }
@@ -4079,6 +4197,27 @@ class PasswordViewModel(
         
         // 更新密码条目的 updatedAt 以确保 WebDAV 同步能检测到自定义字段的变化
         repository.updatePasswordUpdatedAt(entryId, java.util.Date())
+    }
+
+    private suspend fun copyCustomFieldsForEntryCopy(
+        sourceEntryId: Long,
+        targetEntryId: Long
+    ) {
+        if (sourceEntryId <= 0 || targetEntryId <= 0 || sourceEntryId == targetEntryId) return
+        val fieldRepository = customFieldRepository ?: return
+        val fields = fieldRepository.getFieldsByEntryIdSync(sourceEntryId)
+            .filter { it.title.isNotBlank() && it.value.isNotBlank() }
+            .sortedWith(compareBy<CustomField> { it.sortOrder }.thenBy { it.id })
+            .mapIndexed { index, field ->
+                field.copy(
+                    id = 0,
+                    entryId = targetEntryId,
+                    sortOrder = index
+                )
+            }
+        if (fields.isNotEmpty()) {
+            fieldRepository.saveFieldsForEntries(mapOf(targetEntryId to fields))
+        }
     }
     
     /**
