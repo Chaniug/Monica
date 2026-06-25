@@ -617,14 +617,15 @@ private fun CreateOneDriveDatabaseDialog(
     var useKeyFile by remember { mutableStateOf(false) }
     var keyFileUri by remember { mutableStateOf<Uri?>(null) }
     var keyFileName by remember { mutableStateOf("") }
-    var formatVersion by remember { mutableStateOf(KeePassFormatVersion.KDBX4) }
-    var cipherAlgorithm by remember { mutableStateOf(KeePassCipherAlgorithm.AES) }
-    var kdfAlgorithm by remember { mutableStateOf(KeePassKdfAlgorithm.ARGON2D) }
-    var transformRounds by remember { mutableStateOf("8") }
+    val defaultOptions = remember { KeePassDatabaseCreationOptions.remoteCompatibilityDefaults() }
+    var formatVersion by remember { mutableStateOf(defaultOptions.formatVersion) }
+    var cipherAlgorithm by remember { mutableStateOf(defaultOptions.cipherAlgorithm) }
+    var kdfAlgorithm by remember { mutableStateOf(defaultOptions.kdfAlgorithm) }
+    var transformRounds by remember { mutableStateOf(defaultOptions.transformRounds.toString()) }
     var memoryMb by remember {
-        mutableStateOf((KeePassDatabaseCreationOptions.DEFAULT_ARGON_MEMORY_BYTES / 1024L / 1024L).toString())
+        mutableStateOf((defaultOptions.memoryBytes / 1024L / 1024L).toString())
     }
-    var parallelism by remember { mutableStateOf("2") }
+    var parallelism by remember { mutableStateOf(defaultOptions.parallelism.toString()) }
     var showAdvancedCryptoOptions by remember { mutableStateOf(false) }
 
     val keyFilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -658,7 +659,19 @@ private fun CreateOneDriveDatabaseDialog(
 
     LaunchedEffect(formatVersion) {
         if (cipherAlgorithm !in availableCipherOptions) cipherAlgorithm = availableCipherOptions.first()
-        if (kdfAlgorithm !in availableKdfOptions) kdfAlgorithm = availableKdfOptions.first()
+        if (kdfAlgorithm !in availableKdfOptions) {
+            val previousDefaultRounds = KeePassDatabaseCreationOptions
+                .defaultTransformRoundsFor(kdfAlgorithm)
+                .toString()
+            val nextKdfAlgorithm = availableKdfOptions.first()
+            val shouldUseNextDefaultRounds = transformRounds.isBlank() || transformRounds == previousDefaultRounds
+            kdfAlgorithm = nextKdfAlgorithm
+            if (shouldUseNextDefaultRounds) {
+                transformRounds = KeePassDatabaseCreationOptions
+                    .defaultTransformRoundsFor(nextKdfAlgorithm)
+                    .toString()
+            }
+        }
     }
 
     val roundsValue = transformRounds.toLongOrNull()
@@ -818,7 +831,19 @@ private fun CreateOneDriveDatabaseDialog(
                             selectedText = keepassOneDriveKdfLabel(kdfAlgorithm),
                             options = availableKdfOptions,
                             optionLabel = { keepassOneDriveKdfLabel(it) },
-                            onSelected = { kdfAlgorithm = it }
+                            onSelected = {
+                                val previousDefaultRounds = KeePassDatabaseCreationOptions
+                                    .defaultTransformRoundsFor(kdfAlgorithm)
+                                    .toString()
+                                val shouldUseNextDefaultRounds = transformRounds.isBlank() ||
+                                    transformRounds == previousDefaultRounds
+                                kdfAlgorithm = it
+                                if (shouldUseNextDefaultRounds) {
+                                    transformRounds = KeePassDatabaseCreationOptions
+                                        .defaultTransformRoundsFor(it)
+                                        .toString()
+                                }
+                            }
                         )
                         OutlinedTextField(
                             value = transformRounds,
@@ -867,9 +892,9 @@ private fun CreateOneDriveDatabaseDialog(
                         formatVersion = formatVersion,
                         cipherAlgorithm = cipherAlgorithm,
                         kdfAlgorithm = kdfAlgorithm,
-                        transformRounds = roundsValue ?: 8L,
-                        memoryBytes = ((memoryMbValue ?: 32L) * 1024L * 1024L),
-                        parallelism = parallelismValue ?: 2
+                        transformRounds = roundsValue ?: KeePassDatabaseCreationOptions.defaultTransformRoundsFor(kdfAlgorithm),
+                        memoryBytes = ((memoryMbValue ?: (defaultOptions.memoryBytes / 1024L / 1024L)) * 1024L * 1024L),
+                        parallelism = parallelismValue ?: defaultOptions.parallelism
                     ).normalized()
                     onCreate(name.trim(), password, if (useKeyFile) keyFileUri else null, options, description.takeIf { it.isNotBlank() })
                 },

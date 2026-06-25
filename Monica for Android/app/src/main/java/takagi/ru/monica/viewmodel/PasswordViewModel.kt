@@ -1306,6 +1306,10 @@ class PasswordViewModel(
         val startedAt = SyncDiagnostics.start(taskId, target, trigger, detail = "forceRefresh=$forceRefresh")
         try {
             if (forceRefresh) {
+                bridge.syncLegacyRemoteDatabase(databaseId)
+                    .onFailure { error ->
+                        Log.w("PasswordViewModel", "KeePass remote refresh failed before projection for databaseId=$databaseId", error)
+                    }
                 KeePassKdbxService.invalidateProcessCache(databaseId)
             }
             val snapshot = bridge

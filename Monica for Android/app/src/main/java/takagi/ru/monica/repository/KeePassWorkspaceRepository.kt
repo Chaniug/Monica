@@ -14,6 +14,7 @@ import takagi.ru.monica.utils.KeePassCustomFieldData
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.KeePassRemoteSyncResult
 import takagi.ru.monica.utils.KeePassRestoreTarget
 import takagi.ru.monica.utils.KeePassSecureItemData
 import takagi.ru.monica.utils.KeePassWorkspaceSnapshot
@@ -98,6 +99,10 @@ class KeePassWorkspaceRepository(
             databaseId = databaseId,
             remoteBytes = remoteBytes
         )
+    }
+
+    suspend fun syncRemoteDatabase(databaseId: Long): Result<KeePassRemoteSyncResult> {
+        return service.syncRemoteDatabase(databaseId)
     }
 
     suspend fun createGroup(

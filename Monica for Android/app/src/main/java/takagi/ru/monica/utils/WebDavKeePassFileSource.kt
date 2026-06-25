@@ -12,7 +12,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.Locale
-import java.util.UUID
 
 data class KeePassLocalMirrorPaths(
     val workingCopyPath: String,
@@ -93,7 +92,7 @@ class WebDavKeePassFileSource(
             }
         }
 
-        writeAtomically(remotePath = normalizedRemotePath, targetUrl = remoteUrl, bytes = bytes)
+        sardine.put(remoteUrl, bytes, KEEPASS_KDBX_MIME_TYPE)
         val latest = runCatching { stat() }.getOrDefault(FileSourceStat())
         FileSourceWriteResult(
             versionToken = latest.versionToken,
@@ -206,7 +205,7 @@ class WebDavKeePassFileSource(
         if (webDavPathExists(targetUrl)) {
             throw IOException("同名文件已存在")
         }
-        writeAtomically(remotePath = targetPath, targetUrl = targetUrl, bytes = bytes, overwrite = false)
+        sardine.put(targetUrl, bytes, KEEPASS_KDBX_MIME_TYPE)
         val latest = runCatching { resolveResource(targetUrl) }.getOrNull()
         FileSourceEntry(
             id = latest?.href?.toString() ?: targetUrl,
@@ -219,33 +218,6 @@ class WebDavKeePassFileSource(
             lastModified = latest?.modified?.time,
             sizeBytes = latest?.contentLength?.takeIf { it >= 0L } ?: bytes.size.toLong()
         )
-    }
-
-    private fun writeAtomically(
-        remotePath: String,
-        targetUrl: String,
-        bytes: ByteArray,
-        overwrite: Boolean = true
-    ) {
-        val tempPath = buildSiblingTempPath(remotePath)
-        val tempUrl = buildRemoteUrl(normalizedServerUrl, tempPath)
-        runCatching {
-            if (webDavPathExists(tempUrl)) {
-                sardine.delete(tempUrl)
-            }
-        }
-
-        var tempUploaded = false
-        try {
-            sardine.put(tempUrl, bytes, "application/octet-stream")
-            tempUploaded = true
-            sardine.move(tempUrl, targetUrl, overwrite)
-        } catch (error: Exception) {
-            if (tempUploaded) {
-                runCatching { sardine.delete(tempUrl) }
-            }
-            throw error
-        }
     }
 
     private fun resolveResource(targetUrl: String): DavResource? {
@@ -348,13 +320,6 @@ class WebDavKeePassFileSource(
             return if (parentPath.isBlank()) sanitizedName else "$parentPath/$sanitizedName"
         }
 
-        fun buildSiblingTempPath(remotePath: String): String {
-            val normalized = normalizeRemotePath(remotePath)
-            val parent = parentPathOf(normalized)
-            val name = normalized.substringAfterLast('/')
-            val tempName = ".$name.monica-tmp-${UUID.randomUUID()}"
-            return buildChildPath(parent, tempName)
-        }
     }
 }
 

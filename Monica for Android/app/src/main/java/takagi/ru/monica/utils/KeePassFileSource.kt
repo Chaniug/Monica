@@ -1,5 +1,7 @@
 package takagi.ru.monica.utils
 
+const val KEEPASS_KDBX_MIME_TYPE = "application/x-keepass2"
+
 data class FileSourceStat(
     val versionToken: String? = null,
     val etag: String? = null,

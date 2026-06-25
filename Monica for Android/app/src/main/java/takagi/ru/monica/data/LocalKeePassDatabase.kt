@@ -61,7 +61,7 @@ data class KeePassDatabaseCreationOptions(
     val formatVersion: KeePassFormatVersion = KeePassFormatVersion.KDBX4,
     val cipherAlgorithm: KeePassCipherAlgorithm = KeePassCipherAlgorithm.AES,
     val kdfAlgorithm: KeePassKdfAlgorithm = KeePassKdfAlgorithm.ARGON2D,
-    val transformRounds: Long = 8L,
+    val transformRounds: Long = DEFAULT_ARGON_ITERATIONS,
     val memoryBytes: Long = DEFAULT_ARGON_MEMORY_BYTES,
     val parallelism: Int = 2
 ) {
@@ -89,9 +89,30 @@ data class KeePassDatabaseCreationOptions(
     }
 
     companion object {
+        const val DEFAULT_ARGON_ITERATIONS = 8L
+        const val DEFAULT_AES_KDF_ROUNDS = 600_000L
         const val DEFAULT_ARGON_MEMORY_BYTES = 32L * 1024L * 1024L
         const val MIN_MEMORY_BYTES = 1L * 1024L * 1024L
         const val MAX_MEMORY_BYTES = 1024L * 1024L * 1024L
+
+        fun defaultTransformRoundsFor(kdfAlgorithm: KeePassKdfAlgorithm): Long {
+            return if (kdfAlgorithm == KeePassKdfAlgorithm.AES_KDF) {
+                DEFAULT_AES_KDF_ROUNDS
+            } else {
+                DEFAULT_ARGON_ITERATIONS
+            }
+        }
+
+        fun remoteCompatibilityDefaults(): KeePassDatabaseCreationOptions {
+            return KeePassDatabaseCreationOptions(
+                formatVersion = KeePassFormatVersion.KDBX4,
+                cipherAlgorithm = KeePassCipherAlgorithm.AES,
+                kdfAlgorithm = KeePassKdfAlgorithm.AES_KDF,
+                transformRounds = DEFAULT_AES_KDF_ROUNDS,
+                memoryBytes = DEFAULT_ARGON_MEMORY_BYTES,
+                parallelism = 2
+            )
+        }
     }
 }
 

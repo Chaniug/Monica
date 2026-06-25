@@ -136,6 +136,9 @@ class KeePassCompatibilityBridge(
         entry: PasswordEntry
     ): Result<KeePassRestoreTarget> = workspaceRepository.resolveRestoreTargetForPassword(databaseId, entry)
 
+    suspend fun syncLegacyRemoteDatabase(databaseId: Long) =
+        workspaceRepository.syncRemoteDatabase(databaseId)
+
     suspend fun updateLegacySecureItem(
         databaseId: Long,
         item: SecureItem

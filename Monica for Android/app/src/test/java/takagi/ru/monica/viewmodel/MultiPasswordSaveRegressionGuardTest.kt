@@ -965,6 +965,167 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun keepassRemoteWritesStayVisibleToOtherClients() {
+        val kdbxServiceSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/KeePassKdbxService.kt"
+        ).readText()
+        val webDavFileSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/WebDavKeePassFileSource.kt"
+        ).readText()
+        val oneDriveFileSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/OneDriveKeePassFileSource.kt"
+        ).readText()
+        val localKeePassViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/LocalKeePassViewModel.kt"
+        ).readText()
+        val passwordViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val workspaceRepositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/KeePassWorkspaceRepository.kt"
+        ).readText()
+        val compatibilityBridgeSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/KeePassCompatibilityBridge.kt"
+        ).readText()
+        val fileSourceContract = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/KeePassFileSource.kt"
+        ).readText()
+        val localKeePassDatabaseSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/data/LocalKeePassDatabase.kt"
+        ).readText()
+        val webDavBrowserSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/LocalKeePassWebDavBrowser.kt"
+        ).readText()
+        val oneDriveBrowserSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/LocalKeePassOneDriveBrowser.kt"
+        ).readText()
+        val googleDriveBrowserSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/LocalKeePassGoogleDriveBrowser.kt"
+        ).readText()
+        val writeDatabaseBody = kdbxServiceSource
+            .substringAfter("private suspend fun writeDatabase(")
+            .substringBefore("private fun keePassPendingChangeRepository(")
+        val webDavWriteBody = webDavFileSource
+            .substringAfter("override suspend fun write(")
+            .substringBefore("override suspend fun listChildren(")
+        val webDavCreateBody = webDavFileSource
+            .substringAfter("suspend fun createFileInDirectory(")
+            .substringBefore("private fun resolveResource(")
+        val manualSyncBody = localKeePassViewModelSource
+            .substringAfter("private suspend fun syncRemoteDatabaseInternal(")
+            .substringBefore("private suspend fun handleSyncRemoteFailure(")
+        val passwordSyncBody = passwordViewModelSource
+            .substringAfter("private suspend fun syncKeePassDatabaseNow(")
+            .substringBefore("private suspend fun refreshAllKeePassDatabases(")
+        val writeExternalBytesBody = kdbxServiceSource
+            .substringAfter("private fun writeExternalBytes(")
+            .substringBefore("private fun openExternalOutputStream(")
+        val openExternalOutputStreamBody = kdbxServiceSource
+            .substringAfter("private fun openExternalOutputStream(")
+            .substringBefore("suspend fun resolveRemoteConflict(")
+
+        assertTrue(
+            "Saving a remote KeePass working copy must try a foreground remote upload before falling back to WorkManager; otherwise Monica can show local-only data that other KeePass clients cannot see.",
+            writeDatabaseBody.contains("val syncOutcome = syncRemoteWorkingCopy(") &&
+                writeDatabaseBody.contains("if (syncOutcome != null)") &&
+                writeDatabaseBody.contains("resolvedDatabase = syncOutcome.finalDatabase") &&
+                writeDatabaseBody.contains("} else {") &&
+                writeDatabaseBody.indexOf("val syncOutcome = syncRemoteWorkingCopy(") <
+                    writeDatabaseBody.indexOf("markRemoteWritePending(database, bytes)") &&
+                writeDatabaseBody.indexOf("markRemoteWritePending(database, bytes)") <
+                    writeDatabaseBody.indexOf("enqueueRemoteWorkingCopyUpload(database.id)")
+        )
+        assertTrue(
+            "Remote KeePass writes must read the remote bytes back and decode them before marking sync success, so a bad WebDAV/OneDrive write cannot be reported as synchronized.",
+            kdbxServiceSource.contains("private suspend fun verifyRemoteKdbxWrite(") &&
+                kdbxServiceSource.contains("val remoteBytes = fileSource.read()") &&
+                kdbxServiceSource.contains("remoteHash != expectedHash") &&
+                kdbxServiceSource.contains("decodeDatabase(") &&
+                kdbxServiceSource.contains("Remote KDBX write verified") &&
+                kdbxServiceSource.contains("Remote KDBX write verification failed") &&
+                kdbxServiceSource.contains("val verifiedRemote = verifyRemoteKdbxWrite(")
+        )
+        assertTrue(
+            "Manual KeePass remote sync must use the same read-back/decode verification before marking a WebDAV/OneDrive write synchronized.",
+            kdbxServiceSource.contains("internal suspend fun verifyRemoteKdbxWrite(") &&
+                kdbxServiceSource.contains("sourceLabel = \"service-sync-merge\"") &&
+                kdbxServiceSource.contains("sourceLabel = \"service-sync-upload\"") &&
+                kdbxServiceSource.contains("baseHash = verifiedRemote.hash") &&
+                kdbxServiceSource.contains("workingHash = verifiedRemote.hash") &&
+                manualSyncBody.contains("kdbxService.syncRemoteDatabase(databaseId)")
+        )
+        assertFalse(
+            "LocalKeePassViewModel should not keep a second copy of remote hash/version merge logic; all remote manual, visible, and password-page refreshes must share KeePassKdbxService.syncRemoteDatabase.",
+            manualSyncBody.contains("fileSource.read()") ||
+                manualSyncBody.contains("knownRemoteVersion") ||
+                manualSyncBody.contains("sourceLabel = \"manual-sync-")
+        )
+        assertTrue(
+            "Manual/visible KeePass remote refresh must compare the actual downloaded remote KDBX hash, not only provider etag/version. Some WebDAV providers return unchanged or empty version metadata, which made Monica B miss Monica A's writes.",
+            kdbxServiceSource.contains("suspend fun syncRemoteDatabase(databaseId: Long): Result<KeePassRemoteSyncResult>") &&
+                kdbxServiceSource.contains("val remoteBytes = fileSource.read()") &&
+                kdbxServiceSource.contains("val remoteHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes)") &&
+                kdbxServiceSource.contains("val remoteHasChanges =") &&
+                kdbxServiceSource.contains("baseHash != remoteHash") &&
+                kdbxServiceSource.contains("localChanged=${'$'}localHasChanges remoteChanged=${'$'}remoteHasChanges") &&
+                kdbxServiceSource.indexOf("val remoteBytes = fileSource.read()") <
+                    kdbxServiceSource.indexOf("if (remoteHasChanges)") &&
+                !manualSyncBody.contains("knownRemoteVersion != currentRemoteVersion")
+        )
+        assertTrue(
+            "Password-page KeePass force refresh must pull the remote working copy before rebuilding the Room projection. Otherwise Monica B can keep showing stale cached entries until it performs a local write.",
+            workspaceRepositorySource.contains("suspend fun syncRemoteDatabase(databaseId: Long)") &&
+                compatibilityBridgeSource.contains("suspend fun syncLegacyRemoteDatabase(databaseId: Long)") &&
+                passwordSyncBody.contains("if (forceRefresh)") &&
+                passwordSyncBody.contains("bridge.syncLegacyRemoteDatabase(databaseId)") &&
+                passwordSyncBody.indexOf("bridge.syncLegacyRemoteDatabase(databaseId)") <
+                    passwordSyncBody.indexOf(".loadLegacyWorkspace(databaseId")
+        )
+        assertTrue(
+            "KeePass WebDAV writes should use a compatibility-first direct PUT. Hidden temp-file MOVE overwrites are rejected by common providers and leave only Monica's local working copy updated.",
+            webDavWriteBody.contains("sardine.put(remoteUrl, bytes, KEEPASS_KDBX_MIME_TYPE)") &&
+                webDavCreateBody.contains("sardine.put(targetUrl, bytes, KEEPASS_KDBX_MIME_TYPE)") &&
+                !webDavFileSource.contains("sardine.move(") &&
+                !webDavFileSource.contains("buildSiblingTempPath(") &&
+                !webDavFileSource.contains(".monica-tmp")
+        )
+        assertTrue(
+            "Remote KeePass providers should upload KDBX bytes with the KeePass MIME type instead of generic octet-stream, so cloud document providers keep the file editable for other clients.",
+            fileSourceContract.contains("const val KEEPASS_KDBX_MIME_TYPE = \"application/x-keepass2\"") &&
+                webDavFileSource.contains("KEEPASS_KDBX_MIME_TYPE") &&
+                oneDriveFileSource.contains("contentType: String = KEEPASS_KDBX_MIME_TYPE") &&
+                oneDriveFileSource.contains("toRequestBody(KEEPASS_KDBX_MIME_TYPE.toMediaType())")
+        )
+        assertTrue(
+            "New remote KeePass databases should default to the broadest compatibility profile for Monica features: KDBX4 + AES cipher + AES-KDF rounds. Argon2 remains available only through advanced options.",
+            localKeePassDatabaseSource.contains("const val DEFAULT_AES_KDF_ROUNDS = 600_000L") &&
+                localKeePassDatabaseSource.contains("fun remoteCompatibilityDefaults()") &&
+                localKeePassDatabaseSource.contains("formatVersion = KeePassFormatVersion.KDBX4") &&
+                localKeePassDatabaseSource.contains("kdfAlgorithm = KeePassKdfAlgorithm.AES_KDF") &&
+                localKeePassDatabaseSource.contains("transformRounds = DEFAULT_AES_KDF_ROUNDS") &&
+                webDavBrowserSource.contains("val defaultOptions = remember { KeePassDatabaseCreationOptions.remoteCompatibilityDefaults() }") &&
+                oneDriveBrowserSource.contains("val defaultOptions = remember { KeePassDatabaseCreationOptions.remoteCompatibilityDefaults() }") &&
+                googleDriveBrowserSource.contains("creationOptions = KeePassDatabaseCreationOptions.remoteCompatibilityDefaults()") &&
+                !googleDriveBrowserSource.contains("creationOptions = KeePassDatabaseCreationOptions(),")
+        )
+        assertTrue(
+            "When switching remote-create KDF algorithms, the rounds field should follow the algorithm default only while it is still untouched; AES-KDF must never inherit Argon2's 8 iterations.",
+            localKeePassDatabaseSource.contains("fun defaultTransformRoundsFor(kdfAlgorithm: KeePassKdfAlgorithm): Long") &&
+                webDavBrowserSource.contains("defaultTransformRoundsFor(kdfAlgorithm)") &&
+                webDavBrowserSource.contains("defaultTransformRoundsFor(it)") &&
+                oneDriveBrowserSource.contains("defaultTransformRoundsFor(kdfAlgorithm)") &&
+                oneDriveBrowserSource.contains("defaultTransformRoundsFor(it)")
+        )
+        assertTrue(
+            "SAF-backed KeePass writes should prefer provider-friendly truncate-write mode like mature KeePass clients, falling back to rwt only when wt is unavailable.",
+            writeExternalBytesBody.contains("openExternalOutputStream(uri)?.use") &&
+                openExternalOutputStreamBody.indexOf("openOutputStream(uri, \"wt\")") <
+                    openExternalOutputStreamBody.indexOf("openOutputStream(uri, \"rwt\")") &&
+                !kdbxServiceSource.contains("private fun openExternalFileDescriptor(")
+        )
+    }
+
+    @Test
     fun mdbxSnapshotsExposeSingleFileBackupHistoryAndRollback() {
         val storeSource = projectFile(
             "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"

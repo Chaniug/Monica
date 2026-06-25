@@ -527,7 +527,7 @@ fun KeepassGoogleDriveBrowserBottomSheet(
                     accountLabel = session!!.displayName,
                     databasePassword = password,
                     keyFileUri = keyFileUri,
-                    creationOptions = KeePassDatabaseCreationOptions(),
+                    creationOptions = KeePassDatabaseCreationOptions.remoteCompatibilityDefaults(),
                     description = description
                 )
                 showCreateDatabaseDialog = false

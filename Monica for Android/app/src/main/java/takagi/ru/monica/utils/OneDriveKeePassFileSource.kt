@@ -381,7 +381,7 @@ class OneDriveKeePassFileSource(
                 .url(session.uploadUrl)
                 .header("Content-Range", "bytes $offset-${endExclusive - 1}/${bytes.size}")
                 .header("Content-Length", chunk.size.toString())
-                .put(chunk.toRequestBody("application/octet-stream".toMediaType()))
+                .put(chunk.toRequestBody(KEEPASS_KDBX_MIME_TYPE.toMediaType()))
                 .build()
             sharedHttpClient.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string().orEmpty()
@@ -408,7 +408,7 @@ class OneDriveKeePassFileSource(
         accessToken: String,
         method: String = "GET",
         body: ByteArray? = null,
-        contentType: String = "application/octet-stream",
+        contentType: String = KEEPASS_KDBX_MIME_TYPE,
         headers: Map<String, String> = emptyMap(),
         expectedStatusCodes: Set<Int> = setOf(200)
     ): String {

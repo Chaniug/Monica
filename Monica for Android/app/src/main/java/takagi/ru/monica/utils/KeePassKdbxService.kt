@@ -238,6 +238,17 @@ private data class RemoteSyncOutcome(
     val conflictCopyCount: Int = 0
 )
 
+internal data class RemoteKdbxVerification(
+    val bytes: ByteArray,
+    val database: KeePassDatabase,
+    val hash: String
+)
+
+data class KeePassRemoteSyncResult(
+    val databaseName: String,
+    val message: String
+)
+
 private enum class KeePassPasswordSkipReason {
     MONICA_SECURE_ITEM,
     PURE_PASSKEY,
@@ -640,6 +651,168 @@ class KeePassKdbxService(
                 sourceName = fileUri.lastPathSegment ?: fileUri.toString()
             )
             Result.success(buildDiagnostics(keePassDatabase))
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    suspend fun syncRemoteDatabase(databaseId: Long): Result<KeePassRemoteSyncResult> = withContext(Dispatchers.IO) {
+        try {
+            val database = dao.getDatabaseById(databaseId)
+                ?: throw IOException("数据库不存在")
+            val syncedDatabaseName = database.name
+            if (!database.isRemoteSource() || database.sourceId == null) {
+                throw IllegalArgumentException("当前数据库不是远端来源")
+            }
+
+            val remoteDb = PasswordDatabase.getDatabase(context)
+            val remoteSourceDao = remoteDb.keepassRemoteSourceDao()
+            val syncStateDao = remoteDb.keepassRemoteSyncStateDao()
+            val syncService = RemoteKeePassSyncService(
+                databaseDao = dao,
+                remoteSourceDao = remoteSourceDao,
+                syncStateDao = syncStateDao
+            )
+            val remoteSource = remoteSourceDao.getSourceById(database.sourceId)
+                ?: throw IllegalStateException("远端来源不存在")
+            val fileSource = createRemoteFileSource(database, remoteSource)
+            val workingPath = database.workingCopyPath ?: throw IllegalStateException("本地工作副本不存在")
+            val workingFile = File(context.filesDir, workingPath)
+            if (!workingFile.exists()) {
+                throw IllegalStateException("本地工作副本不存在")
+            }
+
+            val workingBytes = workingFile.readBytes()
+            val workingHash = GoogleDriveKeePassSupport.sha256Hex(workingBytes)
+            val syncState = syncStateDao.getState(databaseId)
+            val baseHash = syncState?.baseHash
+            syncService.markComparing(databaseId, workingHash)
+
+            val remoteStat = runCatching { fileSource.stat() }.getOrDefault(FileSourceStat())
+            val remoteBytes = fileSource.read()
+            val remoteHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes)
+            val localHasChanges = if (baseHash.isNullOrBlank()) {
+                workingHash != remoteHash
+            } else {
+                baseHash != workingHash
+            }
+            val remoteHasChanges = if (baseHash.isNullOrBlank()) {
+                workingHash != remoteHash
+            } else {
+                baseHash != remoteHash
+            }
+
+            Log.i(
+                TAG,
+                "KeePass remote sync compare databaseId=$databaseId source=${database.sourceType} localHash=${workingHash.take(12)} remoteHash=${remoteHash.take(12)} baseHash=${baseHash?.take(12)} localChanged=$localHasChanges remoteChanged=$remoteHasChanges remoteVersion=${(remoteStat.etag ?: remoteStat.versionToken).orEmpty()}"
+            )
+
+            if (remoteHasChanges) {
+                syncService.markDownloading(databaseId, workingHash)
+                if (!localHasChanges) {
+                    OneDriveKeePassSupport.writeRelativeFile(context, workingPath, remoteBytes)
+                    database.cacheCopyPath?.let { cachePath ->
+                        OneDriveKeePassSupport.writeRelativeFile(context, cachePath, remoteBytes)
+                    }
+                    syncService.markSynchronized(
+                        databaseId = databaseId,
+                        versionToken = remoteStat.versionToken,
+                        etag = remoteStat.etag,
+                        baseHash = remoteHash,
+                        workingHash = remoteHash
+                    )
+                    invalidateProcessCache(databaseId)
+                    return@withContext Result.success(
+                        KeePassRemoteSyncResult(syncedDatabaseName, "已拉取远端最新版本")
+                    )
+                }
+
+                if (database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE ||
+                    database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV
+                ) {
+                    val loaded = loadDatabase(databaseId)
+                    val mergeResult = resolveRemoteConflictInternal(
+                        database = database,
+                        credentials = loaded.credentials,
+                        localDatabase = loaded.keePassDatabase,
+                        remoteBytes = remoteBytes
+                    )
+                    syncService.markLocalChanges(databaseId, GoogleDriveKeePassSupport.sha256Hex(mergeResult.mergedBytes))
+                    val writeResult = fileSource.write(
+                        mergeResult.mergedBytes,
+                        expectedVersion = remoteStat.etag ?: remoteStat.versionToken
+                    )
+                    val verifiedRemote = verifyRemoteKdbxWrite(
+                        database = database,
+                        fileSource = fileSource,
+                        credentials = loaded.credentials,
+                        expectedBytes = mergeResult.mergedBytes,
+                        sourceLabel = "service-sync-merge"
+                    )
+                    OneDriveKeePassSupport.writeRelativeFile(context, workingPath, verifiedRemote.bytes)
+                    database.cacheCopyPath?.let { cachePath ->
+                        OneDriveKeePassSupport.writeRelativeFile(context, cachePath, verifiedRemote.bytes)
+                    }
+                    syncService.markSynchronized(
+                        databaseId = databaseId,
+                        versionToken = writeResult.versionToken,
+                        etag = writeResult.etag,
+                        baseHash = verifiedRemote.hash,
+                        workingHash = verifiedRemote.hash
+                    )
+                    invalidateProcessCache(databaseId)
+                    val message = if (mergeResult.conflictCopyCount > 0) {
+                        "已合并本地与远端修改，并保留 ${mergeResult.conflictCopyCount} 个远端冲突副本"
+                    } else {
+                        "已合并本地与远端修改"
+                    }
+                    return@withContext Result.success(KeePassRemoteSyncResult(syncedDatabaseName, message))
+                }
+
+                val conflictMessage = "远端文件已变化，且本地工作副本也有修改，请先处理冲突"
+                syncService.markConflict(
+                    databaseId = databaseId,
+                    workingHash = workingHash,
+                    failureMessage = conflictMessage
+                )
+                throw IllegalStateException(conflictMessage)
+            }
+
+            if (!localHasChanges) {
+                syncService.markSynchronized(
+                    databaseId = databaseId,
+                    versionToken = remoteStat.versionToken,
+                    etag = remoteStat.etag,
+                    baseHash = remoteHash,
+                    workingHash = workingHash
+                )
+                return@withContext Result.success(KeePassRemoteSyncResult(syncedDatabaseName, "远端已是最新状态"))
+            }
+
+            syncService.markUploadInProgress(databaseId, workingHash)
+            val writeResult = fileSource.write(
+                workingBytes,
+                expectedVersion = syncState?.remoteEtag ?: syncState?.remoteVersionToken
+            )
+            val verifiedRemote = verifyRemoteKdbxWrite(
+                database = database,
+                fileSource = fileSource,
+                credentials = loadDatabase(databaseId).credentials,
+                expectedBytes = workingBytes,
+                sourceLabel = "service-sync-upload"
+            )
+            database.cacheCopyPath?.let { cachePath ->
+                OneDriveKeePassSupport.writeRelativeFile(context, cachePath, verifiedRemote.bytes)
+            }
+            syncService.markSynchronized(
+                databaseId = databaseId,
+                versionToken = writeResult.versionToken,
+                etag = writeResult.etag,
+                baseHash = verifiedRemote.hash,
+                workingHash = verifiedRemote.hash
+            )
+            invalidateProcessCache(databaseId)
+            Result.success(KeePassRemoteSyncResult(syncedDatabaseName, "远端同步成功"))
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -5117,8 +5290,20 @@ class KeePassKdbxService(
         var resolvedDatabase = keePassDatabase
         if (database.isRemoteSource()) {
             beforeRemoteUpload?.invoke(database, resolvedDatabase)
-            markRemoteWritePending(database, bytes)
-            enqueueRemoteWorkingCopyUpload(database.id)
+            val syncOutcome = syncRemoteWorkingCopy(
+                database = database,
+                credentials = credentials,
+                localDatabase = resolvedDatabase,
+                bytes = bytes
+            )
+            if (syncOutcome != null) {
+                resolvedSourceEtag = syncOutcome.writeResult.etag
+                resolvedSourceLastModified = syncOutcome.writeResult.lastModified?.toString()
+                resolvedDatabase = syncOutcome.finalDatabase
+            } else {
+                markRemoteWritePending(database, bytes)
+                enqueueRemoteWorkingCopyUpload(database.id)
+            }
         }
         val updatedSignature = currentSourceSignature(database)
         cacheLoadedDatabase(
@@ -5193,20 +5378,27 @@ class KeePassKdbxService(
                     }
                     val fileSource = WebDavKeePassSupport.createFileSource(remoteSource, securityManager)
                     val writeResult = fileSource.write(bytes, expectedVersion = expectedRemoteVersion)
+                    val verifiedRemote = verifyRemoteKdbxWrite(
+                        database = database,
+                        fileSource = fileSource,
+                        credentials = credentials,
+                        expectedBytes = bytes,
+                        sourceLabel = "foreground-webdav"
+                    )
                     database.cacheCopyPath?.let { cachePath ->
-                        writeInternalRelative(cachePath, bytes)
+                        writeInternalRelative(cachePath, verifiedRemote.bytes)
                     }
                     syncService.markSynchronized(
                         databaseId = database.id,
                         versionToken = writeResult.versionToken,
                         etag = writeResult.etag,
-                        baseHash = workingHash,
-                        workingHash = workingHash
+                        baseHash = verifiedRemote.hash,
+                        workingHash = verifiedRemote.hash
                     )
                     RemoteSyncOutcome(
                         writeResult = writeResult,
-                        finalBytes = bytes,
-                        finalDatabase = localDatabase
+                        finalBytes = verifiedRemote.bytes,
+                        finalDatabase = verifiedRemote.database
                     )
                 }
                 KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> {
@@ -5219,10 +5411,17 @@ class KeePassKdbxService(
                     val fileSource = OneDriveKeePassSupport.createFileSource(context, remoteSource)
                     val syncOutcome = try {
                         val writeResult = fileSource.write(bytes, expectedVersion = expectedRemoteVersion)
+                        val verifiedRemote = verifyRemoteKdbxWrite(
+                            database = database,
+                            fileSource = fileSource,
+                            credentials = credentials,
+                            expectedBytes = bytes,
+                            sourceLabel = "foreground-onedrive"
+                        )
                         RemoteSyncOutcome(
                             writeResult = writeResult,
-                            finalBytes = bytes,
-                            finalDatabase = localDatabase
+                            finalBytes = verifiedRemote.bytes,
+                            finalDatabase = verifiedRemote.database
                         )
                     } catch (error: Exception) {
                         if (!isRemoteVersionConflict(error)) {
@@ -5244,13 +5443,20 @@ class KeePassKdbxService(
                             mergeResult.mergedBytes,
                             expectedVersion = currentRemoteVersion
                         )
+                        val verifiedRemote = verifyRemoteKdbxWrite(
+                            database = database,
+                            fileSource = fileSource,
+                            credentials = credentials,
+                            expectedBytes = mergeResult.mergedBytes,
+                            sourceLabel = "foreground-onedrive-merge"
+                        )
                         database.workingCopyPath?.let { workingCopyPath ->
-                            writeInternalRelative(workingCopyPath, mergeResult.mergedBytes)
+                            writeInternalRelative(workingCopyPath, verifiedRemote.bytes)
                         }
                         RemoteSyncOutcome(
                             writeResult = retriedWrite,
-                            finalBytes = mergeResult.mergedBytes,
-                            finalDatabase = mergeResult.mergedDatabase,
+                            finalBytes = verifiedRemote.bytes,
+                            finalDatabase = verifiedRemote.database,
                             conflictCopyCount = mergeResult.conflictCopyCount
                         )
                     }
@@ -5283,20 +5489,27 @@ class KeePassKdbxService(
                         ?: throw IllegalStateException("远端来源不存在")
                     val fileSource = GoogleDriveKeePassSupport.createFileSource(context, remoteSource)
                     val writeResult = fileSource.write(bytes)
+                    val verifiedRemote = verifyRemoteKdbxWrite(
+                        database = database,
+                        fileSource = fileSource,
+                        credentials = credentials,
+                        expectedBytes = bytes,
+                        sourceLabel = "foreground-googledrive"
+                    )
                     database.cacheCopyPath?.let { cachePath ->
-                        writeInternalRelative(cachePath, bytes)
+                        writeInternalRelative(cachePath, verifiedRemote.bytes)
                     }
                     syncService.markSynchronized(
                         databaseId = database.id,
                         versionToken = writeResult.versionToken,
                         etag = writeResult.etag,
-                        baseHash = workingHash,
-                        workingHash = workingHash
+                        baseHash = verifiedRemote.hash,
+                        workingHash = verifiedRemote.hash
                     )
                     RemoteSyncOutcome(
                         writeResult = writeResult,
-                        finalBytes = bytes,
-                        finalDatabase = localDatabase
+                        finalBytes = verifiedRemote.bytes,
+                        finalDatabase = verifiedRemote.database
                     )
                 }
                 else -> null
@@ -5425,6 +5638,7 @@ class KeePassKdbxService(
                 ?: throw IllegalStateException("远端来源不存在")
             val fileSource = createRemoteFileSource(database, remoteSource)
             conflictFileSource = fileSource
+            val credentials = loadDatabase(databaseId).credentials
             val expectedRemoteVersion = when (database.sourceType) {
                 KeePassDatabaseSourceType.REMOTE_ONEDRIVE,
                 KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE,
@@ -5436,12 +5650,19 @@ class KeePassKdbxService(
                 else -> null
             }
             val writeResult = fileSource.write(workingBytes, expectedVersion = expectedRemoteVersion)
+            val verifiedRemote = verifyRemoteKdbxWrite(
+                database = database,
+                fileSource = fileSource,
+                credentials = credentials,
+                expectedBytes = workingBytes,
+                sourceLabel = "worker-upload"
+            )
             updateOneDriveRemoteSourceBindingIfNeeded(
                 database = database,
                 writeResult = writeResult
             )
             database.cacheCopyPath?.let { cachePath ->
-                writeInternalRelative(cachePath, workingBytes)
+                writeInternalRelative(cachePath, verifiedRemote.bytes)
             }
 
             val latestBytes = readRemoteWorkingCopyBytes(database)
@@ -5451,8 +5672,8 @@ class KeePassKdbxService(
                     databaseId = database.id,
                     versionToken = writeResult.versionToken,
                     etag = writeResult.etag,
-                    baseHash = workingHash,
-                    workingHash = workingHash
+                    baseHash = verifiedRemote.hash,
+                    workingHash = verifiedRemote.hash
                 )
                 pendingPlan.ready.forEach { item ->
                     pendingRepository.markCompleted(item.pendingId)
@@ -5465,7 +5686,7 @@ class KeePassKdbxService(
                     databaseId = database.id,
                     versionToken = writeResult.versionToken,
                     etag = writeResult.etag,
-                    baseHash = workingHash,
+                    baseHash = verifiedRemote.hash,
                     workingHash = latestHash
                 )
                 pendingPlan.ready.forEach { item ->
@@ -5581,10 +5802,16 @@ class KeePassKdbxService(
         val rebaseResult = KeePassRemoteRebase.applyReadyChanges(remoteDatabase, pendingPlan)
             ?: return null
         val rebasedBytes = encodeDatabase(rebaseResult.updatedDatabase)
-        val rebasedHash = GoogleDriveKeePassSupport.sha256Hex(rebasedBytes)
         val writeResult = fileSource.write(
             bytes = rebasedBytes,
             expectedVersion = currentRemoteVersion
+        )
+        val verifiedRemote = verifyRemoteKdbxWrite(
+            database = database,
+            fileSource = fileSource,
+            credentials = credentials,
+            expectedBytes = rebasedBytes,
+            sourceLabel = "pending-rebase"
         )
         updateOneDriveRemoteSourceBindingIfNeeded(
             database = database,
@@ -5592,19 +5819,19 @@ class KeePassKdbxService(
         )
 
         database.cacheCopyPath?.let { cachePath ->
-            writeInternalRelative(cachePath, rebasedBytes)
+            writeInternalRelative(cachePath, verifiedRemote.bytes)
         }
         val latestWorkingHash = readRemoteWorkingCopyBytes(database)
             ?.let { GoogleDriveKeePassSupport.sha256Hex(it) }
         if (latestWorkingHash == null || latestWorkingHash == originalWorkingHash) {
             database.workingCopyPath?.let { workingCopyPath ->
-                writeInternalRelative(workingCopyPath, rebasedBytes)
+                writeInternalRelative(workingCopyPath, verifiedRemote.bytes)
             }
         }
 
         return KeePassRemoteRebaseResult(
             writeResult = writeResult,
-            rebasedHash = rebasedHash
+            rebasedHash = verifiedRemote.hash
         )
     }
 
@@ -5647,6 +5874,64 @@ class KeePassKdbxService(
         val workingCopyPath = database.workingCopyPath?.takeIf { it.isNotBlank() } ?: return null
         val file = File(context.filesDir, workingCopyPath)
         return if (file.exists()) file.readBytes() else null
+    }
+
+    internal suspend fun verifyRemoteKdbxWrite(
+        databaseId: Long,
+        fileSource: KeePassFileSource,
+        expectedBytes: ByteArray,
+        sourceLabel: String
+    ): RemoteKdbxVerification = withContext(Dispatchers.IO) {
+        val database = dao.getDatabaseById(databaseId)
+            ?: throw IllegalStateException("数据库不存在")
+        val credentials = loadDatabase(databaseId).credentials
+        verifyRemoteKdbxWrite(
+            database = database,
+            fileSource = fileSource,
+            credentials = credentials,
+            expectedBytes = expectedBytes,
+            sourceLabel = sourceLabel
+        )
+    }
+
+    private suspend fun verifyRemoteKdbxWrite(
+        database: LocalKeePassDatabase,
+        fileSource: KeePassFileSource,
+        credentials: Credentials,
+        expectedBytes: ByteArray,
+        sourceLabel: String
+    ): RemoteKdbxVerification {
+        val expectedHash = GoogleDriveKeePassSupport.sha256Hex(expectedBytes)
+        return try {
+            val remoteBytes = fileSource.read()
+            val remoteHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes)
+            if (remoteHash != expectedHash) {
+                throw IOException(
+                    "远端写入校验失败：上传后内容不一致 (${remoteBytes.size}/${expectedBytes.size})"
+                )
+            }
+            val decoded = decodeDatabase(
+                bytes = remoteBytes,
+                credentials = credentials,
+                sourceName = "databaseId=${database.id}:$sourceLabel"
+            )
+            Log.i(
+                TAG,
+                "Remote KDBX write verified db=${database.id} source=${database.sourceType} label=$sourceLabel bytes=${remoteBytes.size} hash=${remoteHash.take(12)}"
+            )
+            RemoteKdbxVerification(
+                bytes = remoteBytes,
+                database = decoded,
+                hash = remoteHash
+            )
+        } catch (error: Exception) {
+            Log.e(
+                TAG,
+                "Remote KDBX write verification failed db=${database.id} source=${database.sourceType} label=$sourceLabel expectedBytes=${expectedBytes.size} expectedHash=${expectedHash.take(12)}",
+                error
+            )
+            throw error
+        }
     }
 
     private suspend fun getCachedLoadedDatabase(databaseId: Long): LoadedDatabase? {
@@ -5786,22 +6071,11 @@ class KeePassKdbxService(
     }
 
     private fun writeExternalBytes(uri: Uri, bytes: ByteArray) {
-        openExternalFileDescriptor(uri)?.use { descriptor ->
-            ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
-                output.write(bytes)
-                output.flush()
-                output.fd.sync()
-            }
+        openExternalOutputStream(uri)?.use { output ->
+            output.write(bytes)
+            output.flush()
         } ?: throw IOException("无法写入数据库文件")
     }
-
-    private fun openExternalFileDescriptor(uri: Uri): ParcelFileDescriptor? =
-        try {
-            context.contentResolver.openFileDescriptor(uri, "rwt")
-        } catch (e: FileNotFoundException) {
-            Log.w(TAG, "openFileDescriptor rwt failed, retry with wt", e)
-            context.contentResolver.openFileDescriptor(uri, "wt")
-        }
 
     private fun openExternalOutputStream(uri: Uri) =
         try {
