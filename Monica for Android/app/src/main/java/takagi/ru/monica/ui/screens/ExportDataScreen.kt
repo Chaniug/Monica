@@ -25,6 +25,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.ui.components.OutlinedTextField
+import java.io.File
 
 /**
  * 数据导出界面 - 重新设计
@@ -35,6 +36,12 @@ import takagi.ru.monica.ui.components.OutlinedTextField
 fun ExportDataScreen(
     onNavigateBack: () -> Unit,
     onExportZip: suspend (Uri, BackupPreferences) -> Result<String>,
+    onPrepareZip: suspend (BackupPreferences) -> Result<Pair<File, String>> = {
+        Result.failure(Exception("Not implemented"))
+    },
+    onWritePreparedZip: suspend (Uri, File, String) -> Result<String> = { _, _, _ ->
+        Result.failure(Exception("Not implemented"))
+    },
     onExportKdbx: suspend (Uri, String) -> Result<String> = { _, _ -> Result.failure(Exception("Not implemented")) }
 ) {
     val context = LocalContext.current
@@ -53,6 +60,7 @@ fun ExportDataScreen(
     // ZIP 备份选项
     var backupPreferences by remember { mutableStateOf(BackupPreferences()) }
     var zipBackupExpanded by remember { mutableStateOf(false) }
+    var pendingPreparedZipBackup by remember { mutableStateOf<Pair<File, String>?>(null) }
     
     // 检测 WebDAV 是否已配置
     val webDavHelper = remember { WebDavHelper(context) }
@@ -74,9 +82,14 @@ fun ExportDataScreen(
     
     suspend fun handleExportUri(safeUri: Uri) {
         isExporting = true
+        val preparedZipBackup = pendingPreparedZipBackup
         try {
             val result = when (selectedOption) {
-                ExportOption.ZIP_BACKUP -> onExportZip(safeUri, backupPreferences)
+                ExportOption.ZIP_BACKUP -> if (preparedZipBackup != null) {
+                    onWritePreparedZip(safeUri, preparedZipBackup.first, preparedZipBackup.second)
+                } else {
+                    onExportZip(safeUri, backupPreferences)
+                }
                 ExportOption.KDBX -> onExportKdbx(safeUri, kdbxPassword)
             }
 
@@ -98,6 +111,11 @@ fun ExportDataScreen(
             snackbarHostState.showSnackbar(
                 context.getString(R.string.export_data_error) + ": ${e.message}"
             )
+        } finally {
+            preparedZipBackup?.first?.delete()
+            if (preparedZipBackup != null) {
+                pendingPreparedZipBackup = null
+            }
         }
     }
 
@@ -106,11 +124,42 @@ fun ExportDataScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
+            pendingPreparedZipBackup?.first?.delete()
+            pendingPreparedZipBackup = null
+            isExporting = false
             return@rememberLauncherForActivityResult
         }
-        result.data?.data?.let { safeUri ->
+        val safeUri = result.data?.data
+        if (safeUri == null) {
+            pendingPreparedZipBackup?.first?.delete()
+            pendingPreparedZipBackup = null
+            isExporting = false
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            handleExportUri(safeUri)
+        }
+    }
+
+    fun launchCreateDocument() {
+        val (fileName, mimeType) = exportDocumentSpec(selectedOption)
+
+        val createDocumentIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, fileName)
+        }
+
+        try {
+            filePickerLauncher.launch(createDocumentIntent)
+        } catch (e: Exception) {
+            pendingPreparedZipBackup?.first?.delete()
+            pendingPreparedZipBackup = null
+            isExporting = false
             scope.launch {
-                handleExportUri(safeUri)
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.error_launch_export, e.message ?: "unknown")
+                )
             }
         }
     }
@@ -132,24 +181,25 @@ fun ExportDataScreen(
             }
             return
         }
-        
-        val (fileName, mimeType) = exportDocumentSpec(selectedOption)
 
-        val createDocumentIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = mimeType
-            putExtra(Intent.EXTRA_TITLE, fileName)
-        }
-
-        try {
-            filePickerLauncher.launch(createDocumentIntent)
-        } catch (e: Exception) {
+        if (selectedOption == ExportOption.ZIP_BACKUP) {
+            isExporting = true
             scope.launch {
-                snackbarHostState.showSnackbar(
-                    context.getString(R.string.error_launch_export, e.message ?: "unknown")
-                )
+                val prepared = onPrepareZip(backupPreferences)
+                prepared.onSuccess { backup ->
+                    pendingPreparedZipBackup = backup
+                    launchCreateDocument()
+                }.onFailure { error ->
+                    isExporting = false
+                    snackbarHostState.showSnackbar(
+                        error.message ?: context.getString(R.string.export_data_error)
+                    )
+                }
             }
+            return
         }
+
+        launchCreateDocument()
     }
     
     // KDBX 密码输入对话框

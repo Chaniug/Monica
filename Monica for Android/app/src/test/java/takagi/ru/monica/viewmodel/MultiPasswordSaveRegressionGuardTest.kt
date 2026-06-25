@@ -2893,19 +2893,42 @@ class MultiPasswordSaveRegressionGuardTest {
         val webDavHelperSource = projectFile(
             "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
         ).readText()
+        val exportScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/ExportDataScreen.kt"
+        ).readText()
+        val prepareZipBackupBody = dataExportSource.substringAfter("suspend fun prepareZipBackup(")
+            .substringBefore("suspend fun writePreparedZipBackup(")
+        val copyZipBody = dataExportSource.substringAfter("private suspend fun copyZipFileToOutputUri(")
+            .substringBefore("private fun zipBackupExportMessage(")
         val exportZipBackupBody = dataExportSource.substringAfter("suspend fun exportZipBackup(")
             .substringBefore("suspend fun importZipBackup(")
 
         assertTrue(
             "Local export writes a .zip document, so it must force createBackupZip to return a plain ZIP even when remote backup encryption is enabled.",
-            exportZipBackupBody.contains("allowBackupEncryption = false")
+            prepareZipBackupBody.contains("allowBackupEncryption = false")
         )
         assertTrue(
             "Local export must validate the generated ZIP and the bytes written to the selected document before reporting success.",
-            exportZipBackupBody.contains("validatePlainZipFile(zipFile)") &&
-                exportZipBackupBody.contains("validatePlainZipStream") &&
-                exportZipBackupBody.contains("?: throw IOException(\"无法打开导出文件\")") &&
-                exportZipBackupBody.contains("copiedBytes <= 0L")
+            prepareZipBackupBody.contains("validatePlainZipFile(zipFile)") &&
+                copyZipBody.contains("validatePlainZipStream") &&
+                copyZipBody.contains("openExportOutputStream(outputUri)") &&
+                copyZipBody.contains("copiedBytes <= 0L") &&
+                copyZipBody.contains("copiedBytes != expectedBytes")
+        )
+        assertTrue(
+            "The export screen should prepare and validate the ZIP before ACTION_CREATE_DOCUMENT so a generation failure does not leave a 0B user-visible file.",
+            exportScreenSource.contains("var pendingPreparedZipBackup") &&
+                exportScreenSource.contains("onPrepareZip(backupPreferences)") &&
+                exportScreenSource.contains("pendingPreparedZipBackup = backup") &&
+                exportScreenSource.contains("onWritePreparedZip(safeUri, preparedZipBackup.first, preparedZipBackup.second)") &&
+                exportScreenSource.indexOf("onPrepareZip(backupPreferences)") <
+                    exportScreenSource.lastIndexOf("launchCreateDocument()")
+        )
+        assertTrue(
+            "The legacy one-step export API should clean up its prepared temp ZIP after copying.",
+            exportZipBackupBody.contains("prepareZipBackup(preferences).getOrThrow()") &&
+                exportZipBackupBody.contains("writePreparedZipBackup(outputUri, zipFile, message)") &&
+                exportZipBackupBody.contains("preparedFile?.delete()")
         )
         assertTrue(
             "Backup ZIP creation should only return an encrypted .enc.zip when the caller allows backup encryption and an encryption password exists.",

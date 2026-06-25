@@ -2466,6 +2466,12 @@ fun MonicaContent(
                 onExportZip = { uri, preferences ->
                     dataExportImportViewModel.exportZipBackup(uri, preferences)
                 },
+                onPrepareZip = { preferences ->
+                    dataExportImportViewModel.prepareZipBackup(preferences)
+                },
+                onWritePreparedZip = { uri, zipFile, message ->
+                    dataExportImportViewModel.writePreparedZipBackup(uri, zipFile, message)
+                },
                 onExportKdbx = { uri, password ->
                     val ctx = navController.context
                     val outputStream = ctx.contentResolver.openOutputStream(uri)

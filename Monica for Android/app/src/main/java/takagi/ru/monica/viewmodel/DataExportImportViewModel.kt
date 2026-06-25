@@ -4,9 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.SecureItem
@@ -34,6 +37,7 @@ import takagi.ru.monica.steam.service.SteamLoginImportService
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipFile
@@ -113,6 +117,58 @@ class DataExportImportViewModel(
                 throw IOException("写入后的ZIP备份没有内容")
             }
         }
+    }
+
+    private fun openExportOutputStream(uri: Uri): OutputStream {
+        val resolver = context.contentResolver
+        val modes = listOf("wt", "rwt", "w")
+        var lastError: Throwable? = null
+        modes.forEach { mode ->
+            try {
+                val stream = resolver.openOutputStream(uri, mode)
+                if (stream != null) {
+                    return stream
+                }
+            } catch (error: Throwable) {
+                lastError = error
+                android.util.Log.w("DataExport", "openOutputStream($mode) failed: ${error.message}")
+            }
+        }
+        try {
+            val stream = resolver.openOutputStream(uri)
+            if (stream != null) {
+                return stream
+            }
+        } catch (error: Throwable) {
+            lastError = error
+            android.util.Log.w("DataExport", "openOutputStream(default) failed: ${error.message}")
+        }
+        throw IOException("无法打开导出文件", lastError)
+    }
+
+    private suspend fun copyZipFileToOutputUri(zipFile: File, outputUri: Uri): Long = withContext(Dispatchers.IO) {
+        validatePlainZipFile(zipFile)
+        val expectedBytes = zipFile.length()
+        val copiedBytes = openExportOutputStream(outputUri).use { output ->
+            zipFile.inputStream().use { input ->
+                input.copyTo(output)
+            }.also {
+                output.flush()
+            }
+        }
+        if (copiedBytes <= 0L) {
+            throw IOException("导出文件写入为空")
+        }
+        if (expectedBytes > 0L && copiedBytes != expectedBytes) {
+            throw IOException("导出文件写入不完整：$copiedBytes/$expectedBytes")
+        }
+        context.contentResolver.openInputStream(outputUri)?.use(::validatePlainZipStream)
+            ?: throw IOException("无法校验导出的ZIP文件")
+        copiedBytes
+    }
+
+    private fun zipBackupExportMessage(report: BackupReport): String {
+        return "成功导出备份，包含 ${report.successItems.passwords} 个密码和 ${report.successItems.images} 张图片"
     }
 
     sealed class SteamLoginImportState {
@@ -994,10 +1050,10 @@ class DataExportImportViewModel(
      * @param outputUri 导出文件的URI
      * @param preferences 备份偏好设置（选择要导出的内容类型）
      */
-    suspend fun exportZipBackup(outputUri: Uri, preferences: takagi.ru.monica.data.BackupPreferences = takagi.ru.monica.data.BackupPreferences()): Result<String> {
+    suspend fun prepareZipBackup(preferences: takagi.ru.monica.data.BackupPreferences = takagi.ru.monica.data.BackupPreferences()): Result<Pair<File, String>> {
         return try {
             val webDavHelper = takagi.ru.monica.utils.WebDavHelper(context)
-            
+
             // 获取所有数据
             val passwordEntries = passwordRepository.getAllPasswordEntries().first()
             val secureItems = secureItemRepository.getAllItems().first()
@@ -1021,11 +1077,10 @@ class DataExportImportViewModel(
                 contentScope = BackupContentScope.ALL_OFFLINE,
                 allowBackupEncryption = false
             )
-            
+
             result.fold(
                 onSuccess = { pair ->
                     val (zipFile, report) = pair
-                    
                     try {
                         if (!report.success) {
                             // 如果有失败项，但还是生成了文件，可能需要警告用户
@@ -1034,23 +1089,10 @@ class DataExportImportViewModel(
                         }
 
                         validatePlainZipFile(zipFile)
-                        
-                        // 将生成的ZIP文件复制到用户选择的 outputUri
-                        val copiedBytes = context.contentResolver.openOutputStream(outputUri)?.use { output ->
-                            zipFile.inputStream().use { input ->
-                                input.copyTo(output)
-                            }
-                        } ?: throw IOException("无法打开导出文件")
-                        if (copiedBytes <= 0L) {
-                            throw IOException("导出文件写入为空")
-                        }
-                        context.contentResolver.openInputStream(outputUri)?.use(::validatePlainZipStream)
-                            ?: throw IOException("无法校验导出的ZIP文件")
-                        
-                        Result.success("成功导出备份，包含 ${report.successItems.passwords} 个密码和 ${report.successItems.images} 张图片")
-                    } finally {
-                        // 清理临时文件
+                        Result.success(zipFile to zipBackupExportMessage(report))
+                    } catch (error: Throwable) {
                         zipFile.delete()
+                        Result.failure(error)
                     }
                 },
                 onFailure = { error ->
@@ -1058,8 +1100,36 @@ class DataExportImportViewModel(
                 }
             )
         } catch (e: Exception) {
+            android.util.Log.e("DataExport", "创建ZIP失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun writePreparedZipBackup(
+        outputUri: Uri,
+        zipFile: File,
+        successMessage: String
+    ): Result<String> {
+        return try {
+            copyZipFileToOutputUri(zipFile, outputUri)
+            Result.success(successMessage)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "写入ZIP失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun exportZipBackup(outputUri: Uri, preferences: takagi.ru.monica.data.BackupPreferences = takagi.ru.monica.data.BackupPreferences()): Result<String> {
+        var preparedFile: File? = null
+        return try {
+            val (zipFile, message) = prepareZipBackup(preferences).getOrThrow()
+            preparedFile = zipFile
+            writePreparedZipBackup(outputUri, zipFile, message)
+        } catch (e: Exception) {
             android.util.Log.e("DataExport", "导出ZIP失败: ${e.message}", e)
             Result.failure(e)
+        } finally {
+            preparedFile?.delete()
         }
     }
 
