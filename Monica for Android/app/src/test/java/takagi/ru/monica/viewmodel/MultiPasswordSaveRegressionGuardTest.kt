@@ -1035,7 +1035,7 @@ class MultiPasswordSaveRegressionGuardTest {
             "Snapshot rollback must re-import MDBX entries into the local UI tables.",
             viewModelSource.substringAfter("fun revertToSnapshot(")
                 .substringBefore("fun pruneAutomaticSnapshots(")
-                .contains("importEntriesFromVault(databaseId)")
+                .contains("importEntriesFromVault(")
         )
 
         assertTrue(
@@ -1051,6 +1051,36 @@ class MultiPasswordSaveRegressionGuardTest {
             managerSource.contains("fullSnapshot") &&
                 managerSource.contains("增量快照") &&
                 managerSource.contains("完整快照")
+        )
+    }
+
+    @Test
+    fun mdbxSnapshotRollbackAppliesExactSnapshotStateWithoutOrphanRescue() {
+        val storeSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+
+        val rollbackStoreBody = storeSource.substringAfter("private fun revertToEntryVersionSet(")
+            .substringBefore("private fun pruneAutomaticSnapshotsLocked(")
+        assertTrue(
+            "Snapshot rollback must restore an exact entry set; entries created after the snapshot cannot remain active.",
+            rollbackStoreBody.contains("targetVersionsById") &&
+                rollbackStoreBody.contains("current.objectId !in targetVersionsById") &&
+                rollbackStoreBody.contains("markEntryDeletedBySnapshotRevert(")
+        )
+
+        val rollbackViewModelBody = viewModelSource.substringAfter("fun revertToSnapshot(")
+            .substringBefore("fun pruneAutomaticSnapshots(")
+        assertTrue(
+            "Rollback imports must apply the snapshot state instead of rescuing local active orphan rows back into MDBX.",
+            rollbackViewModelBody.contains("MdbxImportOrphanPolicy.APPLY_REMOTE_STATE") &&
+                viewModelSource.contains("MdbxImportOrphanPolicy.RESCUE_LOCAL_ACTIVE") &&
+                viewModelSource.contains("applyRemoteStateToOrphanedMdbxPasswordRows(") &&
+                viewModelSource.contains("applyRemoteStateToOrphanedMdbxSecureItemRows(") &&
+                viewModelSource.contains("applyRemoteStateToOrphanedMdbxPasskeys(")
         )
     }
 
@@ -2852,6 +2882,59 @@ class MultiPasswordSaveRegressionGuardTest {
             "Automatic WebDAV backup must use the same Monica-local scope as manual WebDAV backup.",
             autoBackupWorkerSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
             autoBackupWorkerSource.contains("contentScope = BackupContentScope.MONICA_LOCAL_ONLY")
+        )
+    }
+
+    @Test
+    fun localZipExportDoesNotInheritRemoteBackupEncryption() {
+        val dataExportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/DataExportImportViewModel.kt"
+        ).readText()
+        val webDavHelperSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
+        ).readText()
+        val exportZipBackupBody = dataExportSource.substringAfter("suspend fun exportZipBackup(")
+            .substringBefore("suspend fun importZipBackup(")
+
+        assertTrue(
+            "Local export writes a .zip document, so it must force createBackupZip to return a plain ZIP even when remote backup encryption is enabled.",
+            exportZipBackupBody.contains("allowBackupEncryption = false")
+        )
+        assertTrue(
+            "Local export must validate the generated ZIP and the bytes written to the selected document before reporting success.",
+            exportZipBackupBody.contains("validatePlainZipFile(zipFile)") &&
+                exportZipBackupBody.contains("validatePlainZipStream") &&
+                exportZipBackupBody.contains("?: throw IOException(\"无法打开导出文件\")") &&
+                exportZipBackupBody.contains("copiedBytes <= 0L")
+        )
+        assertTrue(
+            "Backup ZIP creation should only return an encrypted .enc.zip when the caller allows backup encryption and an encryption password exists.",
+            webDavHelperSource.contains("allowBackupEncryption: Boolean = true") &&
+                webDavHelperSource.contains("val shouldEncryptBackup = allowBackupEncryption && enableEncryption && encryptionPassword.isNotEmpty()") &&
+                webDavHelperSource.contains("val finalFile = if (shouldEncryptBackup)")
+        )
+        assertFalse(
+            "Returning .enc.zip solely because the persisted WebDAV encryption switch is on breaks local .zip export.",
+            webDavHelperSource.contains("val finalFile = if (enableEncryption)")
+        )
+    }
+
+    @Test
+    fun trashScopeSelectorUsesUnifiedChipMenuInsteadOfLegacyBottomSheet() {
+        val timelineSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/TimelineScreen.kt"
+        ).readText()
+
+        assertFalse(
+            "Trash/category scope selection should use the compact chip menu like other pages, not the legacy bottom sheet.",
+            timelineSource.contains("UnifiedCategoryFilterBottomSheet")
+        )
+        assertTrue(
+            "The history/trash folder buttons should anchor the compact category chip menu next to the top-bar action.",
+            timelineSource.contains("UnifiedCategoryFilterChipMenuDropdown") &&
+                timelineSource.contains("UnifiedCategoryFilterChipMenu(") &&
+                timelineSource.contains("private fun TrashScopeFilterChipMenu(") &&
+                timelineSource.contains("scopeMenu: @Composable () -> Unit = {}")
         )
     }
 

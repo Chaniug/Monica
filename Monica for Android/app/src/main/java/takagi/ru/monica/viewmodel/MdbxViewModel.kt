@@ -1878,7 +1878,7 @@ class MdbxViewModel(
                 invalidateMdbxViewCaches(databaseId)
                 val restoredCount = withContext(Dispatchers.IO) {
                     val count = vaultStore.revertToSnapshot(databaseId, snapshotId)
-                    importEntriesFromVault(databaseId)
+                    importEntriesFromVault(databaseId, orphanPolicy = MdbxImportOrphanPolicy.APPLY_REMOTE_STATE)
                     count
                 }
                 refreshDeltaDialogAfterSnapshotMutation(databaseId, current)
@@ -2123,7 +2123,15 @@ class MdbxViewModel(
             keyFileFingerprint = keyFile?.fingerprint
         )
 
-    private suspend fun importEntriesFromVault(databaseId: Long) = withContext(Dispatchers.IO) {
+    private enum class MdbxImportOrphanPolicy {
+        RESCUE_LOCAL_ACTIVE,
+        APPLY_REMOTE_STATE
+    }
+
+    private suspend fun importEntriesFromVault(
+        databaseId: Long,
+        orphanPolicy: MdbxImportOrphanPolicy = MdbxImportOrphanPolicy.RESCUE_LOCAL_ACTIVE
+    ) = withContext(Dispatchers.IO) {
         invalidateMdbxViewCaches(databaseId)
         val database = databaseDao.getDatabaseById(databaseId)
             ?: throw IllegalStateException("Vault not found")
@@ -2243,14 +2251,22 @@ class MdbxViewModel(
                             "[MDBX][orphan-classify] type=password databaseId=$databaseId orphanCount=${orphanedRows.size} remoteDeletedCount=${remoteDeletedRows.size} missingRemoteCount=${missingRemoteRows.size} remoteDeleted=${summarizeDiagValues(remoteDeletedRows.map { it.mdbxPasswordDiagLabel() })} missingRemote=${summarizeDiagValues(missingRemoteRows.map { it.mdbxPasswordDiagLabel() })} deletedEntryIds=${summarizeDiagValues(deletedPasswordEntryIds)} activeEntryIds=${summarizeDiagValues(activePasswordEntryIds)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
                         )
                     }
-                    rescueMissingRemoteMdbxPasswordRows(
-                        database = database,
-                        rows = missingRemoteRows
-                    )
-                    rescueRemoteDeletedMdbxPasswordRows(
-                        database = database,
-                        rows = remoteDeletedRows
-                    )
+                    if (orphanPolicy == MdbxImportOrphanPolicy.RESCUE_LOCAL_ACTIVE) {
+                        rescueMissingRemoteMdbxPasswordRows(
+                            database = database,
+                            rows = missingRemoteRows
+                        )
+                        rescueRemoteDeletedMdbxPasswordRows(
+                            database = database,
+                            rows = remoteDeletedRows
+                        )
+                    } else {
+                        applyRemoteStateToOrphanedMdbxPasswordRows(
+                            database = database,
+                            rows = missingRemoteRows + remoteDeletedRows,
+                            reason = "snapshot_revert"
+                        )
+                    }
                 }
             existingSecureItemsByEntryId
                 .filterKeys { it !in activeSecureItemEntryIds }
@@ -2264,14 +2280,22 @@ class MdbxViewModel(
                             "[MDBX][orphan-classify] type=secure_item databaseId=$databaseId orphanCount=${orphanedItems.size} remoteDeletedCount=${remoteDeletedItems.size} missingRemoteCount=${missingRemoteItems.size} remoteDeleted=${summarizeDiagValues(remoteDeletedItems.map { it.mdbxSecureItemDiagLabel() })} missingRemote=${summarizeDiagValues(missingRemoteItems.map { it.mdbxSecureItemDiagLabel() })} deletedEntryIds=${summarizeDiagValues(deletedSecureItemEntryIds)} activeEntryIds=${summarizeDiagValues(activeSecureItemEntryIds)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
                         )
                     }
-                    rescueMissingRemoteMdbxSecureItemRows(
-                        database = database,
-                        items = missingRemoteItems
-                    )
-                    rescueRemoteDeletedMdbxSecureItemRows(
-                        database = database,
-                        items = remoteDeletedItems
-                    )
+                    if (orphanPolicy == MdbxImportOrphanPolicy.RESCUE_LOCAL_ACTIVE) {
+                        rescueMissingRemoteMdbxSecureItemRows(
+                            database = database,
+                            items = missingRemoteItems
+                        )
+                        rescueRemoteDeletedMdbxSecureItemRows(
+                            database = database,
+                            items = remoteDeletedItems
+                        )
+                    } else {
+                        applyRemoteStateToOrphanedMdbxSecureItemRows(
+                            database = database,
+                            items = missingRemoteItems + remoteDeletedItems,
+                            reason = "snapshot_revert"
+                        )
+                    }
                 }
             existingPasskeysByEntryId
                 .filterKeys { it !in activePasskeyEntryIds }
@@ -2285,14 +2309,22 @@ class MdbxViewModel(
                             "[MDBX][orphan-classify] type=passkey databaseId=$databaseId orphanCount=${orphanedPasskeys.size} remoteDeletedCount=${remoteDeletedPasskeys.size} missingRemoteCount=${missingRemotePasskeys.size} remoteDeleted=${summarizeDiagValues(remoteDeletedPasskeys.map { it.mdbxPasskeyDiagLabel() })} missingRemote=${summarizeDiagValues(missingRemotePasskeys.map { it.mdbxPasskeyDiagLabel() })} deletedEntryIds=${summarizeDiagValues(deletedPasskeyEntryIds)} activeEntryIds=${summarizeDiagValues(activePasskeyEntryIds)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
                         )
                     }
-                    rescueMissingRemoteMdbxPasskeyRows(
-                        database = database,
-                        passkeys = missingRemotePasskeys
-                    )
-                    rescueRemoteDeletedMdbxPasskeyRows(
-                        database = database,
-                        passkeys = remoteDeletedPasskeys
-                    )
+                    if (orphanPolicy == MdbxImportOrphanPolicy.RESCUE_LOCAL_ACTIVE) {
+                        rescueMissingRemoteMdbxPasskeyRows(
+                            database = database,
+                            passkeys = missingRemotePasskeys
+                        )
+                        rescueRemoteDeletedMdbxPasskeyRows(
+                            database = database,
+                            passkeys = remoteDeletedPasskeys
+                        )
+                    } else {
+                        applyRemoteStateToOrphanedMdbxPasskeys(
+                            database = database,
+                            passkeys = missingRemotePasskeys + remoteDeletedPasskeys,
+                            reason = "snapshot_revert"
+                        )
+                    }
                 }
         }
         val attachmentMs = measureTimeMillis {
@@ -2335,6 +2367,65 @@ class MdbxViewModel(
 
     private fun PasskeyEntry.mdbxPasskeyDiagLabel(): String =
         "room=$id entry=passkey:$credentialId rp=$rpId lastUsedAt=$lastUsedAt createdAt=$createdAt"
+
+    private suspend fun applyRemoteStateToOrphanedMdbxPasswordRows(
+        database: LocalMdbxDatabase,
+        rows: Collection<PasswordEntry>,
+        reason: String
+    ) {
+        val now = Date()
+        val rowsToMarkDeleted = rows
+            .filterNot { it.isDeleted }
+            .map {
+                it.copy(
+                    isDeleted = true,
+                    deletedAt = now,
+                    isArchived = false,
+                    archivedAt = null,
+                    updatedAt = now
+                )
+            }
+        if (rowsToMarkDeleted.isEmpty()) return
+        passwordEntryDao.updatePasswordEntries(rowsToMarkDeleted)
+        MdbxDiagLogger.append(
+            "[MDBX][orphan-remote-state] type=password reason=$reason databaseId=${database.id} count=${rowsToMarkDeleted.size} rows=${summarizeDiagValues(rowsToMarkDeleted.map { it.mdbxPasswordDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+        )
+    }
+
+    private suspend fun applyRemoteStateToOrphanedMdbxSecureItemRows(
+        database: LocalMdbxDatabase,
+        items: Collection<SecureItem>,
+        reason: String
+    ) {
+        val now = Date()
+        val itemsToMarkDeleted = items
+            .filterNot { it.isDeleted }
+            .map {
+                it.copy(
+                    isDeleted = true,
+                    deletedAt = now,
+                    updatedAt = now
+                )
+            }
+        if (itemsToMarkDeleted.isEmpty()) return
+        secureItemDao.updateAll(itemsToMarkDeleted)
+        MdbxDiagLogger.append(
+            "[MDBX][orphan-remote-state] type=secure_item reason=$reason databaseId=${database.id} count=${itemsToMarkDeleted.size} rows=${summarizeDiagValues(itemsToMarkDeleted.map { it.mdbxSecureItemDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+        )
+    }
+
+    private suspend fun applyRemoteStateToOrphanedMdbxPasskeys(
+        database: LocalMdbxDatabase,
+        passkeys: Collection<PasskeyEntry>,
+        reason: String
+    ) {
+        val recordIds = passkeys.map { it.id }.filter { it > 0L }
+        if (recordIds.isEmpty()) return
+        passkeyDao.deleteByRecordIds(recordIds)
+        MdbxDiagLogger.append(
+            "[MDBX][orphan-remote-state] type=passkey reason=$reason databaseId=${database.id} count=${recordIds.size} rows=${summarizeDiagValues(passkeys.map { it.mdbxPasskeyDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+        )
+    }
 
     private suspend fun rescueMissingRemoteMdbxPasswordRows(
         database: LocalMdbxDatabase,

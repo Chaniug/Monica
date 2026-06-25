@@ -31,8 +31,13 @@ import takagi.ru.monica.utils.BackupContentScope
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.steam.service.SteamLoginImportService
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 
 /**
  * 数据导入导出ViewModel
@@ -89,6 +94,25 @@ class DataExportImportViewModel(
             return itemData
         }
         return securityManager.encryptDataLegacyCompat(itemData)
+    }
+
+    private fun validatePlainZipFile(file: File) {
+        if (!file.isFile || file.length() <= 0L) {
+            throw IOException("导出的备份文件为空")
+        }
+        ZipFile(file).use { zip ->
+            if (!zip.entries().hasMoreElements()) {
+                throw IOException("导出的ZIP备份没有内容")
+            }
+        }
+    }
+
+    private fun validatePlainZipStream(input: InputStream) {
+        ZipInputStream(input).use { zip ->
+            if (zip.nextEntry == null) {
+                throw IOException("写入后的ZIP备份没有内容")
+            }
+        }
     }
 
     sealed class SteamLoginImportState {
@@ -994,7 +1018,8 @@ class DataExportImportViewModel(
                 passwords = exportedPasswords,
                 secureItems = secureItems,
                 preferences = preferences,
-                contentScope = BackupContentScope.ALL_OFFLINE
+                contentScope = BackupContentScope.ALL_OFFLINE,
+                allowBackupEncryption = false
             )
             
             result.fold(
@@ -1007,13 +1032,20 @@ class DataExportImportViewModel(
                             // 这里我们记录警告但继续导出
                             android.util.Log.w("DataExport", "Backup report has failures: ${report.failedItems.size}")
                         }
+
+                        validatePlainZipFile(zipFile)
                         
                         // 将生成的ZIP文件复制到用户选择的 outputUri
-                        context.contentResolver.openOutputStream(outputUri)?.use { output ->
+                        val copiedBytes = context.contentResolver.openOutputStream(outputUri)?.use { output ->
                             zipFile.inputStream().use { input ->
                                 input.copyTo(output)
                             }
+                        } ?: throw IOException("无法打开导出文件")
+                        if (copiedBytes <= 0L) {
+                            throw IOException("导出文件写入为空")
                         }
+                        context.contentResolver.openInputStream(outputUri)?.use(::validatePlainZipStream)
+                            ?: throw IOException("无法校验导出的ZIP文件")
                         
                         Result.success("成功导出备份，包含 ${report.successItems.passwords} 个密码和 ${report.successItems.images} 张图片")
                     } finally {

@@ -5188,8 +5188,11 @@ class KeePassKdbxService(
                 KeePassDatabaseSourceType.REMOTE_WEBDAV -> {
                     val remoteSource = remoteDb.keepassRemoteSourceDao().getSourceById(database.sourceId)
                         ?: throw IllegalStateException("远端来源不存在")
+                    val expectedRemoteVersion = syncStateDao.getState(database.id)?.let { state ->
+                        state.remoteEtag ?: state.remoteVersionToken
+                    }
                     val fileSource = WebDavKeePassSupport.createFileSource(remoteSource, securityManager)
-                    val writeResult = fileSource.write(bytes)
+                    val writeResult = fileSource.write(bytes, expectedVersion = expectedRemoteVersion)
                     database.cacheCopyPath?.let { cachePath ->
                         writeInternalRelative(cachePath, bytes)
                     }

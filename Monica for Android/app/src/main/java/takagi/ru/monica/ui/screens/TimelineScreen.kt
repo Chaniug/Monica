@@ -94,7 +94,9 @@ import takagi.ru.monica.data.model.TimelineBranch
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.ui.components.DiffComparisonSheet
 import takagi.ru.monica.ui.components.ExpressiveTopBar
-import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.formatRelativeTime
 import takagi.ru.monica.ui.components.formatShortTime
@@ -647,7 +649,19 @@ private fun TimelineContent(
                 },
                 onOpenScopeSheet = { showScopeSelectionSheet = true },
                 onNavigateToPasswordPage = onNavigateToPasswordPage,
-                onRefreshClick = { viewModel.refresh() }
+                onRefreshClick = { viewModel.refresh() },
+                scopeMenu = {
+                    TrashScopeFilterChipMenu(
+                        expanded = showScopeSelectionSheet,
+                        onDismissRequest = { showScopeSelectionSheet = false },
+                        selectedScope = selectedScope,
+                        fallbackScope = TrashScopeFilter.Local,
+                        keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        database = database,
+                        onSelectedScopeKeyChange = { selectedScopeKey = it }
+                    )
+                }
             )
         }
 
@@ -727,49 +741,6 @@ private fun TimelineContent(
         }
     }
 
-    val selectedUnifiedScope = remember(selectedScope) {
-        when (selectedScope) {
-            TrashScopeFilter.All -> UnifiedCategoryFilterSelection.All
-            TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
-            is TrashScopeFilter.BitwardenVaultScope ->
-                UnifiedCategoryFilterSelection.BitwardenVaultFilter(selectedScope.vaultId)
-            is TrashScopeFilter.KeePassDatabaseScope ->
-                UnifiedCategoryFilterSelection.KeePassDatabaseFilter(selectedScope.databaseId)
-        }
-    }
-    UnifiedCategoryFilterBottomSheet(
-        visible = showScopeSelectionSheet,
-        onDismiss = { showScopeSelectionSheet = false },
-        selected = selectedUnifiedScope,
-        onSelect = { selection ->
-            selectedScopeKey = when (selection) {
-                is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                else -> TrashScopeFilter.Local.key
-            }
-            showScopeSelectionSheet = false
-        },
-        categories = emptyList(),
-        keepassDatabases = keepassDatabases,
-        bitwardenVaults = bitwardenVaults,
-        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-        getKeePassGroups = null
-    )
-
     // Diff 比较底部弹窗
     selectedBranch?.let { branch ->
         DiffComparisonSheet(
@@ -822,7 +793,8 @@ private fun TimelineHeaderBar(
     onSearchExpandedChange: (Boolean) -> Unit,
     onOpenScopeSheet: () -> Unit,
     onNavigateToPasswordPage: (() -> Unit)?,
-    onRefreshClick: () -> Unit
+    onRefreshClick: () -> Unit,
+    scopeMenu: @Composable () -> Unit = {}
 ) {
     var topActionsMenuExpanded by remember { mutableStateOf(false) }
 
@@ -843,12 +815,15 @@ private fun TimelineHeaderBar(
                     )
                 }
             }
-            IconButton(onClick = onOpenScopeSheet) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = stringResource(R.string.category),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Box {
+                IconButton(onClick = onOpenScopeSheet) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = stringResource(R.string.category),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                scopeMenu()
             }
             IconButton(onClick = { onSearchExpandedChange(true) }) {
                 Icon(
@@ -2014,6 +1989,83 @@ private val TrashScopeFilter.key: String
         is TrashScopeFilter.KeePassDatabaseScope -> "keepass_${this.databaseId}"
     }
 
+private fun TrashScopeFilter.toUnifiedCategoryFilterSelection(): UnifiedCategoryFilterSelection {
+    return when (this) {
+        TrashScopeFilter.All -> UnifiedCategoryFilterSelection.All
+        TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
+        is TrashScopeFilter.BitwardenVaultScope ->
+            UnifiedCategoryFilterSelection.BitwardenVaultFilter(vaultId)
+        is TrashScopeFilter.KeePassDatabaseScope ->
+            UnifiedCategoryFilterSelection.KeePassDatabaseFilter(databaseId)
+    }
+}
+
+private fun UnifiedCategoryFilterSelection.toTrashScopeFilter(
+    fallbackScope: TrashScopeFilter
+): TrashScopeFilter {
+    return when (this) {
+        UnifiedCategoryFilterSelection.Local,
+        UnifiedCategoryFilterSelection.LocalStarred,
+        UnifiedCategoryFilterSelection.LocalUncategorized,
+        is UnifiedCategoryFilterSelection.Custom -> TrashScopeFilter.Local
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
+            TrashScopeFilter.BitwardenVaultScope(vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+            TrashScopeFilter.BitwardenVaultScope(vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+            TrashScopeFilter.BitwardenVaultScope(vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+            TrashScopeFilter.BitwardenVaultScope(vaultId)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
+            TrashScopeFilter.KeePassDatabaseScope(databaseId)
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+            TrashScopeFilter.KeePassDatabaseScope(databaseId)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+            TrashScopeFilter.KeePassDatabaseScope(databaseId)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+            TrashScopeFilter.KeePassDatabaseScope(databaseId)
+        else -> fallbackScope
+    }
+}
+
+@Composable
+private fun TrashScopeFilterChipMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    selectedScope: TrashScopeFilter,
+    fallbackScope: TrashScopeFilter,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    bitwardenVaults: List<BitwardenVault>,
+    database: PasswordDatabase,
+    onSelectedScopeKeyChange: (String) -> Unit
+) {
+    val selected = remember(selectedScope) {
+        selectedScope.toUnifiedCategoryFilterSelection()
+    }
+    UnifiedCategoryFilterChipMenuDropdown(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        offset = UnifiedCategoryFilterChipMenuOffset
+    ) {
+        UnifiedCategoryFilterChipMenu(
+            visible = true,
+            onDismiss = onDismissRequest,
+            selected = selected,
+            onSelect = { selection ->
+                onSelectedScopeKeyChange(selection.toTrashScopeFilter(fallbackScope).key)
+                onDismissRequest()
+            },
+            categories = emptyList(),
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            getBitwardenFolders = { vaultId ->
+                database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId)
+            },
+            getKeePassGroups = null
+        )
+    }
+}
+
 private fun resolveScopeFilter(
     bitwardenVaultId: Long?,
     keepassDatabaseId: Long?
@@ -2312,7 +2364,19 @@ private fun TrashContent(
                     onEmptyTrashClick = { showEmptyTrashDialog = true },
                     canEmptyTrash = scopedItems.isNotEmpty(),
                     onSelectAll = { toggleSelectAll() },
-                    onExitSelection = { exitSelectionMode() }
+                    onExitSelection = { exitSelectionMode() },
+                    scopeMenu = {
+                        TrashScopeFilterChipMenu(
+                            expanded = showScopeSelectionSheet,
+                            onDismissRequest = { showScopeSelectionSheet = false },
+                            selectedScope = selectedScope,
+                            fallbackScope = TrashScopeFilter.All,
+                            keepassDatabases = keepassDatabases,
+                            bitwardenVaults = bitwardenVaults,
+                            database = database,
+                            onSelectedScopeKeyChange = { selectedScopeKey = it }
+                        )
+                    }
                 )
                 
                 if (visibleItems.isEmpty()) {
@@ -2381,49 +2445,6 @@ private fun TrashContent(
         }
     }
     
-    val selectedUnifiedScope = remember(selectedScope) {
-        when (selectedScope) {
-            TrashScopeFilter.All -> UnifiedCategoryFilterSelection.All
-            TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
-            is TrashScopeFilter.BitwardenVaultScope ->
-                UnifiedCategoryFilterSelection.BitwardenVaultFilter(selectedScope.vaultId)
-            is TrashScopeFilter.KeePassDatabaseScope ->
-                UnifiedCategoryFilterSelection.KeePassDatabaseFilter(selectedScope.databaseId)
-        }
-    }
-    UnifiedCategoryFilterBottomSheet(
-        visible = showScopeSelectionSheet,
-        onDismiss = { showScopeSelectionSheet = false },
-        selected = selectedUnifiedScope,
-        onSelect = { selection ->
-            selectedScopeKey = when (selection) {
-                is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
-                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
-                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
-                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                else -> TrashScopeFilter.All.key
-            }
-            showScopeSelectionSheet = false
-        },
-        categories = emptyList(),
-        keepassDatabases = keepassDatabases,
-        bitwardenVaults = bitwardenVaults,
-        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-        getKeePassGroups = null
-    )
-
     // 回收站设置对话框
     if (showSettingsDialog) {
         TrashSettingsSheet(
@@ -2503,7 +2524,8 @@ private fun TrashHeaderBar(
     onEmptyTrashClick: () -> Unit,
     canEmptyTrash: Boolean,
     onSelectAll: () -> Unit,
-    onExitSelection: () -> Unit
+    onExitSelection: () -> Unit,
+    scopeMenu: @Composable () -> Unit = {}
 ) {
     if (isSelectionMode) {
         Row(
@@ -2561,12 +2583,15 @@ private fun TrashHeaderBar(
                         )
                     }
                 }
-                IconButton(onClick = onOpenScopeSheet) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = stringResource(R.string.category),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box {
+                    IconButton(onClick = onOpenScopeSheet) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = stringResource(R.string.category),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    scopeMenu()
                 }
                 IconButton(onClick = { onSearchExpandedChange(true) }) {
                     Icon(

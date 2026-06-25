@@ -12,6 +12,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.UUID
 
 data class KeePassLocalMirrorPaths(
     val workingCopyPath: String,
@@ -39,9 +40,10 @@ class WebDavKeePassFileSource(
         requireRemotePath()
         val resource = resolveResource(remoteUrl)
         if (resource != null) {
+            val etag = resource.etag?.takeIf { it.isNotBlank() }
             return@withContext FileSourceStat(
-                versionToken = resource.modified?.time?.toString() ?: resource.contentLength?.toString(),
-                etag = null,
+                versionToken = etag ?: resource.modified?.time?.toString() ?: resource.contentLength?.toString(),
+                etag = etag,
                 lastModified = resource.modified?.time,
                 sizeBytes = resource.contentLength,
                 isDirectory = resource.isDirectory,
@@ -84,18 +86,14 @@ class WebDavKeePassFileSource(
             throw IOException("远端目录不存在: ${parentPathOf(normalizedRemotePath)}")
         }
 
-        if (expectedVersion != null) {
-            runCatching { stat() }
-                .getOrNull()
-                ?.versionToken
-                ?.let { actual ->
-                    if (actual != expectedVersion) {
-                        throw IOException("远端文件已变化，请先重新同步")
-                    }
-                }
+        if (!expectedVersion.isNullOrBlank()) {
+            val current = runCatching { stat() }.getOrNull()
+            if (current != null && !current.matchesExpectedVersion(expectedVersion)) {
+                throw IOException("远端文件已变化，请先重新同步")
+            }
         }
 
-        sardine.put(remoteUrl, bytes, "application/octet-stream")
+        writeAtomically(remotePath = normalizedRemotePath, targetUrl = remoteUrl, bytes = bytes)
         val latest = runCatching { stat() }.getOrDefault(FileSourceStat())
         FileSourceWriteResult(
             versionToken = latest.versionToken,
@@ -158,7 +156,9 @@ class WebDavKeePassFileSource(
                     name = resource.name,
                     path = buildChildPath(normalizedDirectoryPath, resource.name),
                     isDirectory = resource.isDirectory,
-                    versionToken = resource.modified?.time?.toString() ?: resource.contentLength?.toString(),
+                    versionToken = resource.etag?.takeIf { it.isNotBlank() }
+                        ?: resource.modified?.time?.toString()
+                        ?: resource.contentLength?.toString(),
                     lastModified = resource.modified?.time,
                     sizeBytes = resource.contentLength
                 )
@@ -206,17 +206,46 @@ class WebDavKeePassFileSource(
         if (webDavPathExists(targetUrl)) {
             throw IOException("同名文件已存在")
         }
-        sardine.put(targetUrl, bytes, "application/octet-stream")
+        writeAtomically(remotePath = targetPath, targetUrl = targetUrl, bytes = bytes, overwrite = false)
         val latest = runCatching { resolveResource(targetUrl) }.getOrNull()
         FileSourceEntry(
             id = latest?.href?.toString() ?: targetUrl,
             name = latest?.name ?: name.trim(),
             path = targetPath,
             isDirectory = false,
-            versionToken = latest?.modified?.time?.toString() ?: latest?.contentLength?.toString(),
+            versionToken = latest?.etag?.takeIf { it.isNotBlank() }
+                ?: latest?.modified?.time?.toString()
+                ?: latest?.contentLength?.toString(),
             lastModified = latest?.modified?.time,
             sizeBytes = latest?.contentLength?.takeIf { it >= 0L } ?: bytes.size.toLong()
         )
+    }
+
+    private fun writeAtomically(
+        remotePath: String,
+        targetUrl: String,
+        bytes: ByteArray,
+        overwrite: Boolean = true
+    ) {
+        val tempPath = buildSiblingTempPath(remotePath)
+        val tempUrl = buildRemoteUrl(normalizedServerUrl, tempPath)
+        runCatching {
+            if (webDavPathExists(tempUrl)) {
+                sardine.delete(tempUrl)
+            }
+        }
+
+        var tempUploaded = false
+        try {
+            sardine.put(tempUrl, bytes, "application/octet-stream")
+            tempUploaded = true
+            sardine.move(tempUrl, targetUrl, overwrite)
+        } catch (error: Exception) {
+            if (tempUploaded) {
+                runCatching { sardine.delete(tempUrl) }
+            }
+            throw error
+        }
     }
 
     private fun resolveResource(targetUrl: String): DavResource? {
@@ -254,6 +283,15 @@ class WebDavKeePassFileSource(
         if (normalizedRemotePath.isBlank()) {
             throw IllegalStateException("未指定远端文件路径")
         }
+    }
+
+    private fun FileSourceStat.matchesExpectedVersion(expectedVersion: String): Boolean {
+        val expected = expectedVersion.trim()
+        return expected.isBlank() ||
+            expected == etag ||
+            expected == versionToken ||
+            expected == lastModified?.toString() ||
+            expected == sizeBytes?.toString()
     }
 
     companion object {
@@ -308,6 +346,14 @@ class WebDavKeePassFileSource(
             }
             require('/' !in sanitizedName) { "文件名不能包含路径分隔符" }
             return if (parentPath.isBlank()) sanitizedName else "$parentPath/$sanitizedName"
+        }
+
+        fun buildSiblingTempPath(remotePath: String): String {
+            val normalized = normalizeRemotePath(remotePath)
+            val parent = parentPathOf(normalized)
+            val name = normalized.substringAfterLast('/')
+            val tempName = ".$name.monica-tmp-${UUID.randomUUID()}"
+            return buildChildPath(parent, tempName)
         }
     }
 }

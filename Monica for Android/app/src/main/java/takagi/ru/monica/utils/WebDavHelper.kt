@@ -1072,6 +1072,7 @@ class WebDavHelper(
      * @param passwords 所有密码条目
      * @param secureItems 所有其他安全数据项
      * @param preferences 备份偏好设置
+     * @param allowBackupEncryption 是否允许沿用 WebDAV/OneDrive 的备份加密配置
      * @return Result<Pair<File, BackupReport>> 包含生成的ZIP文件和备份报告
      */
     suspend fun createBackupZip(
@@ -1079,7 +1080,8 @@ class WebDavHelper(
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>,
         preferences: BackupPreferences = getBackupPreferences(),
-        contentScope: BackupContentScope = BackupContentScope.MONICA_LOCAL_ONLY
+        contentScope: BackupContentScope = BackupContentScope.MONICA_LOCAL_ONLY,
+        allowBackupEncryption: Boolean = true
     ): Result<Pair<File, BackupReport>> = withContext(Dispatchers.IO) {
         try {
             // 验证：检查是否至少启用了一种内容类型
@@ -1113,7 +1115,8 @@ class WebDavHelper(
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
-            val finalFile = if (enableEncryption) {
+            val shouldEncryptBackup = allowBackupEncryption && enableEncryption && encryptionPassword.isNotEmpty()
+            val finalFile = if (shouldEncryptBackup) {
                 File(context.cacheDir, "monica_backup_$timestamp.enc.zip")
             } else {
                 zipFile
@@ -2214,7 +2217,7 @@ class WebDavHelper(
                                 "Backup attachments: ${localAttachments.size} records, ${writtenBlobs.size} blobs"
                             )
 
-                            if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                            if (shouldEncryptBackup) {
                                 val portable = takagi.ru.monica.attachments.backup.PortableAttachmentBackup
                                     .export(context, localAttachments)
                                 val portableEntries = mutableListOf<takagi.ru.monica.attachments.backup.PortableAttachmentBackup.Entry>()
@@ -2260,7 +2263,7 @@ class WebDavHelper(
                 }
 
                 // 8. 加密
-                if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                if (shouldEncryptBackup) {
                     val encryptResult = EncryptionHelper.encryptFile(zipFile, finalFile, encryptionPassword)
                     if (encryptResult.isFailure) throw encryptResult.exceptionOrNull()!!
                 }

@@ -876,7 +876,7 @@ class LocalKeePassViewModel(
                         options = creationOptions,
                         databaseName = displayName
                     )
-                    fileSource.createFileInDirectory(
+                    val createdFile = fileSource.createFileInDirectory(
                         parentPath = normalizedDirectoryPath,
                         name = remoteFileName,
                         bytes = bytes
@@ -886,10 +886,7 @@ class LocalKeePassViewModel(
                         serverUrl = serverUrl,
                         username = username,
                         webDavPassword = webDavPassword,
-                        remotePath = WebDavKeePassFileSource.buildChildPath(
-                            normalizedDirectoryPath,
-                            remoteFileName
-                        ),
+                        remotePath = createdFile.path,
                         databasePassword = databasePassword,
                         keyFileUri = keyFileUri,
                         description = description
@@ -990,7 +987,7 @@ class LocalKeePassViewModel(
                         options = creationOptions,
                         databaseName = displayName
                     )
-                    fileSource.createFileInDirectory(
+                    val createdFile = fileSource.createFileInDirectory(
                         parentPath = normalizedDirectoryPath,
                         name = remoteFileName,
                         bytes = bytes
@@ -999,10 +996,7 @@ class LocalKeePassViewModel(
                         name = displayName,
                         accountId = accountId,
                         accountLabel = accountLabel,
-                        remotePath = OneDriveKeePassFileSource.buildChildPath(
-                            normalizedDirectoryPath,
-                            remoteFileName
-                        ),
+                        remotePath = createdFile.path,
                         databasePassword = databasePassword,
                         keyFileUri = keyFileUri,
                         description = description

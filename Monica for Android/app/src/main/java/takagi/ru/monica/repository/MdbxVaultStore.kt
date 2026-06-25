@@ -1256,13 +1256,10 @@ class MdbxVaultStore(
                     val epochKey = requireEpochKey(db, dbInfo)
                     val snapshot = readSnapshotPayload(db, snapshotId, epochKey)
                         ?: throw IllegalStateException("MDBX snapshot not found: $snapshotId")
-                    if (snapshot.isFull) {
-                        snapshot.entries.forEach { version ->
-                            applyEntryVersionAsRevert(db, version, epochKey, commitKind = "snapshot-revert")
-                            restored++
-                        }
+                    restored = if (snapshot.isFull) {
+                        revertToEntryVersionSet(db, snapshot.entries, epochKey)
                     } else {
-                        restored = revertToCommitState(db, snapshot.baseCommitId, epochKey)
+                        revertToCommitState(db, snapshot.baseCommitId, epochKey)
                     }
                     db.setTransactionSuccessful()
                 } finally {
@@ -4067,13 +4064,30 @@ class MdbxVaultStore(
         epochKey: ByteArray
     ): Int {
         val versions = readLatestEntryVersionsAtCommit(db, baseCommitId)
+        return revertToEntryVersionSet(db, versions, epochKey)
+    }
+
+    private fun revertToEntryVersionSet(
+        db: SQLiteDatabase,
+        versions: List<ObjectVersionState>,
+        epochKey: ByteArray
+    ): Int {
         if (versions.isEmpty()) {
-            throw IllegalStateException("MDBX snapshot has no restorable entry versions at ${baseCommitId.take(8)}")
+            throw IllegalStateException("MDBX snapshot has no restorable entry versions")
         }
+        val targetVersionsById = linkedMapOf<String, ObjectVersionState>()
         versions.forEach { version ->
+            targetVersionsById[version.objectId] = version
+        }
+        targetVersionsById.values.forEach { version ->
             applyEntryVersionAsRevert(db, version, epochKey, commitKind = "snapshot-revert")
         }
-        return versions.size
+        val entriesCreatedAfterSnapshot = readCurrentEntryVersionStates(db)
+            .filter { current -> !current.deleted && current.objectId !in targetVersionsById }
+        entriesCreatedAfterSnapshot.forEach { current ->
+            markEntryDeletedBySnapshotRevert(db, current, epochKey)
+        }
+        return targetVersionsById.size + entriesCreatedAfterSnapshot.size
     }
 
     private fun pruneAutomaticSnapshotsLocked(
@@ -4216,6 +4230,60 @@ class MdbxVaultStore(
             titleCt = titleCt,
             payloadCt = payloadCt,
             deleted = target.deleted,
+            createdAt = now
+        )
+    }
+
+    private fun markEntryDeletedBySnapshotRevert(
+        db: SQLiteDatabase,
+        current: ObjectVersionState,
+        epochKey: ByteArray
+    ) {
+        val projectId = current.projectId ?: current.objectId
+        val entryType = current.entryType ?: "entry"
+        val commitId = appendCommit(
+            db = db,
+            scope = "entry",
+            objectId = current.objectId,
+            epochKey = epochKey,
+            commitKind = "snapshot-revert"
+        )
+        val now = now()
+        db.execSQL(
+            """
+            UPDATE entries SET deleted = 1, object_clock = object_clock + 1,
+                head_commit_id = ?, updated_at = ?, updated_by_device_id = ?
+            WHERE entry_id = ?
+            """.trimIndent(),
+            arrayOf(commitId, now, deviceId, current.objectId)
+        )
+        db.execSQL(
+            "UPDATE object_index SET deleted = 1, updated_at = ?, head_commit_id = ? WHERE object_type = 'entry' AND object_id = ?",
+            arrayOf(now, commitId, current.objectId)
+        )
+        db.execSQL(
+            """
+            UPDATE projects SET deleted = 1, object_clock = object_clock + 1,
+                head_commit_id = ?, updated_at = ?, updated_by_device_id = ?
+            WHERE project_id = ?
+            """.trimIndent(),
+            arrayOf(commitId, now, deviceId, projectId)
+        )
+        db.execSQL(
+            "UPDATE object_index SET deleted = 1, updated_at = ?, head_commit_id = ? WHERE object_type = 'project' AND object_id = ?",
+            arrayOf(now, commitId, projectId)
+        )
+        insertTombstone(db, "entry", current.objectId)
+        insertTombstone(db, "project", projectId)
+        recordEntryVersion(
+            db = db,
+            commitId = commitId,
+            projectId = projectId,
+            entryId = current.objectId,
+            entryType = entryType,
+            titleCt = current.titleCt,
+            payloadCt = current.payloadCt,
+            deleted = true,
             createdAt = now
         )
     }
