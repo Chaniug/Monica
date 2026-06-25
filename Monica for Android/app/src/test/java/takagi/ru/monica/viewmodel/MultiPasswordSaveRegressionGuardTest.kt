@@ -70,6 +70,46 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun deletingKeePassDatabaseDeletesCachedRowsInsteadOfConvertingThemToLocal() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/LocalKeePassViewModel.kt"
+        ).readText()
+        val deleteDatabaseBody = viewModelSource.substringAfter("fun deleteDatabase(")
+            .substringBefore("fun exportDatabase")
+        val passwordDaoSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/data/PasswordEntryDao.kt"
+        ).readText()
+        val secureItemDaoSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/data/SecureItemDao.kt"
+        ).readText()
+
+        assertTrue(
+            "Removing a KeePass database must delete its cached password rows; clearing the binding makes them appear as Monica-local duplicates.",
+            deleteDatabaseBody.contains("passwordEntryDao().deleteByKeePassDatabaseId(databaseId)")
+        )
+        assertTrue(
+            "Removing a KeePass database must delete its cached secure-item rows; clearing the binding makes TOTP/cards/notes appear as Monica-local data.",
+            deleteDatabaseBody.contains("secureItemDao().deleteByKeePassDatabaseId(databaseId)")
+        )
+        assertFalse(
+            "KeePass database deletion must not convert password cache rows into Monica-local rows.",
+            deleteDatabaseBody.contains("passwordEntryDao().clearKeePassBindingForDatabase(databaseId)")
+        )
+        assertFalse(
+            "KeePass database deletion must not convert secure-item cache rows into Monica-local rows.",
+            deleteDatabaseBody.contains("secureItemDao().clearKeePassBindingForDatabase(databaseId)")
+        )
+        assertTrue(
+            "Password DAO needs a delete path scoped to the removed KeePass database.",
+            passwordDaoSource.contains("DELETE FROM password_entries WHERE keepassDatabaseId = :databaseId")
+        )
+        assertTrue(
+            "Secure item DAO needs a delete path scoped to the removed KeePass database.",
+            secureItemDaoSource.contains("DELETE FROM secure_items WHERE keepass_database_id = :databaseId")
+        )
+    }
+
+    @Test
     fun inlineTotpPreviewMatchesSimplePasswordPreviewAndKeepsCountdownInSync() {
         val previewSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/components/InlineTotpPreviewCard.kt"

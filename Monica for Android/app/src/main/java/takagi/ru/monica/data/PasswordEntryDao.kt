@@ -242,6 +242,9 @@ interface PasswordEntryDao {
     )
     suspend fun clearKeePassBindingForDatabase(databaseId: Long)
 
+    @Query("DELETE FROM password_entries WHERE keepassDatabaseId = :databaseId")
+    suspend fun deleteByKeePassDatabaseId(databaseId: Long)
+
     @Query(
         """
         UPDATE password_entries

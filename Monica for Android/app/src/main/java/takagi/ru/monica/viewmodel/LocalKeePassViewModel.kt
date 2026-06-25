@@ -1825,8 +1825,8 @@ class LocalKeePassViewModel(
                         // 外部文件不删除，只移除引用
                     }
 
-                    appDatabase.passwordEntryDao().clearKeePassBindingForDatabase(databaseId)
-                    appDatabase.secureItemDao().clearKeePassBindingForDatabase(databaseId)
+                    appDatabase.passwordEntryDao().deleteByKeePassDatabaseId(databaseId)
+                    appDatabase.secureItemDao().deleteByKeePassDatabaseId(databaseId)
                     appDatabase.passkeyDao().deleteByKeePassDatabaseId(databaseId)
                     appDatabase.keepassGroupSyncConfigDao().deleteByDatabaseId(databaseId)
                     if (database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV) {

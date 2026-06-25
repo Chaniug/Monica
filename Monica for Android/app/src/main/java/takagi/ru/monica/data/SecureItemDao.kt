@@ -128,6 +128,9 @@ interface SecureItemDao {
     )
     suspend fun clearKeePassBindingForDatabase(databaseId: Long)
 
+    @Query("DELETE FROM secure_items WHERE keepass_database_id = :databaseId")
+    suspend fun deleteByKeePassDatabaseId(databaseId: Long)
+
     @Query(
         """
         UPDATE secure_items
