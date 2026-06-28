@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-27T21:19:26.033Z",
+  "generatedAt": "2026-06-28T21:19:32.371Z",
   "range": {
-    "from": "2025-06-28",
-    "to": "2026-06-27"
+    "from": "2025-06-29",
+    "to": "2026-06-28"
   },
   "activity": [
-    {
-      "date": "2025-06-28",
-      "count": 0
-    },
     {
       "date": "2025-06-29",
       "count": 0
@@ -1465,10 +1461,23 @@
     },
     {
       "date": "2026-06-27",
+      "count": 1
+    },
+    {
+      "date": "2026-06-28",
       "count": 0
     }
   ],
   "latest": [
+    {
+      "sha": "144cbc02ea6d442c62fe3d908180ac236a9effdd",
+      "shortSha": "144cbc0",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-27T21:19:26Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/144cbc02ea6d442c62fe3d908180ac236a9effdd"
+    },
     {
       "sha": "1f131b46f6f71eb39c14aa4114a1fc513b92218a",
       "shortSha": "1f131b4",
@@ -1549,15 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
       "date": "2026-06-25T07:32:40Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/06a1bf43bd6c79410031fdf761abc99e30432886"
-    },
-    {
-      "sha": "d68277f79aedd85f1a641a8a04d1d628060ca469",
-      "shortSha": "d68277f",
-      "message": "refactor: enhance MDBX vault operations and KeePass sync reliability",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-25T07:31:36Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/d68277f79aedd85f1a641a8a04d1d628060ca469"
     }
   ]
 }
