@@ -63,6 +63,8 @@ class SteamLoginImportServiceGuardTest {
             .substringBefore("private fun badgeCountText")
 
         assertTrue(viewModelSource.contains("SteamLoginImportService.manualCodeTypeForPollingChallenge"))
+        assertTrue(viewModelSource.contains("val confirmationType = pollingManualCodeType"))
+        assertTrue(viewModelSource.contains("?: codeChallenge?.confirmationType"))
         assertTrue(viewModelSource.contains("displayNameOverride = null"))
         assertTrue(viewModelSource.contains("requiresCode && canPoll"))
         assertFalse(viewModelSource.contains("fun beginSteamLogin(userName: String, password: String, displayName"))
@@ -123,6 +125,8 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(source.contains("writeFixed64(2, steamIdLong)"))
         assertTrue(source.contains("writeString(3, code.trim())"))
         assertTrue(source.contains("writeVarint(4, confirmationType.toLong())"))
+        assertTrue(source.contains("9 -> SteamGuardSubmitResult.UnsupportedSession"))
+        assertTrue(source.contains("88 -> \"Steam 登录失败：令牌验证码无效或已过期\""))
 
         assertTrue(source.contains("pollForTokenWithProtobuf"))
         assertTrue(source.contains("method = \"PollAuthSessionStatus\""))

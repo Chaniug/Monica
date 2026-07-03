@@ -417,8 +417,8 @@ class SteamViewModel(
         val pollingManualCodeType = pollingChallenge?.let {
             SteamLoginImportService.manualCodeTypeForPollingChallenge(it.confirmationType)
         }
-        val confirmationType = codeChallenge?.confirmationType
-            ?: pollingManualCodeType
+        val confirmationType = pollingManualCodeType
+            ?: codeChallenge?.confirmationType
             ?: selectedType
         val requiresCode = codeChallenge != null ||
             pollingManualCodeType != null ||

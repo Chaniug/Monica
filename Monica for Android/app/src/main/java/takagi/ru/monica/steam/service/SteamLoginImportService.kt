@@ -525,10 +525,10 @@ class SteamLoginImportService(
             )
             SteamGuardSubmitResult.Accepted
         } catch (error: SteamApiException) {
-            if (error.eResult == 29) {
-                SteamGuardSubmitResult.Accepted
-            } else {
-                SteamGuardSubmitResult.Failure(
+            when (error.eResult) {
+                29 -> SteamGuardSubmitResult.Accepted
+                9 -> SteamGuardSubmitResult.UnsupportedSession
+                else -> SteamGuardSubmitResult.Failure(
                     mapEresultToMessage(error.eResult)
                         ?: error.message
                         ?: "Steam 验证失败"
@@ -1764,6 +1764,8 @@ class SteamLoginImportService(
             63 -> "Steam 登录失败：需要额外验证（EResult=63）"
             65 -> "Steam 登录失败：验证码无效或已过期"
             84 -> "Steam 登录失败：登录失败（EResult=84）"
+            88 -> "Steam 登录失败：令牌验证码无效或已过期"
+            89 -> "Steam 登录失败：短信或邮箱验证码无效或已过期"
             else -> eResult?.let { "Steam 登录失败（EResult=$it）" }
         }
     }
