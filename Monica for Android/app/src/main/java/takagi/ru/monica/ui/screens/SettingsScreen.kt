@@ -52,6 +52,7 @@ import takagi.ru.monica.ui.components.TrashSettingsSheet
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.UnifiedMoveAction
+import takagi.ru.monica.ui.main.navigation.SteamDockIcon
 import takagi.ru.monica.ui.password.PasswordBatchDeleteGlobalProgressState
 import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
 import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
@@ -2308,7 +2309,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
-    BottomNavContentTab.STEAM -> Icons.Default.VerifiedUser
+    BottomNavContentTab.STEAM -> SteamDockIcon
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {

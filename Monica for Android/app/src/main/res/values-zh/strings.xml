@@ -849,7 +849,7 @@
     <string name="nav_generator_short">生成</string>  <!-- 添加生成器导航短标签 -->
     <string name="nav_timeline_short">历史</string>
     <string name="nav_passkey_short">通行</string>
-    <string name="nav_steam_short">蒸汽</string>
+    <string name="nav_steam_short">Steam</string>
     <string name="nav_settings_short">设置</string>
 
     <!-- Steam 本地令牌 -->

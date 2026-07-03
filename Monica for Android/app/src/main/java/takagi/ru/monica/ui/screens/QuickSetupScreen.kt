@@ -106,6 +106,7 @@ import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.ui.main.navigation.SteamDockIcon
 import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
@@ -1570,5 +1571,5 @@ private fun tabIcon(tab: BottomNavContentTab): ImageVector = when (tab) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.SEND -> Icons.Default.Send
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
-    BottomNavContentTab.STEAM -> Icons.Default.VerifiedUser
+    BottomNavContentTab.STEAM -> SteamDockIcon
 }

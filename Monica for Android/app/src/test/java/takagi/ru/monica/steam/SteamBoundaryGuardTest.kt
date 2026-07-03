@@ -276,9 +276,34 @@ class SteamBoundaryGuardTest {
 
         assertTrue(viewModelSource.contains("fun selectAllConfirmations()"))
         assertTrue(viewModelSource.contains("fun clearSelectedConfirmations()"))
-        assertTrue(bottomNavSource.contains("Icons.Default.VerifiedUser"))
+        assertTrue(bottomNavSource.contains("SteamDockIcon"))
         assertFalse(bottomNavSource.contains("SportsEsports"))
         assertFalse(screenSource.contains("SportsEsports"))
+    }
+
+    @Test
+    fun steamDockUsesFixedSteamLabelAndControllerIcon() {
+        val bottomNavSource = projectFile("app/src/main/java/takagi/ru/monica/ui/main/navigation/BottomNavModel.kt")
+            .readText()
+        val quickSetupSource = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/QuickSetupScreen.kt")
+            .readText()
+        val settingsSource = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt")
+            .readText()
+        val iconSource = projectFile("app/src/main/java/takagi/ru/monica/ui/main/navigation/SteamDockIcon.kt")
+            .readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+
+        assertTrue(bottomNavSource.contains("object Steam : BottomNavItem(BottomNavContentTab.STEAM, SteamDockIcon)"))
+        assertTrue(quickSetupSource.contains("BottomNavContentTab.STEAM -> SteamDockIcon"))
+        assertTrue(settingsSource.contains("BottomNavContentTab.STEAM -> SteamDockIcon"))
+        assertTrue(iconSource.contains("name = \"SteamDockIcon\""))
+        assertTrue(iconSource.contains("quadTo(129f, 800f, 86.5f, 757f)"))
+        assertFalse(bottomNavSource.contains("BottomNavContentTab.STEAM, Icons.Default.VerifiedUser"))
+        assertFalse(quickSetupSource.contains("BottomNavContentTab.STEAM -> Icons.Default.VerifiedUser"))
+        assertFalse(settingsSource.contains("BottomNavContentTab.STEAM -> Icons.Default.VerifiedUser"))
+        assertTrue(zhStrings.contains("<string name=\"nav_steam_short\">Steam</string>"))
+        assertTrue(defaultStrings.contains("<string name=\"nav_steam_short\">Steam</string>"))
     }
 
     @Test
