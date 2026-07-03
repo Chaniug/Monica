@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-02T21:32:14.131Z",
+  "generatedAt": "2026-07-03T21:31:23.562Z",
   "range": {
-    "from": "2025-07-03",
-    "to": "2026-07-02"
+    "from": "2025-07-04",
+    "to": "2026-07-03"
   },
   "activity": [
-    {
-      "date": "2025-07-03",
-      "count": 0
-    },
     {
       "date": "2025-07-04",
       "count": 0
@@ -1465,99 +1461,103 @@
     },
     {
       "date": "2026-07-02",
-      "count": 0
+      "count": 1
+    },
+    {
+      "date": "2026-07-03",
+      "count": 62
     }
   ],
   "latest": [
     {
-      "sha": "f055bb807bbbbc48a42db3d699bffec78f6cdbb4",
-      "shortSha": "f055bb8",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-01T21:46:33Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/f055bb807bbbbc48a42db3d699bffec78f6cdbb4"
-    },
-    {
-      "sha": "d91c2d2dc07d0e03394aecbfbc87949cdc1088c2",
-      "shortSha": "d91c2d2",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-30T21:46:15Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/d91c2d2dc07d0e03394aecbfbc87949cdc1088c2"
-    },
-    {
-      "sha": "1de90979e721b1c5d7c1a22cfb48f6be76754ce5",
-      "shortSha": "1de9097",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-29T21:44:01Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/1de90979e721b1c5d7c1a22cfb48f6be76754ce5"
-    },
-    {
-      "sha": "f6608d4a82a78a8075456320ca08672931df4815",
-      "shortSha": "f6608d4",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-28T21:19:32Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/f6608d4a82a78a8075456320ca08672931df4815"
-    },
-    {
-      "sha": "144cbc02ea6d442c62fe3d908180ac236a9effdd",
-      "shortSha": "144cbc0",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-27T21:19:26Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/144cbc02ea6d442c62fe3d908180ac236a9effdd"
-    },
-    {
-      "sha": "1f131b46f6f71eb39c14aa4114a1fc513b92218a",
-      "shortSha": "1f131b4",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-26T21:40:00Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/1f131b46f6f71eb39c14aa4114a1fc513b92218a"
-    },
-    {
-      "sha": "ba4f57fa85e1ac335d117eeb2ccf113a244b7ca8",
-      "shortSha": "ba4f57f",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-25T21:52:42Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/ba4f57fa85e1ac335d117eeb2ccf113a244b7ca8"
-    },
-    {
-      "sha": "63f81537c51501dbbc7b7cdaf436fe3782d9dbe4",
-      "shortSha": "63f8153",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-25T14:12:55Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/63f81537c51501dbbc7b7cdaf436fe3782d9dbe4"
-    },
-    {
-      "sha": "98ee3a0da839355f2ab594d1b83656d15589599f",
-      "shortSha": "98ee3a0",
-      "message": "Fix KeePass database deletion cache handling",
+      "sha": "58364c16c4311e1e62daa98ad008b9369e705d8c",
+      "shortSha": "58364c1",
+      "message": "Bump Android version to 1.0.292",
       "authorName": "JoyinJoester",
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-25T14:11:39Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/98ee3a0da839355f2ab594d1b83656d15589599f"
+      "date": "2026-07-03T16:04:19Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/58364c16c4311e1e62daa98ad008b9369e705d8c"
     },
     {
-      "sha": "5c40cfb3856ceb0fff98b215b8de9f43d9617a55",
-      "shortSha": "5c40cfb",
+      "sha": "f2ab93629aaeaf4ab3bdbd8b540e600de145689b",
+      "shortSha": "f2ab936",
       "message": "Update contributor flag SVG",
       "authorName": "github-actions[bot]",
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-25T13:37:13Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/5c40cfb3856ceb0fff98b215b8de9f43d9617a55"
+      "date": "2026-07-03T15:59:39Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/f2ab93629aaeaf4ab3bdbd8b540e600de145689b"
+    },
+    {
+      "sha": "e861df545f03637c686b44066ce98fbab663d5db",
+      "shortSha": "e861df5",
+      "message": "Add Steam authenticator removal",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T15:59:14Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/e861df545f03637c686b44066ce98fbab663d5db"
+    },
+    {
+      "sha": "9462698ac204de539c6a4d504b211c194828f31d",
+      "shortSha": "9462698",
+      "message": "Fix Steam token detail navigation jank",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T15:21:45Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/9462698ac204de539c6a4d504b211c194828f31d"
+    },
+    {
+      "sha": "d16825de2b817b47660895a7316bf0687ec6056e",
+      "shortSha": "d16825d",
+      "message": "Acknowledge Steam reference projects",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T15:07:33Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d16825de2b817b47660895a7316bf0687ec6056e"
+    },
+    {
+      "sha": "e2013c6867ce51fe864c364f9026e459fa35ade5",
+      "shortSha": "e2013c6",
+      "message": "Stabilize Steam token ordering",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T15:01:34Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/e2013c6867ce51fe864c364f9026e459fa35ade5"
+    },
+    {
+      "sha": "812232817c6957fdfe83e1931a053ec64c66d1dd",
+      "shortSha": "8122328",
+      "message": "Reset Steam login challenge code on step change",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T14:49:25Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/812232817c6957fdfe83e1931a053ec64c66d1dd"
+    },
+    {
+      "sha": "6d3f78667808865557ce394ff4e4dcf56563cdcb",
+      "shortSha": "6d3f786",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-03T14:45:00Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/6d3f78667808865557ce394ff4e4dcf56563cdcb"
+    },
+    {
+      "sha": "af9bfb5bae77086b427573c0597ba2244bcaf81b",
+      "shortSha": "af9bfb5",
+      "message": "Clarify Steam authenticator transfer failures",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T14:44:31Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/af9bfb5bae77086b427573c0597ba2244bcaf81b"
+    },
+    {
+      "sha": "7d0f8310b9bd0ff97fc5ac3582637a0861731ac4",
+      "shortSha": "7d0f831",
+      "message": "Fix Steam login token exchange diagnostics",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-03T14:20:42Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/7d0f8310b9bd0ff97fc5ac3582637a0861731ac4"
     }
   ]
 }
