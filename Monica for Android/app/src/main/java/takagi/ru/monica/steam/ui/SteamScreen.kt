@@ -2438,6 +2438,10 @@ private fun SteamLoginImportDialog(
     val waitingForCode = pendingChallenge != null
     val requiresCode = pendingChallenge?.requiresCode == true
 
+    LaunchedEffect(pendingChallenge?.pendingSessionId, pendingChallenge?.confirmationType) {
+        challengeCode = ""
+    }
+
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = {

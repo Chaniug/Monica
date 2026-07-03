@@ -82,6 +82,8 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(loginDialogSource.contains("pickerSecurityManager.decryptData(entry.username)"))
         assertTrue(loginDialogSource.contains("pickerSecurityManager.decryptData(entry.password)"))
         assertTrue(loginDialogSource.contains("if (showSteamPasswordPicker && pendingChallenge == null)"))
+        assertTrue(loginDialogSource.contains("LaunchedEffect(pendingChallenge?.pendingSessionId, pendingChallenge?.confirmationType)"))
+        assertTrue(loginDialogSource.contains("challengeCode = \"\""))
         assertFalse(loginDialogSource.contains("loginDisplayName"))
         assertFalse(loginDialogSource.contains("steam_display_name_label"))
     }
