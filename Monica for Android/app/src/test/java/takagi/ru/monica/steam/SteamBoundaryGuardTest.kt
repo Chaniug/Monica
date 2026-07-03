@@ -156,6 +156,7 @@ class SteamBoundaryGuardTest {
         assertTrue(source.contains("AnimatedContent("))
         assertTrue(source.contains("targetState = detailAccount?.id"))
         assertTrue(source.contains("easyNotesScreenEnter().togetherWith(easyNotesScreenExit())"))
+        assertTrue(source.contains("label = \"SteamTopBarNavigation\""))
         assertTrue(source.contains("label = \"SteamDetailNavigation\""))
         assertTrue(source.contains("if (detailAccount != null)"))
         assertTrue(source.contains("SteamDetailTopBar("))

@@ -482,100 +482,108 @@ fun SteamScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            if (detailAccount != null) {
-                SteamDetailTopBar(
-                    title = stringResource(R.string.nav_steam),
-                    onNavigateBack = {
-                        detailAccountId = null
-                        scannedQrPayload = null
-                    }
-                )
-            } else {
-                ExpressiveTopBar(
-                    title = stringResource(R.string.nav_steam),
-                    searchQuery = "",
-                    onSearchQueryChange = {},
-                    isSearchExpanded = false,
-                    onSearchExpandedChange = {},
-                    searchHint = stringResource(R.string.nav_steam),
-                    actions = {
-                        if (selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS) {
-                            IconButton(onClick = { viewModel.refreshConfirmations() }) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = stringResource(R.string.refresh),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+            AnimatedContent(
+                targetState = detailAccount?.id,
+                transitionSpec = {
+                    easyNotesScreenEnter().togetherWith(easyNotesScreenExit())
+                },
+                label = "SteamTopBarNavigation"
+            ) { animatedDetailAccountId ->
+                if (animatedDetailAccountId != null) {
+                    SteamDetailTopBar(
+                        title = stringResource(R.string.nav_steam),
+                        onNavigateBack = {
+                            detailAccountId = null
+                            scannedQrPayload = null
                         }
-                        IconButton(
-                            onClick = {
-                                showTopActionsMenu = false
-                                showAddAccountDialog = true
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = stringResource(R.string.steam_add_account_button),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (selectedAccount != null) {
-                            val targetSection = when (selectedSection) {
-                                SteamSection.CODE -> SteamSection.CONFIRMATIONS
-                                SteamSection.CONFIRMATIONS -> SteamSection.CODE
+                    )
+                } else {
+                    ExpressiveTopBar(
+                        title = stringResource(R.string.nav_steam),
+                        searchQuery = "",
+                        onSearchQueryChange = {},
+                        isSearchExpanded = false,
+                        onSearchExpandedChange = {},
+                        searchHint = stringResource(R.string.nav_steam),
+                        actions = {
+                            if (selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS) {
+                                IconButton(onClick = { viewModel.refreshConfirmations() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = stringResource(R.string.refresh),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             IconButton(
                                 onClick = {
-                                    selectedSection = targetSection
-                                    if (targetSection == SteamSection.CONFIRMATIONS) {
-                                        viewModel.refreshConfirmations()
-                                    }
+                                    showTopActionsMenu = false
+                                    showAddAccountDialog = true
                                 }
                             ) {
-                                BadgedBox(
-                                    badge = {
-                                        if (targetSection == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
-                                            Badge {
-                                                Text(badgeCountText(pendingConfirmationCount))
-                                            }
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = stringResource(R.string.steam_add_account_button),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (selectedAccount != null) {
+                                val targetSection = when (selectedSection) {
+                                    SteamSection.CODE -> SteamSection.CONFIRMATIONS
+                                    SteamSection.CONFIRMATIONS -> SteamSection.CODE
+                                }
+                                IconButton(
+                                    onClick = {
+                                        selectedSection = targetSection
+                                        if (targetSection == SteamSection.CONFIRMATIONS) {
+                                            viewModel.refreshConfirmations()
                                         }
                                     }
                                 ) {
-                                    Icon(
-                                        imageVector = targetSection.icon,
-                                        contentDescription = stringResource(targetSection.labelRes),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    BadgedBox(
+                                        badge = {
+                                            if (targetSection == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
+                                                Badge {
+                                                    Text(badgeCountText(pendingConfirmationCount))
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = targetSection.icon,
+                                            contentDescription = stringResource(targetSection.labelRes),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            if (showStandaloneSettingsEntry) {
+                                Box {
+                                    IconButton(
+                                        onClick = {
+                                            showTopActionsMenu = true
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = stringResource(R.string.more_options),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    SteamTopActionsMenu(
+                                        expanded = showTopActionsMenu,
+                                        onDismissRequest = { showTopActionsMenu = false },
+                                        showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                                        onOpenStandaloneSettings = {
+                                            showTopActionsMenu = false
+                                            onOpenStandaloneSettings()
+                                        }
                                     )
                                 }
                             }
                         }
-                        if (showStandaloneSettingsEntry) {
-                            Box {
-                                IconButton(
-                                    onClick = {
-                                        showTopActionsMenu = true
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = stringResource(R.string.more_options),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                SteamTopActionsMenu(
-                                    expanded = showTopActionsMenu,
-                                    onDismissRequest = { showTopActionsMenu = false },
-                                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                    onOpenStandaloneSettings = {
-                                        showTopActionsMenu = false
-                                        onOpenStandaloneSettings()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                )
+                    )
+                }
             }
         },
         floatingActionButton = {
