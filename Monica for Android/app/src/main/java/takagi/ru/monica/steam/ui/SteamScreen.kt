@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.MoreVert
@@ -105,6 +106,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.fragment.app.FragmentActivity
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -131,6 +133,7 @@ import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.TotpCodeCard
@@ -141,6 +144,7 @@ import takagi.ru.monica.ui.navigation.easyNotesScreenEnter
 import takagi.ru.monica.ui.navigation.easyNotesScreenExit
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.rememberTotpTickerMillis
+import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.SettingsManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -187,6 +191,9 @@ fun SteamScreen(
     onScanSteamQrCode: ((Long?) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val securityManager = remember(context) { SecurityManager(context.applicationContext) }
+    val biometricHelper = remember(context) { BiometricHelper(context) }
     val viewModel: SteamViewModel = viewModel(
         factory = remember(context) { SteamViewModel.factory(context) }
     )
@@ -204,6 +211,10 @@ fun SteamScreen(
     var selectedTokenAccountIds by rememberSaveable { mutableStateOf<List<Long>>(emptyList()) }
     var lastSteamQrAccountId by remember { mutableStateOf(readLastSteamQrAccountId(context)) }
     var deleteRequest by remember { mutableStateOf<SteamDeleteAccountsRequest?>(null) }
+    var removeAuthenticatorRequest by remember { mutableStateOf<SteamAccount?>(null) }
+    var removeAuthenticatorVerifyAccount by remember { mutableStateOf<SteamAccount?>(null) }
+    var removeAuthenticatorPasswordInput by remember { mutableStateOf("") }
+    var removeAuthenticatorPasswordError by remember { mutableStateOf(false) }
     var scannedQrPayload by remember { mutableStateOf<String?>(null) }
     var pendingLoginAction by remember { mutableStateOf<LoginActionRequest?>(null) }
     var autoPromptedLoginClientIds by remember(selectedAccount?.id) { mutableStateOf<Set<Long>>(emptySet()) }
@@ -236,6 +247,12 @@ fun SteamScreen(
     fun rememberLastSteamQrAccount(accountId: Long?) {
         lastSteamQrAccountId = accountId
         saveLastSteamQrAccountId(context, accountId)
+    }
+
+    fun dismissRemoveAuthenticatorVerify() {
+        removeAuthenticatorVerifyAccount = null
+        removeAuthenticatorPasswordInput = ""
+        removeAuthenticatorPasswordError = false
     }
 
     LaunchedEffect(selectedAccount?.id) {
@@ -485,6 +502,98 @@ fun SteamScreen(
         )
     }
 
+    removeAuthenticatorRequest?.let { account ->
+        AlertDialog(
+            onDismissRequest = { removeAuthenticatorRequest = null },
+            title = { Text(stringResource(R.string.steam_remove_authenticator_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.steam_remove_authenticator_message,
+                        account.displayName.ifBlank { account.accountName.ifBlank { account.steamId } }
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        removeAuthenticatorRequest = null
+                        removeAuthenticatorVerifyAccount = account
+                        removeAuthenticatorPasswordInput = ""
+                        removeAuthenticatorPasswordError = false
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.steam_remove_authenticator_action),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeAuthenticatorRequest = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    removeAuthenticatorVerifyAccount?.let { account ->
+        val accountLabel = account.displayName.ifBlank { account.accountName.ifBlank { account.steamId } }
+        val biometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = context.getString(R.string.steam_remove_authenticator_action),
+                    description = context.getString(R.string.biometric_login_description),
+                    onSuccess = {
+                        dismissRemoveAuthenticatorVerify()
+                        viewModel.removeAuthenticator(account.id)
+                    },
+                    onError = { error ->
+                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = stringResource(R.string.steam_remove_authenticator_verify_message, accountLabel),
+            passwordValue = removeAuthenticatorPasswordInput,
+            onPasswordChange = {
+                removeAuthenticatorPasswordInput = it
+                removeAuthenticatorPasswordError = false
+            },
+            onDismiss = { dismissRemoveAuthenticatorVerify() },
+            onConfirm = {
+                if (securityManager.verifyMasterPassword(removeAuthenticatorPasswordInput)) {
+                    dismissRemoveAuthenticatorVerify()
+                    viewModel.removeAuthenticator(account.id)
+                } else {
+                    removeAuthenticatorPasswordError = true
+                }
+            },
+            confirmText = stringResource(R.string.steam_remove_authenticator_action),
+            destructiveConfirm = true,
+            isPasswordError = removeAuthenticatorPasswordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = if (biometricAction == null) {
+                stringResource(R.string.biometric_not_available)
+            } else {
+                null
+            }
+        )
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -496,11 +605,15 @@ fun SteamScreen(
                 label = "SteamTopBarNavigation"
             ) { animatedDetailAccountId ->
                 if (animatedDetailAccountId != null) {
+                    val animatedDetailAccount = uiState.accounts.firstOrNull { it.id == animatedDetailAccountId }
                     SteamDetailTopBar(
                         title = stringResource(R.string.nav_steam),
                         onNavigateBack = {
                             detailAccountId = null
                             scannedQrPayload = null
+                        },
+                        onRemoveAuthenticator = animatedDetailAccount?.let { account ->
+                            { removeAuthenticatorRequest = account }
                         }
                     )
                 } else {
@@ -726,7 +839,8 @@ fun SteamScreen(
 @Composable
 private fun SteamDetailTopBar(
     title: String,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onRemoveAuthenticator: (() -> Unit)? = null
 ) {
     TopAppBar(
         title = {
@@ -745,7 +859,17 @@ private fun SteamDetailTopBar(
                 )
             }
         },
-        actions = {},
+        actions = {
+            if (onRemoveAuthenticator != null) {
+                IconButton(onClick = onRemoveAuthenticator) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.steam_remove_authenticator_action),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
         windowInsets = WindowInsets(0, 0, 0, 0),
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface,

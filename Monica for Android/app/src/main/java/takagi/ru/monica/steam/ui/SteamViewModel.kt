@@ -24,6 +24,7 @@ import takagi.ru.monica.steam.data.SteamAccountRepository
 import takagi.ru.monica.steam.data.SteamDatabase
 import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.steam.importer.SteamMaFileParser
+import takagi.ru.monica.steam.network.SteamAuthenticatorService
 import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamAuthorizedDeviceService
 import takagi.ru.monica.steam.network.SteamBatchResult
@@ -63,6 +64,7 @@ class SteamViewModel(
     private val repository: SteamAccountRepository,
     private val parser: SteamMaFileParser = SteamMaFileParser(),
     private val confirmationService: SteamConfirmationService = SteamConfirmationService(),
+    private val authenticatorService: SteamAuthenticatorService = SteamAuthenticatorService(),
     private val authorizedDeviceService: SteamAuthorizedDeviceService = SteamAuthorizedDeviceService(),
     private val loginApprovalService: SteamLoginApprovalService = SteamLoginApprovalService(),
     private val loginImportService: SteamLoginImportService = SteamLoginImportService()
@@ -219,6 +221,45 @@ class SteamViewModel(
                 authorizedDevices = emptyList(),
                 selectedConfirmationIds = emptySet()
             )
+        }
+    }
+
+    fun removeAuthenticator(accountId: Long) {
+        viewModelScope.launch {
+            val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            if (account.accessToken.isNullOrBlank()) {
+                setMessage(R.string.steam_remove_authenticator_missing_access_token)
+                return@launch
+            }
+            if (account.revocationCode.isNullOrBlank()) {
+                setMessage(R.string.steam_remove_authenticator_missing_revocation_code)
+                return@launch
+            }
+            setLoading(true)
+            runCatching {
+                withContext(Dispatchers.IO) { authenticatorService.remove(account) }
+            }.onSuccess { result ->
+                if (result.success) {
+                    withContext(Dispatchers.IO) { repository.delete(accountId) }
+                    _uiState.value = _uiState.value.copy(
+                        confirmations = emptyList(),
+                        pendingLogins = emptyList(),
+                        authorizedDevices = emptyList(),
+                        selectedConfirmationIds = emptySet()
+                    )
+                    setMessage(R.string.steam_remove_authenticator_done)
+                } else {
+                    val message = result.attemptsRemaining?.let { attempts ->
+                        appContext.getString(R.string.steam_remove_authenticator_failed_attempts, attempts)
+                    } ?: appContext.getString(R.string.steam_remove_authenticator_failed)
+                    _uiState.value = _uiState.value.copy(message = message)
+                }
+            }.onFailure { error ->
+                val message = error.message?.takeIf { it.isNotBlank() }
+                    ?: appContext.getString(R.string.steam_remove_authenticator_failed)
+                _uiState.value = _uiState.value.copy(message = message)
+            }
+            setLoading(false)
         }
     }
 

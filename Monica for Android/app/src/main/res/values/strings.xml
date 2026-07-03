@@ -869,6 +869,15 @@
     <string name="steam_delete_accounts_title">Delete Steam accounts</string>
     <string name="steam_delete_accounts_message">Delete %1$d selected Steam account(s)?</string>
     <string name="steam_delete_account_menu">Delete account</string>
+    <string name="steam_remove_authenticator_title">Remove Steam authenticator</string>
+    <string name="steam_remove_authenticator_message">Remove the Steam Guard authenticator for \"%1$s\"? This removes it from Steam and deletes the local token. Steam may apply account or trade restrictions after removal.</string>
+    <string name="steam_remove_authenticator_verify_message">Verify your identity to remove the Steam authenticator for \"%1$s\".</string>
+    <string name="steam_remove_authenticator_action">Remove authenticator</string>
+    <string name="steam_remove_authenticator_done">Steam authenticator removed</string>
+    <string name="steam_remove_authenticator_failed">Failed to remove Steam authenticator</string>
+    <string name="steam_remove_authenticator_failed_attempts">Failed to remove Steam authenticator. %1$d attempt(s) remaining.</string>
+    <string name="steam_remove_authenticator_missing_access_token">This Steam account has no login session. Sign in again before removing the authenticator.</string>
+    <string name="steam_remove_authenticator_missing_revocation_code">This Steam account has no revocation code and cannot remove the authenticator automatically.</string>
     <string name="steam_add_account_title">Add Steam account</string>
     <string name="steam_add_account_button">Add account</string>
     <string name="steam_switch_account">Switch Steam account</string>
