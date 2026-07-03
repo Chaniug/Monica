@@ -125,7 +125,7 @@ private enum class SteamSection(
     val icon: ImageVector
 ) {
     CODE(R.string.steam_section_code, Icons.Default.Key),
-    CONFIRMATIONS(R.string.steam_section_confirmations, Icons.Default.Check)
+    CONFIRMATIONS(R.string.steam_section_confirmations, Icons.Default.VerifiedUser)
 }
 
 private enum class SteamAddAccountMethod {
@@ -390,51 +390,58 @@ fun SteamScreen(
                             )
                         }
                     }
-                    if (detailAccount == null && (selectedAccount != null || showStandaloneSettingsEntry)) {
+                    if (detailAccount == null && selectedAccount != null) {
+                        val targetSection = when (selectedSection) {
+                            SteamSection.CODE -> SteamSection.CONFIRMATIONS
+                            SteamSection.CONFIRMATIONS -> SteamSection.CODE
+                        }
+                        IconButton(
+                            onClick = {
+                                selectedSection = targetSection
+                                if (targetSection == SteamSection.CONFIRMATIONS) {
+                                    viewModel.refreshConfirmations()
+                                }
+                            }
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (targetSection == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
+                                        Badge {
+                                            Text(badgeCountText(pendingConfirmationCount))
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = targetSection.icon,
+                                    contentDescription = stringResource(targetSection.labelRes),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    val shouldShowTopActionsMenu = detailAccount == null &&
+                        (showStandaloneSettingsEntry ||
+                            selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS)
+                    if (shouldShowTopActionsMenu) {
                         Box {
                             IconButton(
                                 onClick = {
                                     showTopActionsMenu = true
                                 }
                             ) {
-                                BadgedBox(
-                                    badge = {
-                                        if (pendingConfirmationCount > 0) {
-                                            Badge {
-                                                Text(badgeCountText(pendingConfirmationCount))
-                                            }
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = if (pendingConfirmationCount > 0) {
-                                            stringResource(
-                                                R.string.steam_more_options_with_confirmations,
-                                                pendingConfirmationCount
-                                            )
-                                        } else {
-                                            stringResource(R.string.more_options)
-                                        },
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.more_options),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             SteamTopActionsMenu(
                                 expanded = showTopActionsMenu,
                                 onDismissRequest = { showTopActionsMenu = false },
                                 selectedAccount = selectedAccount,
                                 selectedSection = selectedSection,
-                                pendingConfirmationCount = pendingConfirmationCount,
                                 showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                onSelectSection = { section ->
-                                    selectedSection = section
-                                    when (section) {
-                                        SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
-                                        SteamSection.CODE -> Unit
-                                    }
-                                    showTopActionsMenu = false
-                                },
                                 onRefresh = {
                                     when (selectedSection) {
                                         SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
@@ -464,9 +471,7 @@ fun SteamScreen(
                                 onDismissRequest = { showTopActionsMenu = false },
                                 selectedAccount = null,
                                 selectedSection = selectedSection,
-                                pendingConfirmationCount = 0,
                                 showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                onSelectSection = {},
                                 onRefresh = {},
                                 onOpenStandaloneSettings = {
                                     showTopActionsMenu = false
@@ -576,9 +581,7 @@ private fun SteamTopActionsMenu(
     onDismissRequest: () -> Unit,
     selectedAccount: SteamAccount?,
     selectedSection: SteamSection,
-    pendingConfirmationCount: Int,
     showStandaloneSettingsEntry: Boolean,
-    onSelectSection: (SteamSection) -> Unit,
     onRefresh: () -> Unit,
     onOpenStandaloneSettings: () -> Unit
 ) {
@@ -586,39 +589,16 @@ private fun SteamTopActionsMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest
     ) {
-        if (selectedAccount != null) {
-            SteamSection.values().forEach { section ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(section.labelRes)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (section == selectedSection) Icons.Default.Check else section.icon,
-                            contentDescription = null
-                        )
-                    },
-                    trailingIcon = if (section == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
-                        {
-                            Badge {
-                                Text(badgeCountText(pendingConfirmationCount))
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                    onClick = { onSelectSection(section) }
-                )
-            }
-            if (selectedSection == SteamSection.CONFIRMATIONS) {
-                HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.refresh)) },
-                    leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                    onClick = onRefresh
-                )
-            }
+        val showRefresh = selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS
+        if (showRefresh) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.refresh)) },
+                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                onClick = onRefresh
+            )
         }
         if (showStandaloneSettingsEntry) {
-            if (selectedAccount != null) {
+            if (showRefresh) {
                 HorizontalDivider()
             }
             DropdownMenuItem(
