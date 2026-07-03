@@ -166,12 +166,14 @@ class SteamBoundaryGuardTest {
         assertFalse(source.contains("R.string.steam_password_login_section"))
         assertFalse(source.contains("var showAccountMenu"))
         assertFalse(source.contains("SteamAccountSwitchSheet"))
-        assertFalse(source.contains("R.string.steam_switch_account"))
         assertFalse(source.contains("rememberModalBottomSheetState"))
         assertFalse(source.contains("Modifier.widthIn(max = 72.dp)"))
         assertFalse(source.contains("SteamAccountSwitchMenu"))
         assertFalse(source.contains("SteamSection.values().forEach"))
         assertFalse(source.contains("steam_more_options_with_confirmations"))
+        assertFalse(source.contains("CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))"))
+        assertTrue(source.contains(".align(Alignment.BottomCenter)"))
+        assertTrue(source.contains(".padding(horizontal = 16.dp, vertical = 8.dp)"))
 
         val topBarAccountAction = source
             .substringAfter("actions = {")
@@ -198,6 +200,7 @@ class SteamBoundaryGuardTest {
         assertFalse(topActionsMenu.contains("R.string.steam_delete_account_menu"))
         assertFalse(topActionsMenu.contains("R.string.refresh"))
         assertFalse(topActionsMenu.contains("onRefresh"))
+        assertFalse(topActionsMenu.contains("R.string.steam_switch_account"))
         assertTrue(topActionsMenu.contains("R.string.nav_settings"))
 
         val codeContent = source
@@ -232,6 +235,18 @@ class SteamBoundaryGuardTest {
         assertTrue(codeContent.contains("appSettings = appSettings"))
         assertFalse(codeContent.contains("onLongClick = { onToggleSelection(account) }"))
         assertTrue(codeContent.contains("SteamAvatarImage("))
+
+        val confirmationsContent = source
+            .substringAfter("private fun SteamConfirmationsContent(")
+            .substringBefore("@Composable\nprivate fun ConfirmationRow(")
+        assertTrue(confirmationsContent.contains("accounts: List<SteamAccount>"))
+        assertTrue(confirmationsContent.contains("onSelectAccount: (Long) -> Unit"))
+        assertTrue(confirmationsContent.contains("var showAccountPicker by remember"))
+        assertTrue(confirmationsContent.contains("SteamConfirmationAccountPickerSheet("))
+        assertTrue(confirmationsContent.contains("SteamConfirmationAccountCard("))
+        assertTrue(confirmationsContent.contains("onClick = { showAccountPicker = true }"))
+        assertTrue(confirmationsContent.contains("MonicaModalBottomSheet("))
+        assertTrue(confirmationsContent.contains("R.string.steam_switch_account"))
     }
 
     @Test

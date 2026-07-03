@@ -58,6 +58,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -117,6 +118,7 @@ import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.components.TotpCodeCard
 import takagi.ru.monica.ui.components.UnifiedProgressBar
 import takagi.ru.monica.ui.gestures.SwipeActions
@@ -560,9 +562,6 @@ fun SteamScreen(
                     .fillMaxSize()
                     .padding(contentPadding)
             ) {
-                if (uiState.loading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
                 if (detailAccount != null) {
                     SteamAccountDetailContent(
                         account = detailAccount,
@@ -614,8 +613,10 @@ fun SteamScreen(
                         )
                         SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
                             account = selectedAccount,
+                            accounts = uiState.accounts,
                             confirmations = uiState.confirmations,
                             selectedIds = uiState.selectedConfirmationIds,
+                            onSelectAccount = viewModel::selectAccount,
                             onToggle = viewModel::toggleConfirmation,
                             onSelectAll = viewModel::selectAllConfirmations,
                             onClearSelection = viewModel::clearSelectedConfirmations,
@@ -627,7 +628,12 @@ fun SteamScreen(
             }
 
             if (uiState.loading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
         }
     }
@@ -1188,8 +1194,10 @@ private fun DetailLine(label: String, value: String) {
 @Composable
 private fun SteamConfirmationsContent(
     account: SteamAccount?,
+    accounts: List<SteamAccount>,
     confirmations: List<SteamConfirmation>,
     selectedIds: Set<String>,
+    onSelectAccount: (Long) -> Unit,
     onToggle: (String) -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
@@ -1198,8 +1206,21 @@ private fun SteamConfirmationsContent(
 ) {
     var pendingAction by remember { mutableStateOf<ConfirmationActionRequest?>(null) }
     var showBulkActionDialog by remember { mutableStateOf(false) }
+    var showAccountPicker by remember { mutableStateOf(false) }
     val selectedConfirmations = confirmations.filter { it.id in selectedIds }
     val selectionMode = selectedIds.isNotEmpty()
+
+    if (showAccountPicker) {
+        SteamConfirmationAccountPickerSheet(
+            accounts = accounts,
+            selectedAccountId = account?.id,
+            onSelectAccount = { selected ->
+                onSelectAccount(selected.id)
+                showAccountPicker = false
+            },
+            onDismissRequest = { showAccountPicker = false }
+        )
+    }
 
     pendingAction?.let { request ->
         AlertDialog(
@@ -1313,6 +1334,7 @@ private fun SteamConfirmationsContent(
         Column(modifier = Modifier.fillMaxSize()) {
             SteamConfirmationAccountCard(
                 account = account,
+                onClick = { showAccountPicker = true },
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
             )
             LazyColumn(
@@ -1383,10 +1405,13 @@ private fun SteamConfirmationsContent(
 @Composable
 private fun SteamConfirmationAccountCard(
     account: SteamAccount?,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
@@ -1447,6 +1472,115 @@ private fun SteamConfirmationAccountCard(
                     MaterialTheme.colorScheme.error
                 }
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SteamConfirmationAccountPickerSheet(
+    accounts: List<SteamAccount>,
+    selectedAccountId: Long?,
+    onSelectAccount: (SteamAccount) -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    MonicaModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.steam_switch_account),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(accounts, key = { it.id }) { steamAccount ->
+                    SteamConfirmationAccountOptionRow(
+                        account = steamAccount,
+                        selected = steamAccount.id == selectedAccountId,
+                        onClick = { onSelectAccount(steamAccount) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SteamConfirmationAccountOptionRow(
+    account: SteamAccount,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SteamAvatarImage(account = account, size = 34.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = account.displayName.ifBlank { account.accountName }.ifBlank { account.steamId },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(
+                        if (account.canUseConfirmations) {
+                            R.string.steam_status_ready
+                        } else {
+                            R.string.steam_status_missing_session
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (account.canUseConfirmations) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    maxLines = 1
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = stringResource(R.string.steam_selected_account_marker),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }
