@@ -884,9 +884,6 @@
     <string name="steam_confirmations_label">Confirmations</string>
     <string name="steam_login_approval_label">Login approval</string>
     <string name="steam_credentials_label">Credentials</string>
-    <string name="steam_password_not_saved">Not saved in Monica</string>
-    <string name="steam_password_not_saved_desc">The Steam password is only used for this login request and is not saved locally.</string>
-    <string name="steam_password_login_section">Account password login</string>
     <string name="steam_account_avatar_description">Steam account avatar</string>
     <string name="steam_empty_field">Not available</string>
     <string name="steam_selected_accounts_count">%1$d selected</string>

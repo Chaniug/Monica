@@ -52,6 +52,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -331,11 +332,7 @@ fun SteamScreen(
         modifier = modifier,
         topBar = {
             ExpressiveTopBar(
-                title = detailAccount?.let { account ->
-                    account.displayName.ifBlank {
-                        account.accountName.ifBlank { account.steamId }
-                    }
-                } ?: stringResource(R.string.nav_steam),
+                title = stringResource(R.string.nav_steam),
                 searchQuery = "",
                 onSearchQueryChange = {},
                 isSearchExpanded = false,
@@ -461,6 +458,18 @@ fun SteamScreen(
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            val account = detailAccount
+            val scanQr = onScanSteamQrCode
+            if (account != null && account.canApproveLogins && scanQr != null) {
+                FloatingActionButton(onClick = scanQr) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = stringResource(R.string.scan_qr_code)
+                    )
+                }
+            }
         }
     ) { contentPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -477,15 +486,10 @@ fun SteamScreen(
                         account = detailAccount,
                         pendingLogins = uiState.pendingLogins,
                         pendingScannedQr = scannedQrPayload,
-                        pendingChallenge = uiState.pendingLoginChallenge,
                         onScannedQrHandled = { scannedQrPayload = null },
-                        onScanQrCode = onScanSteamQrCode,
                         onRefreshLogins = { viewModel.refreshPendingLogins() },
                         onRespondPending = viewModel::respondPendingLogin,
-                        onRespondQr = viewModel::respondQr,
-                        onBeginLogin = viewModel::beginSteamLogin,
-                        onSubmitLoginCode = viewModel::submitSteamLoginCode,
-                        onCancelLoginChallenge = viewModel::cancelSteamLoginChallenge
+                        onRespondQr = viewModel::respondQr
                     )
                 } else if (selectedAccount == null) {
                     SteamEmptyAccountContent(
@@ -709,15 +713,10 @@ private fun SteamAccountDetailContent(
     account: SteamAccount,
     pendingLogins: List<SteamPendingLogin>,
     pendingScannedQr: String?,
-    pendingChallenge: SteamLoginChallengeUi?,
     onScannedQrHandled: () -> Unit,
-    onScanQrCode: (() -> Unit)?,
     onRefreshLogins: () -> Unit,
     onRespondPending: (SteamPendingLogin, Boolean) -> Unit,
-    onRespondQr: (String, Boolean) -> Unit,
-    onBeginLogin: (String, String) -> Unit,
-    onSubmitLoginCode: (String) -> Unit,
-    onCancelLoginChallenge: () -> Unit
+    onRespondQr: (String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -729,9 +728,6 @@ private fun SteamAccountDetailContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            SteamAccountDetailHeader(account = account)
-        }
         item {
             TotpCodeCard(
                 item = totpItem,
@@ -760,71 +756,18 @@ private fun SteamAccountDetailContent(
             )
         }
         item {
-            SteamAccountPasswordLoginCard(
-                account = account,
-                pendingChallenge = pendingChallenge,
-                onBeginLogin = onBeginLogin,
-                onSubmitLoginCode = onSubmitLoginCode,
-                onCancelLoginChallenge = onCancelLoginChallenge
-            )
-        }
-        item {
             SteamLoginApprovalSection(
                 account = account,
                 pendingLogins = pendingLogins,
                 pendingScannedQr = pendingScannedQr,
                 onScannedQrHandled = onScannedQrHandled,
                 onRefresh = onRefreshLogins,
-                onScanQrCode = onScanQrCode,
                 onRespondPending = onRespondPending,
                 onRespondQr = onRespondQr
             )
         }
         item {
             Spacer(modifier = Modifier.height(80.dp))
-        }
-    }
-}
-
-@Composable
-private fun SteamAccountDetailHeader(account: SteamAccount) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            SteamAvatarImage(
-                account = account,
-                size = 64.dp
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = account.displayName.ifBlank {
-                        account.accountName.ifBlank { account.steamId }
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = account.accountName.ifBlank { account.steamId },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
     }
 }
@@ -864,13 +807,6 @@ private fun SteamAccountCredentialCard(
                 value = account.steamId,
                 context = context,
                 clipboard = clipboard
-            )
-            SteamDetailInfoRow(
-                label = stringResource(R.string.steam_login_password_label),
-                value = stringResource(R.string.steam_password_not_saved),
-                context = context,
-                clipboard = clipboard,
-                copyable = false
             )
             SteamDetailInfoRow(
                 label = stringResource(R.string.steam_device_label),
@@ -922,132 +858,6 @@ private fun SteamDetailInfoRow(
                     imageVector = Icons.Default.ContentCopy,
                     contentDescription = stringResource(R.string.copy)
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SteamAccountPasswordLoginCard(
-    account: SteamAccount,
-    pendingChallenge: SteamLoginChallengeUi?,
-    onBeginLogin: (String, String) -> Unit,
-    onSubmitLoginCode: (String) -> Unit,
-    onCancelLoginChallenge: () -> Unit
-) {
-    var loginName by rememberSaveable(account.id) {
-        mutableStateOf(account.accountName.ifBlank { account.steamId })
-    }
-    var loginPassword by rememberSaveable(account.id) { mutableStateOf("") }
-    var challengeCode by rememberSaveable(pendingChallenge?.pendingSessionId) {
-        mutableStateOf("")
-    }
-    val waitingForCode = pendingChallenge != null
-    val requiresCode = pendingChallenge?.requiresCode == true
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.steam_password_login_section),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = stringResource(R.string.steam_password_not_saved_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (pendingChallenge == null) {
-                OutlinedTextField(
-                    value = loginName,
-                    onValueChange = { loginName = it },
-                    label = { Text(stringResource(R.string.steam_login_account_label)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = loginPassword,
-                    onValueChange = { loginPassword = it },
-                    label = { Text(stringResource(R.string.steam_login_password_label)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            } else {
-                if (pendingChallenge.canPoll) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Text(
-                            text = stringResource(R.string.steam_login_waiting_approval),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Text(
-                    text = pendingChallenge.message,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (requiresCode) {
-                    OutlinedTextField(
-                        value = challengeCode,
-                        onValueChange = { challengeCode = it },
-                        label = { Text(stringResource(R.string.steam_code_label)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!waitingForCode || requiresCode) {
-                    Button(
-                        onClick = {
-                            if (waitingForCode) {
-                                onSubmitLoginCode(challengeCode)
-                            } else {
-                                onBeginLogin(loginName, loginPassword)
-                            }
-                        },
-                        enabled = if (waitingForCode) {
-                            challengeCode.isNotBlank()
-                        } else {
-                            loginName.isNotBlank() && loginPassword.isNotBlank()
-                        }
-                    ) {
-                        Text(
-                            stringResource(
-                                if (waitingForCode) {
-                                    R.string.steam_submit_code_button
-                                } else {
-                                    R.string.steam_login_button
-                                }
-                            )
-                        )
-                    }
-                }
-                if (waitingForCode) {
-                    OutlinedButton(onClick = onCancelLoginChallenge) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
             }
         }
     }
@@ -1428,7 +1238,6 @@ private fun SteamLoginApprovalSection(
     pendingScannedQr: String?,
     onScannedQrHandled: () -> Unit,
     onRefresh: () -> Unit,
-    onScanQrCode: (() -> Unit)?,
     onRespondPending: (SteamPendingLogin, Boolean) -> Unit,
     onRespondQr: (String, Boolean) -> Unit
 ) {
@@ -1578,14 +1387,6 @@ private fun SteamLoginApprovalSection(
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.refresh))
-                }
-                OutlinedButton(
-                    onClick = { onScanQrCode?.invoke() },
-                    enabled = account.canApproveLogins && onScanQrCode != null
-                ) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.scan_qr_code))
                 }
             }
 

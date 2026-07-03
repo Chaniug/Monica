@@ -877,9 +877,6 @@
     <string name="steam_confirmations_label">交易确认</string>
     <string name="steam_login_approval_label">登录批准</string>
     <string name="steam_credentials_label">账号信息</string>
-    <string name="steam_password_not_saved">Monica 不保存</string>
-    <string name="steam_password_not_saved_desc">Steam 密码只用于本次登录请求，不会保存到本地。</string>
-    <string name="steam_password_login_section">账号密码登录</string>
     <string name="steam_account_avatar_description">Steam 账号头像</string>
     <string name="steam_empty_field">暂无</string>
     <string name="steam_selected_accounts_count">已选 %1$d 个</string>
