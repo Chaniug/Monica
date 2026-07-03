@@ -890,6 +890,10 @@
     <string name="steam_more_items">还有 %1$d 项</string>
     <string name="steam_approve">批准</string>
     <string name="steam_reject">拒绝</string>
+    <string name="steam_confirmation_action_title">确认或者拒绝</string>
+    <string name="steam_confirmation_action_message">请选择对已选 %1$d 个确认项执行的操作。</string>
+    <string name="steam_current_confirmation_account">当前确认账号</string>
+    <string name="steam_confirmation_item_image">确认项目图片</string>
     <string name="steam_no_confirmation_session">没有可用的交易确认会话</string>
     <string name="steam_no_confirmations">暂无待确认项目</string>
     <string name="steam_approve_login_title">批准 Steam 登录</string>

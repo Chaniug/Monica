@@ -39,7 +39,7 @@ fun SelectionActionBar(
     onFavorite: (() -> Unit)? = null,
     onMoveToCategory: (() -> Unit)? = null,
     onStack: (() -> Unit)? = null,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)? = null,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
     contentColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
@@ -100,11 +100,13 @@ fun SelectionActionBar(
                 )
             }
 
-            ActionIcon(
-                icon = Icons.Outlined.Delete,
-                contentDescription = stringResource(id = R.string.delete),
-                onClick = onDelete
-            )
+            onDelete?.let {
+                ActionIcon(
+                    icon = Icons.Outlined.Delete,
+                    contentDescription = stringResource(id = R.string.delete),
+                    onClick = it
+                )
+            }
 
             Spacer(modifier = Modifier.width(4.dp))
 

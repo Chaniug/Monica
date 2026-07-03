@@ -17,6 +17,7 @@ data class SteamConfirmation(
     val type: String,
     val headline: String,
     val summary: String,
+    val imageUrl: String,
     val creationTime: Long
 )
 
@@ -136,6 +137,7 @@ class SteamConfirmationService(
             type = stringAny("type", "conf_type") ?: "",
             headline = stringAny("headline", "creator") ?: "",
             summary = summaryText,
+            imageUrl = imageUrl(),
             creationTime = longAny("creation_time", "time") ?: 0L
         )
     }
@@ -164,6 +166,31 @@ class SteamConfirmationService(
             primitive.contentOrNull?.toLongOrNull()?.let { return it }
         }
         return null
+    }
+
+    private fun JsonObject.imageUrl(): String {
+        val directUrl = stringAny(
+            "icon",
+            "icon_url",
+            "image",
+            "image_url",
+            "imageUrl",
+            "creator_avatar"
+        )
+        if (!directUrl.isNullOrBlank()) {
+            return directUrl
+        }
+
+        val details = this["details"] as? JsonObject ?: return ""
+        return details.stringAny(
+            "icon",
+            "icon_url",
+            "image",
+            "image_url",
+            "imageUrl",
+            "asset_icon",
+            "asset_icon_url"
+        ).orEmpty()
     }
 
     private fun JsonElement?.textValue(): String {

@@ -897,6 +897,10 @@
     <string name="steam_more_items">+%1$d more</string>
     <string name="steam_approve">Approve</string>
     <string name="steam_reject">Reject</string>
+    <string name="steam_confirmation_action_title">Confirm or reject</string>
+    <string name="steam_confirmation_action_message">Choose an action for %1$d selected confirmation(s).</string>
+    <string name="steam_current_confirmation_account">Current confirmation account</string>
+    <string name="steam_confirmation_item_image">Confirmation item image</string>
     <string name="steam_no_confirmation_session">No confirmation session</string>
     <string name="steam_no_confirmations">No confirmations</string>
     <string name="steam_approve_login_title">Approve Steam login</string>

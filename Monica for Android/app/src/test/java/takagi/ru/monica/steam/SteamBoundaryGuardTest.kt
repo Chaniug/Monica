@@ -257,7 +257,6 @@ class SteamBoundaryGuardTest {
         assertTrue(screenSource.contains("R.string.steam_time_label"))
         assertTrue(screenSource.contains("formatSteamLoginTime(login.detectedAtMillis)"))
         assertTrue(screenSource.contains("R.string.select_all"))
-        assertTrue(screenSource.contains("R.string.deselect_all"))
 
         assertTrue(steamQrScannerSource.contains("initialAccountId: Long?"))
         assertTrue(steamQrScannerSource.contains("onQrCodeScanned: (String, Long?) -> Unit"))
@@ -280,6 +279,47 @@ class SteamBoundaryGuardTest {
         assertTrue(bottomNavSource.contains("Icons.Default.VerifiedUser"))
         assertFalse(bottomNavSource.contains("SportsEsports"))
         assertFalse(screenSource.contains("SportsEsports"))
+    }
+
+    @Test
+    fun steamConfirmationPageUsesSlimSwipeSelectionLayout() {
+        val source = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val confirmationContent = source
+            .substringAfter("private fun SteamConfirmationsContent(")
+            .substringBefore("@Composable\nprivate fun SteamLoginApprovalSection(")
+
+        assertTrue(confirmationContent.contains("SteamConfirmationAccountCard("))
+        assertTrue(confirmationContent.contains("modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)"))
+        assertTrue(confirmationContent.contains("LazyColumn("))
+        assertTrue(confirmationContent.contains("SwipeActions("))
+        assertTrue(confirmationContent.contains("onSwipeRight = { onToggle(confirmation.id) }"))
+        assertTrue(confirmationContent.contains("allowSwipeLeft = false"))
+        assertTrue(confirmationContent.contains("SelectionActionBar("))
+        assertTrue(confirmationContent.contains("onSelectAll = onSelectAll"))
+        assertTrue(confirmationContent.contains("onDelete = null"))
+        assertTrue(confirmationContent.contains("FloatingActionButton("))
+        assertTrue(confirmationContent.contains("showBulkActionDialog = true"))
+        assertTrue(confirmationContent.contains("R.string.steam_confirmation_action_title"))
+        assertTrue(confirmationContent.contains("SteamConfirmationItemImage("))
+        assertTrue(confirmationContent.contains("ContentScale.Fit"))
+        assertTrue(confirmationContent.contains("loadSteamConfirmationImage("))
+        assertFalse(confirmationContent.contains("Button(onClick = onRefresh"))
+        assertFalse(confirmationContent.contains("Checkbox("))
+        assertFalse(confirmationContent.contains("onRespond(confirmation, true)"))
+        assertFalse(confirmationContent.contains("onRespond(confirmation, false)"))
+
+        val selectionBarSource = projectFile("app/src/main/java/takagi/ru/monica/ui/common/selection/SelectionActionBar.kt")
+            .readText()
+        assertTrue(selectionBarSource.contains("onDelete: (() -> Unit)? = null"))
+        assertTrue(selectionBarSource.contains("onDelete?.let"))
+
+        val serviceSource = projectFile("app/src/main/java/takagi/ru/monica/steam/network/SteamConfirmationService.kt")
+            .readText()
+        assertTrue(serviceSource.contains("val imageUrl: String"))
+        assertTrue(serviceSource.contains("imageUrl = imageUrl()"))
+        assertTrue(serviceSource.contains("\"image_url\""))
     }
 
     private fun projectFile(path: String): File {

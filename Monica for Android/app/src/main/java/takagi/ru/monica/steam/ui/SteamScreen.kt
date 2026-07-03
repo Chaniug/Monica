@@ -121,6 +121,8 @@ import takagi.ru.monica.utils.SettingsManager
 
 private const val STEAM_AVATAR_TIMEOUT_MS = 4_000
 private const val STEAM_AVATAR_CACHE_TTL_MS = 3L * 24L * 60L * 60L * 1000L
+private const val STEAM_CONFIRMATION_IMAGE_TIMEOUT_MS = 4_000
+private const val STEAM_CONFIRMATION_IMAGE_CACHE_TTL_MS = 3L * 24L * 60L * 60L * 1000L
 
 private enum class SteamSection(
     @StringRes val labelRes: Int,
@@ -562,7 +564,6 @@ fun SteamScreen(
                             account = selectedAccount,
                             confirmations = uiState.confirmations,
                             selectedIds = uiState.selectedConfirmationIds,
-                            onRefresh = { viewModel.refreshConfirmations() },
                             onToggle = viewModel::toggleConfirmation,
                             onSelectAll = viewModel::selectAllConfirmations,
                             onClearSelection = viewModel::clearSelectedConfirmations,
@@ -1066,6 +1067,69 @@ private fun isSteamAvatarCacheExpired(cacheFile: File): Boolean {
     return ageMs > STEAM_AVATAR_CACHE_TTL_MS
 }
 
+private suspend fun loadSteamConfirmationImage(context: Context, imageUrl: String): ImageBitmap? =
+    withContext(Dispatchers.IO) {
+        val normalizedUrl = normalizeSteamImageUrl(imageUrl)
+        if (!normalizedUrl.startsWith("https://") && !normalizedUrl.startsWith("http://")) {
+            return@withContext null
+        }
+
+        val cacheFile = steamConfirmationImageCacheFile(context, normalizedUrl)
+        val cachedImage = readSteamAvatarCache(cacheFile)
+        if (cachedImage != null && !isSteamConfirmationImageCacheExpired(cacheFile)) {
+            return@withContext cachedImage
+        }
+
+        val freshImage = runCatching {
+            downloadSteamConfirmationImageBytes(normalizedUrl)?.also { bytes ->
+                cacheFile.parentFile?.mkdirs()
+                cacheFile.writeBytes(bytes)
+            }?.let { bytes ->
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }
+        }.getOrNull()
+
+        freshImage ?: cachedImage
+    }
+
+private fun normalizeSteamImageUrl(imageUrl: String): String {
+    val trimmed = imageUrl.trim()
+    return when {
+        trimmed.startsWith("//") -> "https:$trimmed"
+        trimmed.startsWith("/") -> "https://steamcommunity.com$trimmed"
+        else -> trimmed
+    }
+}
+
+private fun downloadSteamConfirmationImageBytes(imageUrl: String): ByteArray? {
+    val connection = (URL(imageUrl).openConnection() as HttpURLConnection).apply {
+        connectTimeout = STEAM_CONFIRMATION_IMAGE_TIMEOUT_MS
+        readTimeout = STEAM_CONFIRMATION_IMAGE_TIMEOUT_MS
+        requestMethod = "GET"
+    }
+    return try {
+        connection.inputStream.use { stream ->
+            stream.readBytes()
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
+
+private fun steamConfirmationImageCacheFile(context: Context, imageUrl: String): File {
+    val safeName = imageUrl
+        .hashCode()
+        .toUInt()
+        .toString(16)
+    return File(File(context.cacheDir, "steam_confirmation_images"), "$safeName.png")
+}
+
+private fun isSteamConfirmationImageCacheExpired(cacheFile: File): Boolean {
+    if (!cacheFile.isFile) return true
+    val ageMs = System.currentTimeMillis() - cacheFile.lastModified()
+    return ageMs > STEAM_CONFIRMATION_IMAGE_CACHE_TTL_MS
+}
+
 @Composable
 private fun DetailLine(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth()) {
@@ -1088,7 +1152,6 @@ private fun SteamConfirmationsContent(
     account: SteamAccount?,
     confirmations: List<SteamConfirmation>,
     selectedIds: Set<String>,
-    onRefresh: () -> Unit,
     onToggle: (String) -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
@@ -1096,9 +1159,9 @@ private fun SteamConfirmationsContent(
     onRespondSelected: (Boolean) -> Unit
 ) {
     var pendingAction by remember { mutableStateOf<ConfirmationActionRequest?>(null) }
+    var showBulkActionDialog by remember { mutableStateOf(false) }
     val selectedConfirmations = confirmations.filter { it.id in selectedIds }
-    val allSelected = confirmations.isNotEmpty() &&
-        confirmations.all { it.id in selectedIds }
+    val selectionMode = selectedIds.isNotEmpty()
 
     pendingAction?.let { request ->
         AlertDialog(
@@ -1164,85 +1227,188 @@ private fun SteamConfirmationsContent(
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onRefresh, enabled = account?.canUseConfirmations == true) {
-                        Icon(Icons.Default.Refresh, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.refresh))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            if (allSelected) {
-                                onClearSelection()
-                            } else {
-                                onSelectAll()
-                            }
-                        },
-                        enabled = account?.canUseConfirmations == true && confirmations.isNotEmpty()
-                    ) {
-                        Icon(
-                            imageVector = if (allSelected) Icons.Default.Close else Icons.Default.Check,
-                            contentDescription = null
+    if (showBulkActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showBulkActionDialog = false },
+            title = { Text(stringResource(R.string.steam_confirmation_action_title)) },
+            text = {
+                Text(stringResource(R.string.steam_confirmation_action_message, selectedConfirmations.size))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingAction = ConfirmationActionRequest(
+                            confirmations = selectedConfirmations,
+                            accept = true
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            stringResource(
-                                if (allSelected) R.string.deselect_all else R.string.select_all
-                            )
-                        )
+                        showBulkActionDialog = false
                     }
+                ) {
+                    Text(stringResource(R.string.steam_approve))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = {
-                            pendingAction = ConfirmationActionRequest(
-                                confirmations = selectedConfirmations,
-                                accept = true
-                            )
-                        },
-                        enabled = selectedConfirmations.isNotEmpty()
-                    ) {
-                        Text(stringResource(R.string.steam_approve))
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { showBulkActionDialog = false }) {
+                        Text(stringResource(R.string.cancel))
                     }
-                    OutlinedButton(
+                    TextButton(
                         onClick = {
                             pendingAction = ConfirmationActionRequest(
                                 confirmations = selectedConfirmations,
                                 accept = false
                             )
-                        },
-                        enabled = selectedConfirmations.isNotEmpty()
+                            showBulkActionDialog = false
+                        }
                     ) {
-                        Text(stringResource(R.string.steam_reject))
+                        Text(
+                            text = stringResource(R.string.steam_reject),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SteamConfirmationAccountCard(
+                account = account,
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = 10.dp,
+                    end = 16.dp,
+                    bottom = if (selectionMode) 144.dp else 88.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (account == null || !account.canUseConfirmations) {
+                    item { EmptyState(stringResource(R.string.steam_no_confirmation_session)) }
+                } else if (confirmations.isEmpty()) {
+                    item { EmptyState(stringResource(R.string.steam_no_confirmations)) }
+                } else {
+                    items(confirmations, key = { it.id }) { confirmation ->
+                        SwipeActions(
+                            onSwipeLeft = {},
+                            onSwipeRight = { onToggle(confirmation.id) },
+                            isSwiped = confirmation.id in selectedIds,
+                            allowSwipeLeft = false,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            ConfirmationRow(
+                                confirmation = confirmation,
+                                selected = confirmation.id in selectedIds,
+                                selectionMode = selectionMode,
+                                onClick = {
+                                    if (selectionMode) {
+                                        onToggle(confirmation.id)
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
-        if (account == null || !account.canUseConfirmations) {
-            item { EmptyState(stringResource(R.string.steam_no_confirmation_session)) }
-        } else if (confirmations.isEmpty()) {
-            item { EmptyState(stringResource(R.string.steam_no_confirmations)) }
-        } else {
-            items(confirmations, key = { it.id }) { confirmation ->
-                ConfirmationRow(
-                    confirmation = confirmation,
-                    selected = confirmation.id in selectedIds,
-                    onToggle = { onToggle(confirmation.id) },
-                    onRespond = { target, accept ->
-                        pendingAction = ConfirmationActionRequest(
-                            confirmations = listOf(target),
-                            accept = accept
-                        )
-                    }
+
+        if (selectionMode) {
+            FloatingActionButton(
+                onClick = { showBulkActionDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 92.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = stringResource(R.string.steam_confirmation_action_title)
                 )
             }
+
+            SelectionActionBar(
+                selectedCount = selectedConfirmations.size,
+                onExit = onClearSelection,
+                onSelectAll = onSelectAll,
+                onDelete = null,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamConfirmationAccountCard(
+    account: SteamAccount?,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (account != null) {
+                SteamAvatarImage(account = account, size = 36.dp)
+            } else {
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VerifiedUser,
+                        contentDescription = null,
+                        modifier = Modifier.padding(8.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.steam_current_confirmation_account),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = account?.displayName
+                        ?.ifBlank { account.accountName }
+                        ?.ifBlank { account.steamId }
+                        ?: stringResource(R.string.steam_empty_field),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = stringResource(
+                    if (account?.canUseConfirmations == true) {
+                        R.string.steam_status_ready
+                    } else {
+                        R.string.steam_status_missing_session
+                    }
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (account?.canUseConfirmations == true) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                }
+            )
         }
     }
 }
@@ -1251,34 +1417,93 @@ private fun SteamConfirmationsContent(
 private fun ConfirmationRow(
     confirmation: SteamConfirmation,
     selected: Boolean,
-    onToggle: () -> Unit,
-    onRespond: (SteamConfirmation, Boolean) -> Unit
+    selectionMode: Boolean,
+    onClick: () -> Unit
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
+        )
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .clickable(enabled = selectionMode, onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Checkbox(checked = selected, onCheckedChange = { onToggle() })
+            SteamConfirmationItemImage(confirmation = confirmation)
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = confirmation.headline.ifBlank { confirmation.type },
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = confirmation.summary.ifBlank { confirmation.id },
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = { onRespond(confirmation, true) }) {
-                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.steam_approve))
+            if (selectionMode || selected) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = stringResource(R.string.select_all),
+                    tint = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
             }
-            IconButton(onClick = { onRespond(confirmation, false) }) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steam_reject))
+        }
+    }
+}
+
+@Composable
+private fun SteamConfirmationItemImage(confirmation: SteamConfirmation) {
+    val context = LocalContext.current
+    var image by remember(confirmation.imageUrl) { mutableStateOf<ImageBitmap?>(null) }
+
+    LaunchedEffect(confirmation.imageUrl) {
+        image = loadSteamConfirmationImage(context, confirmation.imageUrl)
+    }
+
+    Surface(
+        modifier = Modifier.size(48.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest
+    ) {
+        val snapshot = image
+        if (snapshot != null) {
+            Image(
+                bitmap = snapshot,
+                contentDescription = stringResource(R.string.steam_confirmation_item_image),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerifiedUser,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
