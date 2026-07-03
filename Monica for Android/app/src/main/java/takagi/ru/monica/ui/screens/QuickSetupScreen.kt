@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Wallet
@@ -1544,6 +1545,7 @@ private fun tabLabelRes(tab: BottomNavContentTab): Int = when (tab) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.SEND -> R.string.nav_v2_send
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
+    BottomNavContentTab.STEAM -> R.string.nav_steam
 }
 
 @StringRes
@@ -1556,6 +1558,7 @@ private fun tabShortLabelRes(tab: BottomNavContentTab): Int = when (tab) {
     BottomNavContentTab.NOTES -> R.string.nav_notes_short
     BottomNavContentTab.SEND -> R.string.nav_v2_send_short
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey_short
+    BottomNavContentTab.STEAM -> R.string.nav_steam_short
 }
 
 private fun tabIcon(tab: BottomNavContentTab): ImageVector = when (tab) {
@@ -1567,4 +1570,5 @@ private fun tabIcon(tab: BottomNavContentTab): ImageVector = when (tab) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.SEND -> Icons.Default.Send
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
+    BottomNavContentTab.STEAM -> Icons.Default.SportsEsports
 }

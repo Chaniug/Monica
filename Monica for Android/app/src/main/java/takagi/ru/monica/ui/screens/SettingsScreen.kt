@@ -2308,6 +2308,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
+    BottomNavContentTab.STEAM -> Icons.Default.SportsEsports
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
@@ -2319,6 +2320,7 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.NOTES -> R.string.nav_notes
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
     BottomNavContentTab.SEND -> R.string.nav_v2_send
+    BottomNavContentTab.STEAM -> R.string.nav_steam
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

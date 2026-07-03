@@ -63,7 +63,8 @@ enum class BottomNavContentTab {
     GENERATOR,
     NOTES,
     SEND,         // 发送（安全分享）
-    PASSKEY;  // 通行密钥
+    PASSKEY,  // 通行密钥
+    STEAM;    // Steam local guard
 
     companion object {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
@@ -73,7 +74,8 @@ enum class BottomNavContentTab {
             CARD_WALLET,
             PASSKEY,
             NOTES,
-            SEND
+            SEND,
+            STEAM
         )
 
         fun sanitizeOrder(order: List<BottomNavContentTab>): List<BottomNavContentTab> {
@@ -102,7 +104,8 @@ data class BottomNavVisibility(
     val generator: Boolean = false,   // 生成器功能默认关闭
     val notes: Boolean = true,        // 笔记功能默认开启
     val send: Boolean = false,        // 发送功能默认关闭
-    val passkey: Boolean = true       // 通行密钥功能默认开启
+    val passkey: Boolean = true,      // 通行密钥功能默认开启
+    val steam: Boolean = false        // Steam 功能默认隐藏
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
         BottomNavContentTab.VAULT_V2 -> vaultV2
@@ -114,9 +117,20 @@ data class BottomNavVisibility(
         BottomNavContentTab.NOTES -> notes
         BottomNavContentTab.SEND -> send
         BottomNavContentTab.PASSKEY -> passkey
+        BottomNavContentTab.STEAM -> steam
     }
 
-    fun visibleCount(): Int = listOf(vaultV2, passwords, authenticator, cardWallet, generator, notes, send, passkey).count { it }
+    fun visibleCount(): Int = listOf(
+        vaultV2,
+        passwords,
+        authenticator,
+        cardWallet,
+        generator,
+        notes,
+        send,
+        passkey,
+        steam
+    ).count { it }
 }
 
 /**

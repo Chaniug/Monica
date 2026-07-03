@@ -1,0 +1,377 @@
+package takagi.ru.monica.steam.ui
+
+import android.content.Context
+import android.net.Uri
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import java.io.BufferedReader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.steam.core.SteamTotp
+import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.steam.data.SteamAccountRepository
+import takagi.ru.monica.steam.data.SteamDatabase
+import takagi.ru.monica.steam.importer.SteamMaFileParser
+import takagi.ru.monica.steam.network.SteamBatchResult
+import takagi.ru.monica.steam.network.SteamConfirmation
+import takagi.ru.monica.steam.network.SteamConfirmationService
+import takagi.ru.monica.steam.network.SteamLoginApprovalService
+import takagi.ru.monica.steam.network.SteamPendingLogin
+import takagi.ru.monica.steam.network.SteamQrChallenge
+import takagi.ru.monica.steam.service.SteamLoginImportService
+
+data class SteamUiState(
+    val accounts: List<SteamAccount> = emptyList(),
+    val selectedAccountId: Long? = null,
+    val currentCode: String = "",
+    val secondsRemaining: Int = 30,
+    val confirmations: List<SteamConfirmation> = emptyList(),
+    val pendingLogins: List<SteamPendingLogin> = emptyList(),
+    val selectedConfirmationIds: Set<String> = emptySet(),
+    val pendingLoginChallenge: SteamLoginChallengeUi? = null,
+    val loading: Boolean = false,
+    val message: String? = null
+)
+
+data class SteamLoginChallengeUi(
+    val pendingSessionId: String,
+    val steamId: String,
+    val confirmationType: Int,
+    val message: String
+)
+
+class SteamViewModel(
+    private val appContext: Context,
+    private val repository: SteamAccountRepository,
+    private val parser: SteamMaFileParser = SteamMaFileParser(),
+    private val confirmationService: SteamConfirmationService = SteamConfirmationService(),
+    private val loginApprovalService: SteamLoginApprovalService = SteamLoginApprovalService(),
+    private val loginImportService: SteamLoginImportService = SteamLoginImportService()
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(SteamUiState())
+    val uiState: StateFlow<SteamUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repository.observeAccounts().collect { accounts ->
+                updateForAccounts(accounts, System.currentTimeMillis() / 1000L)
+            }
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                updateCodeTick(System.currentTimeMillis() / 1000L)
+                delay(1000L)
+            }
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(15_000L)
+                val account = selectedAccount()
+                if (account?.canApproveLogins == true) {
+                    refreshPendingLogins(silent = true)
+                }
+            }
+        }
+    }
+
+    fun selectAccount(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.select(id)
+        }
+    }
+
+    fun clearMessage() {
+        _uiState.value = _uiState.value.copy(message = null)
+    }
+
+    fun importMaFile(
+        maFileUri: Uri,
+        manifestUri: Uri?,
+        password: String,
+        displayName: String
+    ) {
+        viewModelScope.launch {
+            setLoading(true)
+            runCatching {
+                val maFileText = readText(maFileUri)
+                val manifestText = manifestUri?.let { readText(it) }
+                val payload = parser.parse(
+                    maFileContent = maFileText,
+                    fileName = maFileUri.lastPathSegment,
+                    manifestContent = manifestText,
+                    password = password.takeIf { it.isNotEmpty() },
+                    displayNameOverride = displayName
+                )
+                repository.upsertFromMaFile(payload)
+            }.onSuccess {
+                setMessage("Steam account imported")
+            }.onFailure { error ->
+                setMessage(error.message ?: "Steam import failed")
+            }
+            setLoading(false)
+        }
+    }
+
+    fun beginSteamLogin(userName: String, password: String, displayName: String) {
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = withContext(Dispatchers.IO) {
+                loginImportService.beginLogin(userName, password)
+            }) {
+                is SteamLoginImportService.LoginResult.ChallengeRequired -> {
+                    _uiState.value = _uiState.value.copy(
+                        pendingLoginChallenge = SteamLoginChallengeUi(
+                            pendingSessionId = result.pendingSessionId,
+                            steamId = result.steamId,
+                            confirmationType = result.challenges.firstOrNull()?.confirmationType ?: 0,
+                            message = result.message ?: result.challenges.firstOrNull()?.associatedMessage
+                                ?: "Steam verification required"
+                        ),
+                        message = result.message ?: "Steam verification required"
+                    )
+                }
+                is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                    saveLoginResult(result, displayName)
+                    _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+                    setMessage("Steam account imported")
+                }
+                is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun submitSteamLoginCode(code: String, displayName: String) {
+        val challenge = _uiState.value.pendingLoginChallenge ?: return
+        viewModelScope.launch {
+            setLoading(true)
+            when (val result = withContext(Dispatchers.IO) {
+                loginImportService.submitSteamGuardCode(
+                    pendingSessionId = challenge.pendingSessionId,
+                    code = code,
+                    confirmationType = challenge.confirmationType
+                )
+            }) {
+                is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                    saveLoginResult(result, displayName)
+                    _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+                    setMessage("Steam account imported")
+                }
+                is SteamLoginImportService.LoginResult.ChallengeRequired -> {
+                    _uiState.value = _uiState.value.copy(
+                        pendingLoginChallenge = SteamLoginChallengeUi(
+                            pendingSessionId = result.pendingSessionId,
+                            steamId = result.steamId,
+                            confirmationType = result.challenges.firstOrNull()?.confirmationType
+                                ?: challenge.confirmationType,
+                            message = result.message ?: "Steam verification required"
+                        )
+                    )
+                    setMessage(result.message ?: "Steam verification required")
+                }
+                is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
+    fun deleteAccount(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.delete(id)
+            _uiState.value = _uiState.value.copy(
+                confirmations = emptyList(),
+                pendingLogins = emptyList(),
+                selectedConfirmationIds = emptySet()
+            )
+        }
+    }
+
+    fun refreshConfirmations(silent: Boolean = false) {
+        val account = selectedAccount() ?: return
+        viewModelScope.launch {
+            if (!silent) setLoading(true)
+            runCatching {
+                withContext(Dispatchers.IO) { confirmationService.fetch(account) }
+            }.onSuccess { confirmations ->
+                _uiState.value = _uiState.value.copy(
+                    confirmations = confirmations,
+                    selectedConfirmationIds = _uiState.value.selectedConfirmationIds.intersect(confirmations.map { it.id }.toSet())
+                )
+            }.onFailure { error ->
+                if (!silent) setMessage(error.message ?: "Cannot refresh confirmations")
+            }
+            if (!silent) setLoading(false)
+        }
+    }
+
+    fun toggleConfirmation(id: String) {
+        val selected = _uiState.value.selectedConfirmationIds.toMutableSet()
+        if (!selected.add(id)) selected.remove(id)
+        _uiState.value = _uiState.value.copy(selectedConfirmationIds = selected)
+    }
+
+    fun respondSelectedConfirmations(accept: Boolean) {
+        val account = selectedAccount() ?: return
+        val selectedIds = _uiState.value.selectedConfirmationIds
+        val confirmations = _uiState.value.confirmations.filter { it.id in selectedIds }
+        if (confirmations.isEmpty()) return
+        viewModelScope.launch {
+            setLoading(true)
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    confirmationService.respondMultiple(account, confirmations, accept)
+                }
+            }.getOrElse { SteamBatchResult(ok = 0, failed = confirmations.size) }
+            setMessage("Done: ${result.ok}, failed: ${result.failed}")
+            _uiState.value = _uiState.value.copy(selectedConfirmationIds = emptySet())
+            refreshConfirmations(silent = true)
+            setLoading(false)
+        }
+    }
+
+    fun respondConfirmation(confirmation: SteamConfirmation, accept: Boolean) {
+        val account = selectedAccount() ?: return
+        viewModelScope.launch {
+            setLoading(true)
+            val ok = runCatching {
+                withContext(Dispatchers.IO) { confirmationService.respond(account, confirmation, accept) }
+            }.getOrDefault(false)
+            setMessage(if (ok) "Done" else "Steam confirmation failed")
+            refreshConfirmations(silent = true)
+            setLoading(false)
+        }
+    }
+
+    fun refreshPendingLogins(silent: Boolean = false) {
+        val account = selectedAccount() ?: return
+        viewModelScope.launch {
+            if (!silent) setLoading(true)
+            runCatching {
+                withContext(Dispatchers.IO) { loginApprovalService.pendingLogins(account) }
+            }.onSuccess { pending ->
+                _uiState.value = _uiState.value.copy(pendingLogins = pending)
+            }.onFailure { error ->
+                if (!silent) setMessage(error.message ?: "Cannot refresh Steam logins")
+            }
+            if (!silent) setLoading(false)
+        }
+    }
+
+    fun respondPendingLogin(login: SteamPendingLogin, approve: Boolean) {
+        val account = selectedAccount() ?: return
+        viewModelScope.launch {
+            setLoading(true)
+            val ok = runCatching {
+                withContext(Dispatchers.IO) {
+                    loginApprovalService.respondToSession(
+                        account = account,
+                        clientId = login.clientId,
+                        version = login.version,
+                        approve = approve
+                    )
+                }
+            }.getOrDefault(false)
+            setMessage(if (ok) "Done" else "Steam login response failed")
+            refreshPendingLogins(silent = true)
+            setLoading(false)
+        }
+    }
+
+    fun respondQr(rawQr: String, approve: Boolean) {
+        val account = selectedAccount() ?: return
+        val challenge = SteamQrChallenge.parse(rawQr)
+        if (challenge == null) {
+            setMessage("Invalid Steam QR link")
+            return
+        }
+        viewModelScope.launch {
+            setLoading(true)
+            val ok = runCatching {
+                withContext(Dispatchers.IO) { loginApprovalService.respondToQr(account, challenge, approve) }
+            }.getOrDefault(false)
+            setMessage(if (ok) "Done" else "Steam QR response failed")
+            setLoading(false)
+        }
+    }
+
+    private suspend fun saveLoginResult(
+        result: SteamLoginImportService.LoginResult.ReadyForImport,
+        displayName: String
+    ) {
+        val payload = parser.parseSteamGuardJson(
+            steamId = result.steamId,
+            deviceId = result.payload.deviceId,
+            steamGuardJson = result.payload.steamGuardJson,
+            accessToken = result.accessToken,
+            refreshToken = result.refreshToken,
+            displayNameOverride = displayName
+        )
+        withContext(Dispatchers.IO) {
+            repository.upsertFromMaFile(payload)
+        }
+    }
+
+    private suspend fun readText(uri: Uri): String = withContext(Dispatchers.IO) {
+        appContext.contentResolver.openInputStream(uri)?.use { stream ->
+            stream.bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
+        }.orEmpty()
+    }
+
+    private fun selectedAccount(): SteamAccount? {
+        val state = _uiState.value
+        return state.accounts.firstOrNull { it.id == state.selectedAccountId }
+            ?: state.accounts.firstOrNull()
+    }
+
+    private fun updateForAccounts(accounts: List<SteamAccount>, nowSeconds: Long) {
+        val selected = accounts.firstOrNull { it.selected } ?: accounts.firstOrNull()
+        val previous = _uiState.value
+        _uiState.value = previous.copy(
+            accounts = accounts,
+            selectedAccountId = selected?.id,
+            currentCode = selected?.let { SteamTotp.generateAuthCode(it.sharedSecret, nowSeconds) }.orEmpty(),
+            secondsRemaining = SteamTotp.secondsRemaining(nowSeconds)
+        )
+    }
+
+    private fun updateCodeTick(nowSeconds: Long) {
+        val account = selectedAccount()
+        _uiState.value = _uiState.value.copy(
+            currentCode = account?.let { SteamTotp.generateAuthCode(it.sharedSecret, nowSeconds) }.orEmpty(),
+            secondsRemaining = SteamTotp.secondsRemaining(nowSeconds)
+        )
+    }
+
+    private fun setLoading(loading: Boolean) {
+        _uiState.value = _uiState.value.copy(loading = loading)
+    }
+
+    private fun setMessage(message: String) {
+        _uiState.value = _uiState.value.copy(message = message)
+    }
+
+    companion object {
+        fun factory(context: Context): ViewModelProvider.Factory {
+            val appContext = context.applicationContext
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    val database = SteamDatabase.getDatabase(appContext)
+                    val securityManager = SecurityManager(appContext)
+                    return SteamViewModel(
+                        appContext = appContext,
+                        repository = SteamAccountRepository(database.steamAccountDao(), securityManager)
+                    ) as T
+                }
+            }
+        }
+    }
+}
