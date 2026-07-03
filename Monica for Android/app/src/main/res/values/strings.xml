@@ -2486,7 +2486,7 @@
 
     <!-- Monica Plus -->
     <string name="monica_plus_title">Monica plus</string>
-    <string name="monica_plus_card_desc">支持Monica的开发，作者快没钱饿死了</string>
+    <string name="monica_plus_card_desc">求各位股东入资，月收益10块，买不起token了，要饿死了😭😭😭😭</string>
     <string name="click_to_pay">点击付款</string>
     <string name="monica_plus_features_title">Plus 功能</string>
     <string name="monica_plus_features_placeholder">更多功能敬请期待...</string>
@@ -2506,7 +2506,7 @@
     <string name="plus_title">Monica Plus</string>
     <string name="plus_subtitle_active">已激活</string>
     <string name="plus_subtitle_inactive">支持开发</string>
-    <string name="plus_description">支持 Monica 的开发，作者快没钱饿死了</string>
+    <string name="plus_description">求各位股东入资，月收益10块，买不起token了，要饿死了😭😭😭😭</string>
     <string name="plus_activation_title">Plus 状态</string>
     <string name="plus_status_activated">已激活</string>
     <string name="plus_payment_button">点击付款</string>
