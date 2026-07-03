@@ -215,6 +215,37 @@ class SteamLoginImportService(
             val encryptedPassword = encryptPasswordWithRsa(password, publicKeyMod, publicKeyExp)
                 ?: return@runCatching LoginResult.Failure("Steam 密码加密失败")
 
+            val protobufBeginSession = beginAuthSessionViaCredentialsWithProtobuf(
+                userName = userName.trim(),
+                encryptedPassword = encryptedPassword,
+                encryptionTimestamp = timeStamp
+            )
+            if (protobufBeginSession != null) {
+                if (protobufBeginSession.challenges.isNotEmpty()) {
+                    val pendingSessionId = UUID.randomUUID().toString()
+                    pendingSessions[pendingSessionId] = PendingAuthSession(
+                        flow = AuthFlow.AUTH_API,
+                        userName = userName.trim(),
+                        clientId = protobufBeginSession.clientId,
+                        requestId = protobufBeginSession.requestId,
+                        steamId = protobufBeginSession.steamId,
+                        allowedConfirmations = protobufBeginSession.challenges
+                    )
+                    return@runCatching LoginResult.ChallengeRequired(
+                        pendingSessionId = pendingSessionId,
+                        steamId = protobufBeginSession.steamId,
+                        challenges = protobufBeginSession.challenges,
+                        message = protobufBeginSession.message
+                    )
+                }
+
+                return@runCatching pollForToken(
+                    protobufBeginSession.clientId,
+                    protobufBeginSession.requestId,
+                    protobufBeginSession.steamId
+                )
+            }
+
             val beginAuthResponse = postForm(
                 URL_BEGIN_AUTH,
                 mapOf(
@@ -362,6 +393,113 @@ class SteamLoginImportService(
         val requestId: ByteArray,
         val steamId: Long
     )
+
+    private data class BeginAuthSessionData(
+        val clientId: String,
+        val requestId: String,
+        val steamId: String,
+        val challenges: List<SteamGuardChallenge>,
+        val message: String? = null
+    )
+
+    private fun beginAuthSessionViaCredentialsWithProtobuf(
+        userName: String,
+        encryptedPassword: String,
+        encryptionTimestamp: String
+    ): BeginAuthSessionData? {
+        val timestamp = encryptionTimestamp.toLongOrNull() ?: return null
+        val request = SteamProtoWriter().apply {
+            writeString(1, DEVICE_FRIENDLY_NAME)
+            writeString(2, userName)
+            writeString(3, encryptedPassword)
+            writeUint64(4, timestamp)
+            writeBool(5, false)
+            writeVarint(6, 3L)
+            writeVarint(7, 1L)
+            writeString(8, STEAM_WEBSITE_ID)
+            writeMessage(9, buildAuthApiDeviceDetails())
+            writeString(10, "")
+            writeVarint(11, 0L)
+            writeVarint(12, 2L)
+        }
+
+        val fields = try {
+            SteamProtoReader(
+                steamApi.callProtobuf(
+                    iface = "IAuthenticationService",
+                    method = "BeginAuthSessionViaCredentials",
+                    request = request
+                )
+            ).parseAll()
+        } catch (error: SteamApiException) {
+            android.util.Log.w(
+                TAG,
+                "BeginAuthSessionViaCredentials protobuf failed: eResult=${error.eResult}, message=${error.message}"
+            )
+            return null
+        } catch (error: Exception) {
+            android.util.Log.w(
+                TAG,
+                "BeginAuthSessionViaCredentials protobuf exception: ${error.message}",
+                error
+            )
+            return null
+        }
+
+        val clientId = fields.firstOrNull { it.number == 1 }
+            ?.asLong
+            ?.takeIf { it != 0L }
+            ?.let(::unsignedLongToString)
+        val requestId = fields.firstOrNull { it.number == 2 }
+            ?.bytes
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+        val steamId = fields.firstOrNull { it.number == 5 }
+            ?.asLong
+            ?.takeIf { it != 0L }
+            ?.let(::unsignedLongToString)
+        if (clientId.isNullOrBlank() || requestId.isNullOrBlank() || steamId.isNullOrBlank()) {
+            android.util.Log.w(
+                TAG,
+                "BeginAuthSessionViaCredentials protobuf missing fields: fieldNumbers=${
+                    fields.joinToString(",") { it.number.toString() }
+                }"
+            )
+            return null
+        }
+
+        return BeginAuthSessionData(
+            clientId = clientId,
+            requestId = requestId,
+            steamId = steamId,
+            challenges = fields.authApiAllowedConfirmations(),
+            message = fields.firstOrNull { it.number == 8 }?.asString?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun buildAuthApiDeviceDetails(): SteamProtoWriter {
+        return SteamProtoWriter().apply {
+            writeString(1, DEVICE_FRIENDLY_NAME)
+            writeVarint(2, 3L)
+            writeVarint(3, -500L)
+            writeVarint(4, 528L)
+        }
+    }
+
+    private fun List<takagi.ru.monica.steam.network.SteamProtoField>.authApiAllowedConfirmations():
+        List<SteamGuardChallenge> {
+        return filter { it.number == 4 && it.bytes != null }.mapNotNull { field ->
+            val confirmation = runCatching {
+                SteamProtoReader(field.bytes ?: return@mapNotNull null).parse()
+            }.getOrNull() ?: return@mapNotNull null
+            val type = confirmation[1]?.asInt ?: return@mapNotNull null
+            if (type == 0) return@mapNotNull null
+            SteamGuardChallenge(
+                confirmationType = type,
+                associatedMessage = confirmation[2]?.asString.orEmpty()
+            )
+        }
+    }
 
     private fun submitSteamGuardCodeWithProtobuf(
         session: PendingAuthSession,
@@ -597,6 +735,14 @@ class SteamLoginImportService(
             big.subtract(UNSIGNED_LONG_BASE).longValueExact()
         } else {
             big.longValueExact()
+        }
+    }
+
+    private fun unsignedLongToString(value: Long): String {
+        return if (value >= 0) {
+            value.toString()
+        } else {
+            BigInteger.valueOf(value).add(UNSIGNED_LONG_BASE).toString()
         }
     }
 

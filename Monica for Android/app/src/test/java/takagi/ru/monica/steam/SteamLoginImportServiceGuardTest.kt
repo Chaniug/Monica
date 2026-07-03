@@ -103,6 +103,20 @@ class SteamLoginImportServiceGuardTest {
             "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
         ).readText()
 
+        assertTrue(source.contains("beginAuthSessionViaCredentialsWithProtobuf"))
+        assertTrue(source.contains("method = \"BeginAuthSessionViaCredentials\""))
+        assertTrue(source.contains("writeString(1, DEVICE_FRIENDLY_NAME)"))
+        assertTrue(source.contains("writeString(2, userName)"))
+        assertTrue(source.contains("writeString(3, encryptedPassword)"))
+        assertTrue(source.contains("writeUint64(4, timestamp)"))
+        assertTrue(source.contains("writeBool(5, false)"))
+        assertTrue(source.contains("writeVarint(6, 3L)"))
+        assertTrue(source.contains("writeVarint(7, 1L)"))
+        assertTrue(source.contains("writeString(8, STEAM_WEBSITE_ID)"))
+        assertTrue(source.contains("writeMessage(9, buildAuthApiDeviceDetails())"))
+        assertTrue(source.contains("beginAuthSessionViaCredentialsWithProtobuf("))
+        assertTrue(source.contains("val beginAuthResponse = postForm("))
+
         assertTrue(source.contains("submitSteamGuardCodeWithProtobuf"))
         assertTrue(source.contains("method = \"UpdateAuthSessionWithSteamGuardCode\""))
         assertTrue(source.contains("writeUint64(1, clientIdLong)"))
