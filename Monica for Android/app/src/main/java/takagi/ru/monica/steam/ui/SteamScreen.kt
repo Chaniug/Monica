@@ -633,6 +633,9 @@ fun SteamScreen(
                             onScannedQrHandled = { scannedQrPayload = null },
                             onRefreshLogins = { viewModel.refreshPendingLogins() },
                             onRefreshAuthorizedDevices = { viewModel.refreshAuthorizedDevices(animatedDetailAccount.id) },
+                            onRevokeAuthorizedDevice = { device ->
+                                viewModel.revokeAuthorizedDevice(animatedDetailAccount.id, device)
+                            },
                             onRespondPending = viewModel::respondPendingLogin,
                             onRespondQr = viewModel::respondQr
                         )
@@ -878,6 +881,7 @@ private fun SteamAccountDetailContent(
     onScannedQrHandled: () -> Unit,
     onRefreshLogins: () -> Unit,
     onRefreshAuthorizedDevices: () -> Unit,
+    onRevokeAuthorizedDevice: (SteamAuthorizedDevice) -> Unit,
     onRespondPending: (SteamPendingLogin, Boolean) -> Unit,
     onRespondQr: (String, Boolean) -> Unit
 ) {
@@ -933,7 +937,8 @@ private fun SteamAccountDetailContent(
             SteamAuthorizedDevicesSection(
                 account = account,
                 devices = authorizedDevices,
-                onRefresh = onRefreshAuthorizedDevices
+                onRefresh = onRefreshAuthorizedDevices,
+                onRevokeDevice = onRevokeAuthorizedDevice
             )
         }
         item {
@@ -1595,8 +1600,41 @@ private fun SteamConfirmationAccountCard(
 private fun SteamAuthorizedDevicesSection(
     account: SteamAccount,
     devices: List<SteamAuthorizedDevice>,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onRevokeDevice: (SteamAuthorizedDevice) -> Unit
 ) {
+    var pendingRevokeDevice by remember { mutableStateOf<SteamAuthorizedDevice?>(null) }
+
+    pendingRevokeDevice?.let { device ->
+        AlertDialog(
+            onDismissRequest = { pendingRevokeDevice = null },
+            title = { Text(stringResource(R.string.steam_authorized_devices_label)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AuthorizedDeviceDetails(device)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRevokeDevice(device)
+                        pendingRevokeDevice = null
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRevokeDevice = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1637,7 +1675,10 @@ private fun SteamAuthorizedDevicesSection(
                 EmptyState(stringResource(R.string.steam_no_authorized_devices))
             } else {
                 devices.forEach { device ->
-                    SteamAuthorizedDeviceRow(device)
+                    SteamAuthorizedDeviceRow(
+                        device = device,
+                        onRequestRevoke = { pendingRevokeDevice = device }
+                    )
                 }
             }
         }
@@ -1645,8 +1686,10 @@ private fun SteamAuthorizedDevicesSection(
 }
 
 @Composable
-private fun SteamAuthorizedDeviceRow(device: SteamAuthorizedDevice) {
-    val lastSeen = device.lastSeen
+private fun SteamAuthorizedDeviceRow(
+    device: SteamAuthorizedDevice,
+    onRequestRevoke: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -1682,28 +1725,45 @@ private fun SteamAuthorizedDeviceRow(device: SteamAuthorizedDevice) {
                     }
                 )
             }
-            Text(
-                text = steamPlatformLabel(device.platformType),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (lastSeen != null) {
-                Text(
-                    text = listOf(
-                        lastSeen.location.takeIf { it.isNotBlank() },
-                        lastSeen.timeSeconds.takeIf { it > 0L }?.let {
-                            formatSteamLoginTime(it * 1000L)
-                        }
-                    ).filterNotNull().joinToString(" · "),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            AuthorizedDeviceDetails(device)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onRequestRevoke) {
+                    Text(
+                        text = stringResource(R.string.remove),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun AuthorizedDeviceDetails(device: SteamAuthorizedDevice) {
+    val lastSeen = device.lastSeen
+    Text(
+        text = steamPlatformLabel(device.platformType),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodyMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+    if (lastSeen != null) {
+        Text(
+            text = listOf(
+                lastSeen.location.takeIf { it.isNotBlank() },
+                lastSeen.timeSeconds.takeIf { it > 0L }?.let {
+                    formatSteamLoginTime(it * 1000L)
+                }
+            ).filterNotNull().joinToString(" · "),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

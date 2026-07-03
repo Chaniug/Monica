@@ -14,6 +14,14 @@ object SteamLoginApprovalSigner {
         return SteamTotp.hmac("HmacSHA256", key, payload)
     }
 
+    fun tokenSignature(
+        sharedSecretBase64: String,
+        tokenId: Long
+    ): ByteArray {
+        val key = Base64.getDecoder().decode(sharedSecretBase64.trim())
+        return SteamTotp.hmac("HmacSHA256", key, littleEndian64(tokenId))
+    }
+
     private fun littleEndian16(value: Int): ByteArray = byteArrayOf(
         (value and 0xff).toByte(),
         ((value shr 8) and 0xff).toByte()

@@ -331,6 +331,19 @@ class SteamViewModel(
         }
     }
 
+    fun revokeAuthorizedDevice(accountId: Long, device: SteamAuthorizedDevice) {
+        viewModelScope.launch {
+            val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            setLoading(true)
+            val ok = runCatching {
+                withContext(Dispatchers.IO) { authorizedDeviceService.revoke(account, device) }
+            }.getOrDefault(false)
+            setMessage(if (ok) R.string.steam_done else R.string.steam_login_response_failed)
+            refreshAuthorizedDevices(accountId, silent = true)
+            setLoading(false)
+        }
+    }
+
     fun respondPendingLogin(login: SteamPendingLogin, approve: Boolean) {
         val account = selectedAccount() ?: return
         viewModelScope.launch {

@@ -261,8 +261,10 @@ class SteamBoundaryGuardTest {
             .substringBefore("@Composable\nprivate fun SteamAccountCredentialCard(")
         assertTrue(detailContent.contains("authorizedDevices: List<SteamAuthorizedDevice>"))
         assertTrue(detailContent.contains("SteamAuthorizedDevicesSection("))
+        assertTrue(detailContent.contains("onRevokeAuthorizedDevice: (SteamAuthorizedDevice) -> Unit"))
         assertTrue(source.contains("uiState.authorizedDevices"))
         assertTrue(source.contains("viewModel.refreshAuthorizedDevices(animatedDetailAccount.id)"))
+        assertTrue(source.contains("viewModel.revokeAuthorizedDevice(animatedDetailAccount.id, device)"))
 
         val authorizedDevicesContent = source
             .substringAfter("private fun SteamAuthorizedDevicesSection(")
@@ -271,6 +273,15 @@ class SteamBoundaryGuardTest {
         assertTrue(authorizedDevicesContent.contains("R.string.steam_no_authorized_device_session"))
         assertTrue(authorizedDevicesContent.contains("R.string.steam_no_authorized_devices"))
         assertTrue(authorizedDevicesContent.contains("onRefresh"))
+        assertTrue(authorizedDevicesContent.contains("pendingRevokeDevice"))
+        assertTrue(authorizedDevicesContent.contains("AlertDialog("))
+        assertTrue(authorizedDevicesContent.contains("onRevokeDevice(device)"))
+
+        val authorizedDeviceRowContent = source
+            .substringAfter("private fun SteamAuthorizedDeviceRow(")
+            .substringBefore("@Composable\nprivate fun AuthorizedDeviceDetails(")
+        assertTrue(authorizedDeviceRowContent.contains("onRequestRevoke: () -> Unit"))
+        assertTrue(authorizedDeviceRowContent.contains("TextButton(onClick = onRequestRevoke)"))
 
         val confirmationsContent = source
             .substringAfter("private fun SteamConfirmationsContent(")
@@ -455,10 +466,12 @@ class SteamBoundaryGuardTest {
             "app/src/main/java/takagi/ru/monica/steam/network/SteamAuthorizedDeviceService.kt"
         ).readText()
         assertTrue(authorizedDeviceServiceSource.contains("method = \"EnumerateTokens\""))
+        assertTrue(authorizedDeviceServiceSource.contains("method = \"RevokeRefreshToken\""))
         assertTrue(authorizedDeviceServiceSource.contains("writeBool(1, false)"))
+        assertTrue(authorizedDeviceServiceSource.contains("writeFixed64(1, tokenId)"))
+        assertTrue(authorizedDeviceServiceSource.contains("SteamLoginApprovalSigner.tokenSignature"))
         assertTrue(authorizedDeviceServiceSource.contains("fields[9]?.bytes?.let(::parseUsage)"))
         assertTrue(authorizedDeviceServiceSource.contains("fields[10]?.bytes?.let(::parseUsage)"))
-        assertFalse(authorizedDeviceServiceSource.contains("Revoke"))
     }
 
     private fun projectFile(path: String): File {
