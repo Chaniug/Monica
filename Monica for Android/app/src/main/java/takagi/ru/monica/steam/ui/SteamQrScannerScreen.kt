@@ -11,22 +11,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,11 +43,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
 import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.screens.QrScannerScreen
 
 @Composable
@@ -196,79 +196,66 @@ private fun SteamQrScannerBottomContent(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun SteamQrAccountPickerDialog(
     accounts: List<SteamAccount>,
     selectedAccountId: Long?,
     onSelectAccount: (SteamAccount) -> Unit,
     onDismissRequest: () -> Unit
 ) {
-    Dialog(
+    MonicaModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
-        Surface(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AccountCircle,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .size(22.dp)
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.steam_switch_account),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(22.dp)
                     )
                 }
+                Text(
+                    text = stringResource(R.string.steam_switch_account),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 320.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    accounts.forEach { account ->
-                        SteamQrAccountOptionRow(
-                            account = account,
-                            selected = account.id == selectedAccountId,
-                            onClick = { onSelectAccount(account) }
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismissRequest) {
-                        Text(stringResource(R.string.cancel))
-                    }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(accounts, key = { it.id }) { account ->
+                    SteamQrAccountOptionRow(
+                        account = account,
+                        selected = account.id == selectedAccountId,
+                        onClick = { onSelectAccount(account) }
+                    )
                 }
             }
         }
@@ -285,9 +272,9 @@ private fun SteamQrAccountOptionRow(
     val pressed by interactionSource.collectIsPressedAsState()
     val containerColor by animateColorAsState(
         targetValue = when {
-            selected -> MaterialTheme.colorScheme.primaryContainer
+            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
             pressed -> MaterialTheme.colorScheme.surfaceContainerHighest
-            else -> MaterialTheme.colorScheme.surfaceContainerLow
+            else -> MaterialTheme.colorScheme.surfaceContainer
         },
         label = "SteamQrAccountOptionContainerColor"
     )
@@ -301,7 +288,7 @@ private fun SteamQrAccountOptionRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(58.dp)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -310,7 +297,7 @@ private fun SteamQrAccountOptionRow(
         shape = RoundedCornerShape(18.dp),
         color = containerColor,
         contentColor = contentColor,
-        tonalElevation = if (selected) 2.dp else 0.dp
+        tonalElevation = if (selected) 1.dp else 0.dp
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp),
@@ -318,14 +305,14 @@ private fun SteamQrAccountOptionRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(13.dp),
                 color = if (selected) {
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
                 } else {
                     MaterialTheme.colorScheme.surfaceContainerHighest
                 },
                 contentColor = if (selected) {
-                    MaterialTheme.colorScheme.onPrimary
+                    MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 }
@@ -334,8 +321,8 @@ private fun SteamQrAccountOptionRow(
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = null,
                     modifier = Modifier
-                        .padding(8.dp)
-                        .size(22.dp)
+                        .padding(7.dp)
+                        .size(21.dp)
                 )
             }
             Column(
@@ -354,35 +341,19 @@ private fun SteamQrAccountOptionRow(
                     Text(
                         text = secondary,
                         style = MaterialTheme.typography.labelMedium,
-                        color = contentColor.copy(alpha = 0.72f),
+                        color = contentColor.copy(alpha = 0.68f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
             if (selected) {
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.steam_selected_account_marker),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = stringResource(R.string.steam_selected_account_marker),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }
