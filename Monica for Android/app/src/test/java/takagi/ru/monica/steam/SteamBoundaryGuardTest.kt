@@ -290,6 +290,8 @@ class SteamBoundaryGuardTest {
         assertTrue(steamQrScannerSource.contains(".weight(1f)"))
         assertTrue(steamQrScannerSource.contains(".height(72.dp)"))
         assertTrue(steamQrScannerSource.contains(".size(72.dp)"))
+        assertTrue(steamQrScannerSource.contains(".clip(albumShape)"))
+        assertTrue(steamQrScannerSource.contains(".background(albumContainerColor)"))
         assertTrue(steamQrScannerSource.contains("indication = null"))
         assertTrue(steamQrScannerSource.contains("collectIsPressedAsState()"))
         assertTrue(steamQrScannerSource.contains("R.string.steam_qr_album_select"))

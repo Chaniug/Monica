@@ -1,10 +1,12 @@
 package takagi.ru.monica.steam.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
@@ -156,25 +159,25 @@ private fun SteamQrScannerBottomContent(
 
         val albumInteractionSource = remember { MutableInteractionSource() }
         val albumPressed by albumInteractionSource.collectIsPressedAsState()
+        val albumShape = RoundedCornerShape(18.dp)
         val albumContainerColor by animateColorAsState(
             targetValue = if (albumPressed) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
             } else {
                 MaterialTheme.colorScheme.primaryContainer
             },
             label = "SteamQrAlbumContainerColor"
         )
-        Surface(
+        Box(
             modifier = Modifier
                 .size(72.dp)
+                .clip(albumShape)
+                .background(albumContainerColor)
                 .clickable(
                     interactionSource = albumInteractionSource,
                     indication = null,
                     onClick = onPickFromGallery
-                ),
-            shape = RoundedCornerShape(18.dp),
-            color = albumContainerColor,
-            tonalElevation = 2.dp
+                )
         ) {
             Column(
                 modifier = Modifier.padding(8.dp),
