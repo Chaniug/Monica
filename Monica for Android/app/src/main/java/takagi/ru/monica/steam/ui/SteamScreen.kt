@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -104,11 +107,14 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.steam.core.SteamTotp
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
+import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.TotpCodeCard
+import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 
 private const val STEAM_AVATAR_TIMEOUT_MS = 4_000
@@ -523,6 +529,13 @@ fun SteamScreen(
                             onClearSelection = {
                                 selectedTokenAccountIds = emptyList()
                             },
+                            onSelectAll = {
+                                selectedTokenAccountIds = if (selectedTokenAccountIds.size == uiState.accounts.size) {
+                                    emptyList()
+                                } else {
+                                    uiState.accounts.map { it.id }
+                                }
+                            },
                             onDeleteSelected = {
                                 val targets = uiState.accounts.filter { it.id in selectedTokenAccountIds }
                                 if (targets.isNotEmpty()) {
@@ -623,6 +636,7 @@ private fun SteamCodeContent(
     selectedAccountIds: List<Long>,
     onToggleSelection: (SteamAccount) -> Unit,
     onClearSelection: () -> Unit,
+    onSelectAll: () -> Unit,
     onDeleteSelected: () -> Unit,
     onOpenDetail: (SteamAccount) -> Unit
 ) {
@@ -631,92 +645,82 @@ private fun SteamCodeContent(
     val selectedIds = selectedAccountIds.toSet()
     val selectionMode = selectedIds.isNotEmpty()
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (selectionMode) {
-            item {
-                SteamTokenSelectionBar(
-                    selectedCount = selectedIds.size,
-                    onDeleteSelected = onDeleteSelected,
-                    onClearSelection = onClearSelection
-                )
-            }
-        }
-
-        items(accounts, key = { it.id }) { account ->
-            val totpItem = remember(account) { account.toSteamTotpUiItem() }
-            val totpData = remember(account) { account.toSteamTotpUiData() }
-            TotpCodeCard(
-                item = totpItem,
-                parsedTotpData = totpData,
-                onCardClick = { onOpenDetail(account) },
-                onToggleSelect = { onToggleSelection(account) },
-                onLongClick = { onToggleSelection(account) },
-                isSelectionMode = selectionMode,
-                isSelected = account.id in selectedIds,
-                leadingContent = {
-                    SteamAvatarImage(
-                        account = account,
-                        size = 40.dp
-                    )
-                },
-                onCopyCode = { code ->
-                    if (code.isNotBlank()) {
-                        clipboard.setText(AnnotatedString(code))
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.verification_code_copied),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            )
-        }
-        item {
-            Spacer(modifier = Modifier.height(80.dp))
+    fun copyCode(code: String) {
+        if (code.isNotBlank()) {
+            clipboard.setText(AnnotatedString(code))
+            Toast.makeText(
+                context,
+                context.getString(R.string.verification_code_copied),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
-}
 
-@Composable
-private fun SteamTokenSelectionBar(
-    selectedCount: Int,
-    onDeleteSelected: () -> Unit,
-    onClearSelection: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = if (selectionMode) 112.dp else 80.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = stringResource(R.string.steam_selected_accounts_count, selectedCount),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.weight(1f)
+            items(accounts, key = { it.id }) { account ->
+                val totpItem = remember(account) { account.toSteamTotpUiItem() }
+                val totpData = remember(account) { account.toSteamTotpUiData() }
+                SwipeActions(
+                    onSwipeLeft = {
+                        if (account.id !in selectedIds) {
+                            onToggleSelection(account)
+                        }
+                    },
+                    onSwipeRight = { onToggleSelection(account) },
+                    isSwiped = account.id in selectedIds,
+                    allowSwipeLeft = false,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TotpCodeCard(
+                        item = totpItem,
+                        parsedTotpData = totpData,
+                        onCardClick = {
+                            if (selectionMode) {
+                                onToggleSelection(account)
+                            } else {
+                                onOpenDetail(account)
+                            }
+                        },
+                        onToggleSelect = { onToggleSelection(account) },
+                        onLongClick = {
+                            copyCode(SteamTotp.generateAuthCode(account.sharedSecret, System.currentTimeMillis() / 1000L))
+                        },
+                        isSelectionMode = false,
+                        isSelected = account.id in selectedIds,
+                        leadingContent = {
+                            SteamAvatarImage(
+                                account = account,
+                                size = 40.dp
+                            )
+                        },
+                        onCopyCode = ::copyCode
+                    )
+                }
+            }
+        }
+
+        if (selectionMode) {
+            SelectionActionBar(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp),
+                selectedCount = selectedIds.size,
+                onExit = onClearSelection,
+                onSelectAll = onSelectAll,
+                onDelete = onDeleteSelected
             )
-            TextButton(onClick = onClearSelection) {
-                Text(stringResource(R.string.cancel))
-            }
-            TextButton(onClick = onDeleteSelected) {
-                Text(
-                    text = stringResource(R.string.delete),
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
         }
     }
 }
