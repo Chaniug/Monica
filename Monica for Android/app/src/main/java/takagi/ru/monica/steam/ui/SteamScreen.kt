@@ -184,6 +184,11 @@ fun SteamScreen(
         ?: uiState.accounts.firstOrNull()
     var detailAccountId by rememberSaveable { mutableStateOf<Long?>(null) }
     val detailAccount = uiState.accounts.firstOrNull { it.id == detailAccountId }
+    val topBarTitleEndPadding = when {
+        detailAccount != null && showStandaloneSettingsEntry -> 64.dp
+        detailAccount != null -> 0.dp
+        else -> 180.dp
+    }
     var selectedSection by rememberSaveable { mutableStateOf(SteamSection.CODE) }
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
@@ -412,6 +417,7 @@ fun SteamScreen(
                 isSearchExpanded = false,
                 onSearchExpandedChange = {},
                 searchHint = stringResource(R.string.nav_steam),
+                collapsedTitleEndPadding = topBarTitleEndPadding,
                 navigationIcon = if (detailAccount != null) {
                     {
                         IconButton(

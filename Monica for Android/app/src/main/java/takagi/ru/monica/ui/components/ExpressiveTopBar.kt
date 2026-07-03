@@ -37,6 +37,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 
@@ -55,6 +56,7 @@ fun ExpressiveTopBar(
     modifier: Modifier = Modifier,
     navigationIcon: @Composable (() -> Unit)? = null,
     onActionPillBoundsChanged: ((Rect) -> Unit)? = null,
+    collapsedTitleEndPadding: Dp = 180.dp,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -74,7 +76,7 @@ fun ExpressiveTopBar(
         isLongTitle -> MaterialTheme.typography.titleMedium
         else -> MaterialTheme.typography.headlineLarge
     }
-    val pillReserve = if (isSearchExpanded) 0.dp else 180.dp
+    val pillReserve = if (isSearchExpanded) 0.dp else collapsedTitleEndPadding
 
     Box(
         modifier = modifier

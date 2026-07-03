@@ -153,6 +153,10 @@ class SteamBoundaryGuardTest {
         assertTrue(source.contains("readSteamAvatarCache"))
         assertTrue(source.contains("freshAvatar ?: cachedAvatar"))
         assertTrue(source.contains("floatingActionButton = {"))
+        assertTrue(source.contains("val topBarTitleEndPadding = when {"))
+        assertTrue(source.contains("detailAccount != null && showStandaloneSettingsEntry -> 64.dp"))
+        assertTrue(source.contains("detailAccount != null -> 0.dp"))
+        assertTrue(source.contains("collapsedTitleEndPadding = topBarTitleEndPadding"))
         assertTrue(source.contains("val tokenQrAccount = remember("))
         assertTrue(source.contains("selectedSection == SteamSection.CODE"))
         assertTrue(source.contains("selectedTokenAccountIds.isEmpty()"))
@@ -265,6 +269,11 @@ class SteamBoundaryGuardTest {
         assertTrue(confirmationsContent.contains("onClick = { showAccountPicker = true }"))
         assertTrue(confirmationsContent.contains("MonicaModalBottomSheet("))
         assertTrue(confirmationsContent.contains("R.string.steam_switch_account"))
+
+        val topBarSource = projectFile("app/src/main/java/takagi/ru/monica/ui/components/ExpressiveTopBar.kt")
+            .readText()
+        assertTrue(topBarSource.contains("collapsedTitleEndPadding: Dp = 180.dp"))
+        assertTrue(topBarSource.contains("val pillReserve = if (isSearchExpanded) 0.dp else collapsedTitleEndPadding"))
     }
 
     @Test
