@@ -1,6 +1,9 @@
 package takagi.ru.monica.steam.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -149,12 +152,26 @@ private fun SteamQrScannerBottomContent(
             }
         }
 
+        val albumInteractionSource = remember { MutableInteractionSource() }
+        val albumPressed by albumInteractionSource.collectIsPressedAsState()
+        val albumContainerColor by animateColorAsState(
+            targetValue = if (albumPressed) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f)
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            },
+            label = "SteamQrAlbumContainerColor"
+        )
         Surface(
             modifier = Modifier
                 .size(72.dp)
-                .clickable(onClick = onPickFromGallery),
+                .clickable(
+                    interactionSource = albumInteractionSource,
+                    indication = null,
+                    onClick = onPickFromGallery
+                ),
             shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color = albumContainerColor,
             tonalElevation = 2.dp
         ) {
             Column(

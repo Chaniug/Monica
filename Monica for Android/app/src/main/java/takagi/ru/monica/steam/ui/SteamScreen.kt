@@ -60,7 +60,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -418,6 +417,18 @@ fun SteamScreen(
                     null
                 },
                 actions = {
+                    if (detailAccount == null &&
+                        selectedAccount != null &&
+                        selectedSection == SteamSection.CONFIRMATIONS
+                    ) {
+                        IconButton(onClick = { viewModel.refreshConfirmations() }) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.refresh),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     if (detailAccount == null) {
                         IconButton(
                             onClick = {
@@ -462,9 +473,7 @@ fun SteamScreen(
                             }
                         }
                     }
-                    val shouldShowTopActionsMenu = detailAccount == null &&
-                        (showStandaloneSettingsEntry ||
-                            selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS)
+                    val shouldShowTopActionsMenu = detailAccount == null && showStandaloneSettingsEntry
                     if (shouldShowTopActionsMenu) {
                         Box {
                             IconButton(
@@ -481,16 +490,7 @@ fun SteamScreen(
                             SteamTopActionsMenu(
                                 expanded = showTopActionsMenu,
                                 onDismissRequest = { showTopActionsMenu = false },
-                                selectedAccount = selectedAccount,
-                                selectedSection = selectedSection,
                                 showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                onRefresh = {
-                                    when (selectedSection) {
-                                        SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
-                                        SteamSection.CODE -> Unit
-                                    }
-                                    showTopActionsMenu = false
-                                },
                                 onOpenStandaloneSettings = {
                                     showTopActionsMenu = false
                                     onOpenStandaloneSettings()
@@ -511,10 +511,7 @@ fun SteamScreen(
                             SteamTopActionsMenu(
                                 expanded = showTopActionsMenu,
                                 onDismissRequest = { showTopActionsMenu = false },
-                                selectedAccount = null,
-                                selectedSection = selectedSection,
                                 showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                onRefresh = {},
                                 onOpenStandaloneSettings = {
                                     showTopActionsMenu = false
                                     onOpenStandaloneSettings()
@@ -640,28 +637,14 @@ fun SteamScreen(
 private fun SteamTopActionsMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
-    selectedAccount: SteamAccount?,
-    selectedSection: SteamSection,
     showStandaloneSettingsEntry: Boolean,
-    onRefresh: () -> Unit,
     onOpenStandaloneSettings: () -> Unit
 ) {
     PasswordTopActionsDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest
     ) {
-        val showRefresh = selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS
-        if (showRefresh) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.refresh)) },
-                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                onClick = onRefresh
-            )
-        }
         if (showStandaloneSettingsEntry) {
-            if (showRefresh) {
-                HorizontalDivider()
-            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.nav_settings)) },
                 leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },

@@ -176,9 +176,12 @@ class SteamBoundaryGuardTest {
         val topBarAccountAction = source
             .substringAfter("actions = {")
             .substringBefore("if (detailAccount == null && selectedAccount != null)")
+        assertTrue(topBarAccountAction.contains("Icons.Default.Refresh"))
+        assertTrue(topBarAccountAction.contains("viewModel.refreshConfirmations()"))
         assertTrue(topBarAccountAction.contains("showAddAccountDialog = true"))
         assertTrue(topBarAccountAction.contains("Icons.Default.Add"))
         assertTrue(topBarAccountAction.contains("R.string.steam_add_account_button"))
+        assertTrue(topBarAccountAction.indexOf("Icons.Default.Refresh") < topBarAccountAction.indexOf("Icons.Default.Add"))
 
         val topActionsMenu = source
             .substringAfter("private fun SteamTopActionsMenu(")
@@ -193,8 +196,8 @@ class SteamBoundaryGuardTest {
         assertFalse(topActionsMenu.contains("onDeleteAccount"))
         assertFalse(topActionsMenu.contains("R.string.steam_add_account_button"))
         assertFalse(topActionsMenu.contains("R.string.steam_delete_account_menu"))
-        assertTrue(topActionsMenu.contains("val showRefresh = selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS"))
-        assertTrue(topActionsMenu.contains("R.string.refresh"))
+        assertFalse(topActionsMenu.contains("R.string.refresh"))
+        assertFalse(topActionsMenu.contains("onRefresh"))
         assertTrue(topActionsMenu.contains("R.string.nav_settings"))
 
         val codeContent = source
@@ -276,6 +279,8 @@ class SteamBoundaryGuardTest {
         assertTrue(steamQrScannerSource.contains("SteamQrScannerBottomContent("))
         assertTrue(steamQrScannerSource.contains("modifier = Modifier\n                .weight(1f)\n                .height(72.dp)"))
         assertTrue(steamQrScannerSource.contains(".size(72.dp)"))
+        assertTrue(steamQrScannerSource.contains("indication = null"))
+        assertTrue(steamQrScannerSource.contains("collectIsPressedAsState()"))
         assertTrue(steamQrScannerSource.contains("R.string.steam_qr_album_select"))
 
         assertTrue(viewModelSource.contains("CODE_TICK_INTERVAL_MS = 250L"))
