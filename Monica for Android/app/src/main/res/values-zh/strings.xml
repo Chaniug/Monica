@@ -859,6 +859,8 @@
     <string name="steam_section_import">导入</string>
     <string name="steam_delete_account_title">删除 Steam 账号</string>
     <string name="steam_delete_account_message">删除“%1$s”？</string>
+    <string name="steam_delete_accounts_title">删除 Steam 账号</string>
+    <string name="steam_delete_accounts_message">删除选中的 %1$d 个 Steam 账号？</string>
     <string name="steam_delete_account_menu">删除账号</string>
     <string name="steam_add_account_title">添加 Steam 账号</string>
     <string name="steam_add_account_button">添加账号</string>
@@ -874,6 +876,13 @@
     <string name="steam_device_label">设备</string>
     <string name="steam_confirmations_label">交易确认</string>
     <string name="steam_login_approval_label">登录批准</string>
+    <string name="steam_credentials_label">账号信息</string>
+    <string name="steam_password_not_saved">Monica 不保存</string>
+    <string name="steam_password_not_saved_desc">Steam 密码只用于本次登录请求，不会保存到本地。</string>
+    <string name="steam_password_login_section">账号密码登录</string>
+    <string name="steam_account_avatar_description">Steam 账号头像</string>
+    <string name="steam_empty_field">暂无</string>
+    <string name="steam_selected_accounts_count">已选 %1$d 个</string>
     <string name="steam_status_ready">可用</string>
     <string name="steam_status_missing_session">缺少会话</string>
     <string name="steam_approve_confirmation_title">批准确认</string>

@@ -866,6 +866,8 @@
     <string name="steam_section_import">Import</string>
     <string name="steam_delete_account_title">Delete Steam account</string>
     <string name="steam_delete_account_message">Delete \"%1$s\"?</string>
+    <string name="steam_delete_accounts_title">Delete Steam accounts</string>
+    <string name="steam_delete_accounts_message">Delete %1$d selected Steam account(s)?</string>
     <string name="steam_delete_account_menu">Delete account</string>
     <string name="steam_add_account_title">Add Steam account</string>
     <string name="steam_add_account_button">Add account</string>
@@ -881,6 +883,13 @@
     <string name="steam_device_label">Device</string>
     <string name="steam_confirmations_label">Confirmations</string>
     <string name="steam_login_approval_label">Login approval</string>
+    <string name="steam_credentials_label">Credentials</string>
+    <string name="steam_password_not_saved">Not saved in Monica</string>
+    <string name="steam_password_not_saved_desc">The Steam password is only used for this login request and is not saved locally.</string>
+    <string name="steam_password_login_section">Account password login</string>
+    <string name="steam_account_avatar_description">Steam account avatar</string>
+    <string name="steam_empty_field">Not available</string>
+    <string name="steam_selected_accounts_count">%1$d selected</string>
     <string name="steam_status_ready">Ready</string>
     <string name="steam_status_missing_session">Missing session</string>
     <string name="steam_approve_confirmation_title">Approve confirmation</string>

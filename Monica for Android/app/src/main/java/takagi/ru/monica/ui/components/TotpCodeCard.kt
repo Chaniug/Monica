@@ -79,6 +79,8 @@ fun TotpCodeCard(
     onShowQrCode: ((SecureItem) -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onCardClick: (() -> Unit)? = null,
+    leadingContent: (@Composable () -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     allowVibration: Boolean = false,
@@ -312,17 +314,19 @@ fun TotpCodeCard(
             .fillMaxWidth()
             .combinedClickable(
                 onClick = {
-                    if (hideCodeByDefault) {
+                    if (onCardClick != null) {
+                        onCardClick()
+                    } else if (hideCodeByDefault) {
                         isCodeRevealed = !isCodeRevealed
                     } else {
                         onCopyCode(codeToCopy)
                     }
                 },
                 onLongClick = {
-                    if (hideCodeByDefault) {
-                        onCopyCode(codeToCopy)
-                    } else {
-                        onLongClick?.invoke()
+                    when {
+                        onCardClick != null && onLongClick != null -> onLongClick()
+                        hideCodeByDefault -> onCopyCode(codeToCopy)
+                        else -> onLongClick?.invoke()
                     }
                 }
             )
@@ -355,7 +359,10 @@ fun TotpCodeCard(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (settings.iconCardsEnabled) {
+                    if (leadingContent != null) {
+                        leadingContent()
+                        Spacer(modifier = Modifier.width(12.dp))
+                    } else if (settings.iconCardsEnabled) {
                         when {
                             selectedSimpleIconBitmap != null -> {
                                 Image(
