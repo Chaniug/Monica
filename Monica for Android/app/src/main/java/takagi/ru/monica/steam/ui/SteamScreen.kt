@@ -14,8 +14,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -771,7 +773,7 @@ private fun SteamCodeContent(
         if (selectionMode) {
             SelectionActionBar(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.BottomStart)
                     .padding(16.dp),
                 selectedCount = selectedIds.size,
                 onExit = onClearSelection,
@@ -1385,8 +1387,14 @@ private fun SteamConfirmationsContent(
                                 onClick = {
                                     if (selectionMode) {
                                         onToggle(confirmation.id)
+                                    } else {
+                                        pendingAction = ConfirmationActionRequest(
+                                            confirmations = listOf(confirmation),
+                                            accept = true
+                                        )
                                     }
-                                }
+                                },
+                                onLongClick = { onToggle(confirmation.id) }
                             )
                         }
                     }
@@ -1395,27 +1403,31 @@ private fun SteamConfirmationsContent(
         }
 
         if (selectionMode) {
-            FloatingActionButton(
-                onClick = { showBulkActionDialog = true },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 24.dp, bottom = 92.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = stringResource(R.string.steam_confirmation_action_title)
-                )
-            }
-
-            SelectionActionBar(
-                selectedCount = selectedConfirmations.size,
-                onExit = onClearSelection,
-                onSelectAll = onSelectAll,
-                onDelete = null,
+            Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp)
-            )
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 24.dp, bottom = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SelectionActionBar(
+                    selectedCount = selectedConfirmations.size,
+                    onExit = onClearSelection,
+                    onSelectAll = onSelectAll,
+                    onDelete = null
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                FloatingActionButton(
+                    onClick = { showBulkActionDialog = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(R.string.steam_confirmation_action_title)
+                    )
+                }
+            }
         }
     }
 }
@@ -1729,12 +1741,14 @@ private fun SteamConfirmationAccountOptionRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConfirmationRow(
     confirmation: SteamConfirmation,
     selected: Boolean,
     selectionMode: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1750,7 +1764,10 @@ private fun ConfirmationRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = selectionMode, onClick = onClick)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
