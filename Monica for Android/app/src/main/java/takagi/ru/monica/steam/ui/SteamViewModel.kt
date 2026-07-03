@@ -22,6 +22,7 @@ import takagi.ru.monica.steam.core.SteamTotp
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.data.SteamAccountRepository
 import takagi.ru.monica.steam.data.SteamDatabase
+import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.steam.importer.SteamMaFileParser
 import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamAuthorizedDeviceService
@@ -71,6 +72,7 @@ class SteamViewModel(
     private var pendingLoginPollJob: Job? = null
 
     init {
+        SteamDiagLogger.initialize(appContext.applicationContext)
         viewModelScope.launch {
             repository.observeAccounts().collect { accounts ->
                 updateForAccounts(accounts, System.currentTimeMillis())

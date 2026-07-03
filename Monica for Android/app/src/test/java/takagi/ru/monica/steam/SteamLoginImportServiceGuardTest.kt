@@ -125,16 +125,39 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(source.contains("writeFixed64(2, steamIdLong)"))
         assertTrue(source.contains("writeString(3, code.trim())"))
         assertTrue(source.contains("writeVarint(4, confirmationType.toLong())"))
-        assertTrue(source.contains("9 -> SteamGuardSubmitResult.UnsupportedSession"))
+        assertTrue(source.contains("9 -> {"))
+        assertTrue(source.contains("SteamGuardSubmitResult.UnsupportedSession"))
         assertTrue(source.contains("88 -> \"Steam 登录失败：令牌验证码无效或已过期\""))
 
         assertTrue(source.contains("pollForTokenWithProtobuf"))
         assertTrue(source.contains("method = \"PollAuthSessionStatus\""))
         assertTrue(source.contains("writeUint64(1, clientId)"))
         assertTrue(source.contains("writeBytes(2, authIds.requestId)"))
+        assertTrue(source.contains("generateAccessTokenForApp("))
+        assertTrue(source.contains("method = \"GenerateAccessTokenForApp\""))
+        assertTrue(source.contains("writeString(1, refreshToken)"))
+        assertTrue(source.contains("writeFixed64(2, steamIdLong)"))
         assertTrue(source.contains("decodeAuthApiRequestIdBytes"))
         assertTrue(source.contains("parseUnsigned64AsSignedLong"))
         assertTrue(source.contains("pollForTokenWithForm"))
+    }
+
+    @Test
+    fun steamLoginImportUsesModernAuthenticatorTransferProtobufShape() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
+        ).readText()
+
+        assertTrue(source.contains("method = \"RemoveAuthenticatorViaChallengeStart\""))
+        assertTrue(source.contains("method = \"RemoveAuthenticatorViaChallengeContinue\""))
+        assertTrue(source.contains("writeString(1, code.trim())"))
+        assertTrue(source.contains("writeBool(2, true)"))
+        assertTrue(source.contains("writeVarint(3, 2L)"))
+        assertTrue(source.contains("val replacementFields = fields[2]?.bytes?.let"))
+        assertTrue(source.contains("replacementFields?.get(1)?.bytes"))
+        assertTrue(source.contains("replacementFields?.get(2)?.asFixed64UnsignedString"))
+        assertFalse(source.contains("accessToken = session.replaceRefreshToken"))
+        assertFalse(source.contains("accessToken = refreshToken"))
     }
 
     private fun projectFile(path: String): File {

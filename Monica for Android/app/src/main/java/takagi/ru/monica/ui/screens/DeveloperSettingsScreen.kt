@@ -88,6 +88,7 @@ import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
 import takagi.ru.monica.security.SecurityDiagLogger
 import takagi.ru.monica.security.SessionManager
+import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
 /**
@@ -759,6 +760,7 @@ private object DeveloperLogDebugHelper {
         runCatching { BitwardenSyncForensicsLogger.initialize(context.applicationContext) }
         runCatching { MdbxDiagLogger.initialize(context.applicationContext) }
         runCatching { SecurityDiagLogger.initialize(context.applicationContext) }
+        runCatching { SteamDiagLogger.initialize(context.applicationContext) }
         val autofillTagLogs = readAutofillTagLogs()
         val appProcessLogs = readLogcat(
             arrayOf(
@@ -834,6 +836,11 @@ private object DeveloperLogDebugHelper {
         }.getOrElse {
             "Security persisted logs unavailable: ${it.message}"
         }
+        val persistedSteamLogs = runCatching {
+            SteamDiagLogger.exportPersistedLogs(2000)
+        }.getOrElse {
+            "Steam persisted logs unavailable: ${it.message}"
+        }
         val persistedPasskeyLogs = runCatching {
             PasskeyValidationDiagnostics.buildReport(context)
         }.getOrElse {
@@ -893,6 +900,13 @@ private object DeveloperLogDebugHelper {
                 appendLine(persistedSecurityLogs.trim())
             }
             appendLine()
+            appendLine("=== Steam Persisted Logs ===")
+            if (persistedSteamLogs.isBlank()) {
+                appendLine(context.getString(R.string.developer_no_logs))
+            } else {
+                appendLine(persistedSteamLogs.trim())
+            }
+            appendLine()
             appendLine("=== Passkey Persisted Logs ===")
             if (persistedPasskeyLogs.isBlank()) {
                 appendLine(context.getString(R.string.developer_no_logs))
@@ -907,8 +921,10 @@ private object DeveloperLogDebugHelper {
         val parsedForensics = parseLines(persistedForensicsLogs)
         val parsedMdbx = parseLines(persistedMdbxLogs)
         val parsedSecurity = parseLines(persistedSecurityLogs)
+        val parsedSteam = parseLines(persistedSteamLogs)
         val parsed = when {
             parsedSystem.isNotEmpty() -> parsedSystem
+            parsedSteam.isNotEmpty() -> parsedSteam
             parsedMdbx.isNotEmpty() -> parsedMdbx
             parsedSecurity.isNotEmpty() -> parsedSecurity
             parsedForensics.isNotEmpty() -> parsedForensics
@@ -934,6 +950,9 @@ private object DeveloperLogDebugHelper {
         }
         runCatching {
             SecurityDiagLogger.clear()
+        }
+        runCatching {
+            SteamDiagLogger.clear()
         }
 
         val process = runCatching {

@@ -101,6 +101,26 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun steamDiagnosticsAreAvailableFromBothLoginEntrypointsAndDeveloperExport() {
+        val steamViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt"
+        ).readText()
+        val importViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/DataExportImportViewModel.kt"
+        ).readText()
+        val developerSettingsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/DeveloperSettingsScreen.kt"
+        ).readText()
+
+        assertTrue(steamViewModelSource.contains("SteamDiagLogger.initialize(appContext.applicationContext)"))
+        assertTrue(importViewModelSource.contains("SteamDiagLogger.initialize(context.applicationContext)"))
+        assertTrue(developerSettingsSource.contains("SteamDiagLogger.initialize(context.applicationContext)"))
+        assertTrue(developerSettingsSource.contains("SteamDiagLogger.exportPersistedLogs(2000)"))
+        assertTrue(developerSettingsSource.contains("=== Steam Persisted Logs ==="))
+        assertTrue(developerSettingsSource.contains("SteamDiagLogger.clear()"))
+    }
+
+    @Test
     fun steamPageDoesNotUseLegacyTotpImportWritePath() {
         val steamSources = listOf(
             "app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt",

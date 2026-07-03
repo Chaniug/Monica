@@ -33,6 +33,7 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.utils.BackupContentScope
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.steam.service.SteamLoginImportService
 import java.io.File
 import java.io.IOException
@@ -62,6 +63,10 @@ class DataExportImportViewModel(
     private val securityManager by lazy { SecurityManager(context) }
     private val customFieldRepository by lazy {
         CustomFieldRepository(PasswordDatabase.getDatabase(context).customFieldDao())
+    }
+
+    init {
+        SteamDiagLogger.initialize(context.applicationContext)
     }
 
     private fun parseStoredTotpData(itemData: String, fallbackIssuer: String = ""): TotpData? {
