@@ -862,6 +862,7 @@
     <string name="steam_delete_account_menu">删除账号</string>
     <string name="steam_add_account_title">添加 Steam 账号</string>
     <string name="steam_add_account_button">添加账号</string>
+    <string name="steam_switch_account">切换 Steam 账号</string>
     <string name="steam_add_method_mafile">导入 maFile</string>
     <string name="steam_add_method_login">登录 Steam</string>
     <string name="steam_more_options_with_confirmations">更多，%1$d 项待确认交易</string>

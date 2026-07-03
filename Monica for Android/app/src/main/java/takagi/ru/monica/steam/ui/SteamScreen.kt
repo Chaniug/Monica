@@ -5,9 +5,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,16 +18,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Login
@@ -74,7 +69,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,10 +76,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
+import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.OtpType
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.TotpCodeCard
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 
 private enum class SteamSection(
@@ -130,6 +129,7 @@ fun SteamScreen(
         ?: uiState.accounts.firstOrNull()
     var selectedSection by rememberSaveable { mutableStateOf(SteamSection.CODE) }
     var showTopActionsMenu by remember { mutableStateOf(false) }
+    var showAccountMenu by remember { mutableStateOf(false) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
     var addAccountMethod by remember { mutableStateOf<SteamAddAccountMethod?>(null) }
     var deleteTarget by remember { mutableStateOf<SteamAccount?>(null) }
@@ -243,26 +243,40 @@ fun SteamScreen(
                 onSearchExpandedChange = {},
                 searchHint = stringResource(R.string.nav_steam),
                 actions = {
-                    selectedAccount?.let { account ->
-                        TextButton(
-                            onClick = { showTopActionsMenu = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VerifiedUser,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = account.displayName,
-                                modifier = Modifier.widthIn(max = 72.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                    if (uiState.accounts.isNotEmpty()) {
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    showAccountMenu = true
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = stringResource(R.string.steam_switch_account),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            SteamAccountSwitchMenu(
+                                expanded = showAccountMenu,
+                                onDismissRequest = { showAccountMenu = false },
+                                accounts = uiState.accounts,
+                                selectedAccount = selectedAccount,
+                                onSelectAccount = { account ->
+                                    viewModel.selectAccount(account.id)
+                                    selectedSection = SteamSection.CODE
+                                    showAccountMenu = false
+                                }
                             )
                         }
                     }
-                    IconButton(onClick = { showAddAccountDialog = true }) {
+                    IconButton(
+                        onClick = {
+                            showAccountMenu = false
+                            showTopActionsMenu = false
+                            showAddAccountDialog = true
+                        }
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = stringResource(R.string.steam_add_account_button),
@@ -270,7 +284,12 @@ fun SteamScreen(
                         )
                     }
                     Box {
-                        IconButton(onClick = { showTopActionsMenu = true }) {
+                        IconButton(
+                            onClick = {
+                                showAccountMenu = false
+                                showTopActionsMenu = true
+                            }
+                        ) {
                             BadgedBox(
                                 badge = {
                                     if (pendingConfirmationCount > 0) {
@@ -297,7 +316,6 @@ fun SteamScreen(
                         SteamTopActionsMenu(
                             expanded = showTopActionsMenu,
                             onDismissRequest = { showTopActionsMenu = false },
-                            accounts = uiState.accounts,
                             selectedAccount = selectedAccount,
                             selectedSection = selectedSection,
                             pendingConfirmationCount = pendingConfirmationCount,
@@ -321,11 +339,6 @@ fun SteamScreen(
                             },
                             onAddAccount = {
                                 showAddAccountDialog = true
-                                showTopActionsMenu = false
-                            },
-                            onSelectAccount = { account ->
-                                viewModel.selectAccount(account.id)
-                                selectedSection = SteamSection.CODE
                                 showTopActionsMenu = false
                             },
                             onDeleteAccount = { account ->
@@ -358,10 +371,7 @@ fun SteamScreen(
                 } else {
                     when (selectedSection) {
                         SteamSection.CODE -> SteamCodeContent(
-                            account = selectedAccount,
-                            code = uiState.currentCode,
-                            secondsRemaining = uiState.secondsRemaining,
-                            periodProgress = uiState.periodProgress
+                            account = selectedAccount
                         )
                         SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
                             account = selectedAccount,
@@ -399,7 +409,6 @@ fun SteamScreen(
 private fun SteamTopActionsMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
-    accounts: List<SteamAccount>,
     selectedAccount: SteamAccount?,
     selectedSection: SteamSection,
     pendingConfirmationCount: Int,
@@ -407,7 +416,6 @@ private fun SteamTopActionsMenu(
     onSelectSection: (SteamSection) -> Unit,
     onRefresh: () -> Unit,
     onAddAccount: () -> Unit,
-    onSelectAccount: (SteamAccount) -> Unit,
     onDeleteAccount: (SteamAccount) -> Unit,
     onOpenStandaloneSettings: () -> Unit
 ) {
@@ -448,29 +456,6 @@ private fun SteamTopActionsMenu(
                 )
             }
             HorizontalDivider()
-            accounts.forEach { account ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = account.displayName,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (account.id == selectedAccount.id) {
-                                Icons.Default.Check
-                            } else {
-                                Icons.Default.VerifiedUser
-                            },
-                            contentDescription = null
-                        )
-                    },
-                    onClick = { onSelectAccount(account) }
-                )
-            }
-            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.steam_add_account_button)) },
                 leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -500,105 +485,101 @@ private fun SteamTopActionsMenu(
 }
 
 @Composable
-private fun SteamCodeContent(
-    account: SteamAccount,
-    code: String,
-    secondsRemaining: Int,
-    periodProgress: Float
+private fun SteamAccountSwitchMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    accounts: List<SteamAccount>,
+    selectedAccount: SteamAccount?,
+    onSelectAccount: (SteamAccount) -> Unit
 ) {
+    PasswordTopActionsDropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest
+    ) {
+        accounts.forEach { account ->
+            val selected = account.id == selectedAccount?.id
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = account.displayName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (selected) Icons.Default.Check else Icons.Default.AccountCircle,
+                        contentDescription = null
+                    )
+                },
+                onClick = { onSelectAccount(account) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamCodeContent(
+    account: SteamAccount
+) {
+    val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val animatedProgress by animateFloatAsState(
-        targetValue = periodProgress,
-        animationSpec = tween(durationMillis = 220, easing = LinearEasing),
-        label = "SteamCodePeriodProgress"
-    )
+    val totpItem = remember(account) { account.toSteamTotpUiItem() }
+    val totpData = remember(account) { account.toSteamTotpUiData() }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = account.displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    SelectionContainer {
-                        Text(
-                            text = code.ifBlank { "-----" },
-                            style = MaterialTheme.typography.displayMedium,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    LinearProgressIndicator(
-                        progress = { animatedProgress },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.steam_seconds_remaining, secondsRemaining))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        OutlinedButton(
-                            onClick = {
-                                if (code.isNotBlank()) {
-                                    clipboard.setText(AnnotatedString(code))
-                                }
-                            },
-                            enabled = code.isNotBlank()
-                        ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.copy))
-                        }
+            TotpCodeCard(
+                item = totpItem,
+                parsedTotpData = totpData,
+                onCopyCode = { code ->
+                    if (code.isNotBlank()) {
+                        clipboard.setText(AnnotatedString(code))
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.verification_code_copied),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
-            }
+            )
         }
         item {
-            AccountDetails(account)
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
 
-@Composable
-private fun AccountDetails(account: SteamAccount) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            DetailLine(stringResource(R.string.steam_id_label), account.steamId)
-            DetailLine(stringResource(R.string.steam_account_label), account.accountName)
-            DetailLine(stringResource(R.string.steam_device_label), account.deviceId.ifBlank { "-" })
-            DetailLine(
-                stringResource(R.string.steam_confirmations_label),
-                if (account.canUseConfirmations) {
-                    stringResource(R.string.steam_status_ready)
-                } else {
-                    stringResource(R.string.steam_status_missing_session)
-                }
-            )
-            DetailLine(
-                stringResource(R.string.steam_login_approval_label),
-                if (account.canApproveLogins) {
-                    stringResource(R.string.steam_status_ready)
-                } else {
-                    stringResource(R.string.steam_status_missing_session)
-                }
-            )
-        }
-    }
+private fun SteamAccount.toSteamTotpUiItem(): SecureItem {
+    return SecureItem(
+        id = id,
+        itemType = ItemType.TOTP,
+        title = displayName.ifBlank { accountName.ifBlank { steamId } },
+        itemData = "steam://${sharedSecret}"
+    )
+}
+
+private fun SteamAccount.toSteamTotpUiData(): TotpData {
+    return TotpData(
+        secret = "steam://${sharedSecret}",
+        issuer = "Steam",
+        accountName = accountName.ifBlank { steamId },
+        period = 30,
+        digits = 5,
+        otpType = OtpType.STEAM,
+        link = "https://store.steampowered.com",
+        associatedApp = "com.valvesoftware.android.steam.community",
+        steamDeviceId = deviceId,
+        steamSharedSecretBase64 = sharedSecret,
+        steamRevocationCode = revocationCode.orEmpty(),
+        steamIdentitySecret = identitySecret.orEmpty(),
+        steamTokenGid = tokenGid.orEmpty(),
+        steamRawJson = rawSteamGuardJson
+    )
 }
 
 @Composable

@@ -82,7 +82,23 @@ class SteamBoundaryGuardTest {
         assertTrue(source.contains("pendingConfirmationCount"))
         assertTrue(source.contains("SteamAddMethodDialog"))
         assertTrue(source.contains("SteamEmptyAccountContent"))
-        assertTrue(source.contains("private fun SteamCodeContent(\n    account: SteamAccount,"))
+        assertTrue(source.contains("private fun SteamCodeContent(\n    account: SteamAccount\n)"))
+        assertTrue(source.contains("var showAccountMenu"))
+        assertTrue(source.contains("SteamAccountSwitchMenu"))
+        assertTrue(source.contains("R.string.steam_switch_account"))
+        assertFalse(source.contains("Modifier.widthIn(max = 72.dp)"))
+
+        val topActionsMenu = source
+            .substringAfter("private fun SteamTopActionsMenu(")
+            .substringBefore("@Composable\nprivate fun SteamAccountSwitchMenu(")
+        assertFalse(topActionsMenu.contains("accounts: List<SteamAccount>"))
+        assertFalse(topActionsMenu.contains("accounts.forEach"))
+        assertFalse(topActionsMenu.contains("onSelectAccount"))
+
+        val accountSwitchMenu = source
+            .substringAfter("private fun SteamAccountSwitchMenu(")
+            .substringBefore("@Composable\nprivate fun SteamCodeContent(")
+        assertTrue(accountSwitchMenu.contains("accounts.forEach"))
     }
 
     @Test
@@ -111,8 +127,10 @@ class SteamBoundaryGuardTest {
 
         assertTrue(viewModelSource.contains("CODE_TICK_INTERVAL_MS = 250L"))
         assertTrue(viewModelSource.contains("periodProgress"))
-        assertTrue(screenSource.contains("animateFloatAsState"))
-        assertTrue(screenSource.contains("SteamCodePeriodProgress"))
+        assertTrue(screenSource.contains("TotpCodeCard"))
+        assertTrue(screenSource.contains("toSteamTotpUiData"))
+        assertTrue(screenSource.contains("steam://${'$'}{sharedSecret}"))
+        assertFalse(screenSource.contains("AccountDetails(account)"))
 
         assertTrue(viewModelSource.contains("fun selectAllConfirmations()"))
         assertTrue(viewModelSource.contains("fun clearSelectedConfirmations()"))
