@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,11 +17,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
@@ -44,17 +49,21 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,6 +82,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
@@ -232,6 +242,26 @@ fun SteamScreen(
         )
     }
 
+    SteamAccountSwitchSheet(
+        visible = showAccountMenu,
+        accounts = uiState.accounts,
+        selectedAccount = selectedAccount,
+        onDismissRequest = { showAccountMenu = false },
+        onSelectAccount = { account ->
+            viewModel.selectAccount(account.id)
+            selectedSection = SteamSection.CODE
+            showAccountMenu = false
+        },
+        onAddAccount = {
+            showAccountMenu = false
+            showAddAccountDialog = true
+        },
+        onDeleteAccount = { account ->
+            showAccountMenu = false
+            deleteTarget = account
+        }
+    )
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -243,113 +273,79 @@ fun SteamScreen(
                 onSearchExpandedChange = {},
                 searchHint = stringResource(R.string.nav_steam),
                 actions = {
-                    if (uiState.accounts.isNotEmpty()) {
-                        Box {
-                            IconButton(
-                                onClick = {
-                                    showTopActionsMenu = false
-                                    showAccountMenu = true
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AccountCircle,
-                                    contentDescription = stringResource(R.string.steam_switch_account),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            SteamAccountSwitchMenu(
-                                expanded = showAccountMenu,
-                                onDismissRequest = { showAccountMenu = false },
-                                accounts = uiState.accounts,
-                                selectedAccount = selectedAccount,
-                                onSelectAccount = { account ->
-                                    viewModel.selectAccount(account.id)
-                                    selectedSection = SteamSection.CODE
-                                    showAccountMenu = false
-                                }
-                            )
-                        }
-                    }
                     IconButton(
                         onClick = {
-                            showAccountMenu = false
                             showTopActionsMenu = false
-                            showAddAccountDialog = true
+                            showAccountMenu = true
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(R.string.steam_add_account_button),
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = stringResource(R.string.steam_switch_account),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Box {
-                        IconButton(
-                            onClick = {
-                                showAccountMenu = false
-                                showTopActionsMenu = true
-                            }
-                        ) {
-                            BadgedBox(
-                                badge = {
-                                    if (pendingConfirmationCount > 0) {
-                                        Badge {
-                                            Text(badgeCountText(pendingConfirmationCount))
-                                        }
-                                    }
+                    if (selectedAccount != null || showStandaloneSettingsEntry) {
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    showAccountMenu = false
+                                    showTopActionsMenu = true
                                 }
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = if (pendingConfirmationCount > 0) {
-                                        stringResource(
-                                            R.string.steam_more_options_with_confirmations,
-                                            pendingConfirmationCount
-                                        )
-                                    } else {
-                                        stringResource(R.string.more_options)
-                                    },
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                BadgedBox(
+                                    badge = {
+                                        if (pendingConfirmationCount > 0) {
+                                            Badge {
+                                                Text(badgeCountText(pendingConfirmationCount))
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = if (pendingConfirmationCount > 0) {
+                                            stringResource(
+                                                R.string.steam_more_options_with_confirmations,
+                                                pendingConfirmationCount
+                                            )
+                                        } else {
+                                            stringResource(R.string.more_options)
+                                        },
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                            SteamTopActionsMenu(
+                                expanded = showTopActionsMenu,
+                                onDismissRequest = { showTopActionsMenu = false },
+                                selectedAccount = selectedAccount,
+                                selectedSection = selectedSection,
+                                pendingConfirmationCount = pendingConfirmationCount,
+                                showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                                onSelectSection = { section ->
+                                    selectedSection = section
+                                    when (section) {
+                                        SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
+                                        SteamSection.LOGIN_APPROVAL -> viewModel.refreshPendingLogins()
+                                        SteamSection.CODE -> Unit
+                                    }
+                                    showTopActionsMenu = false
+                                },
+                                onRefresh = {
+                                    when (selectedSection) {
+                                        SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
+                                        SteamSection.LOGIN_APPROVAL -> viewModel.refreshPendingLogins()
+                                        SteamSection.CODE -> Unit
+                                    }
+                                    showTopActionsMenu = false
+                                },
+                                onOpenStandaloneSettings = {
+                                    showTopActionsMenu = false
+                                    onOpenStandaloneSettings()
+                                }
+                            )
                         }
-                        SteamTopActionsMenu(
-                            expanded = showTopActionsMenu,
-                            onDismissRequest = { showTopActionsMenu = false },
-                            selectedAccount = selectedAccount,
-                            selectedSection = selectedSection,
-                            pendingConfirmationCount = pendingConfirmationCount,
-                            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                            onSelectSection = { section ->
-                                selectedSection = section
-                                when (section) {
-                                    SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
-                                    SteamSection.LOGIN_APPROVAL -> viewModel.refreshPendingLogins()
-                                    SteamSection.CODE -> Unit
-                                }
-                                showTopActionsMenu = false
-                            },
-                            onRefresh = {
-                                when (selectedSection) {
-                                    SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
-                                    SteamSection.LOGIN_APPROVAL -> viewModel.refreshPendingLogins()
-                                    SteamSection.CODE -> Unit
-                                }
-                                showTopActionsMenu = false
-                            },
-                            onAddAccount = {
-                                showAddAccountDialog = true
-                                showTopActionsMenu = false
-                            },
-                            onDeleteAccount = { account ->
-                                deleteTarget = account
-                                showTopActionsMenu = false
-                            },
-                            onOpenStandaloneSettings = {
-                                showTopActionsMenu = false
-                                onOpenStandaloneSettings()
-                            }
-                        )
                     }
                 }
             )
@@ -415,8 +411,6 @@ private fun SteamTopActionsMenu(
     showStandaloneSettingsEntry: Boolean,
     onSelectSection: (SteamSection) -> Unit,
     onRefresh: () -> Unit,
-    onAddAccount: () -> Unit,
-    onDeleteAccount: (SteamAccount) -> Unit,
     onOpenStandaloneSettings: () -> Unit
 ) {
     PasswordTopActionsDropdownMenu(
@@ -455,26 +449,11 @@ private fun SteamTopActionsMenu(
                     onClick = onRefresh
                 )
             }
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.steam_add_account_button)) },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-                onClick = onAddAccount
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.steam_delete_account_menu)) },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                onClick = { onDeleteAccount(selectedAccount) }
-            )
-        } else {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.steam_add_account_button)) },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-                onClick = onAddAccount
-            )
         }
         if (showStandaloneSettingsEntry) {
-            HorizontalDivider()
+            if (selectedAccount != null) {
+                HorizontalDivider()
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.nav_settings)) },
                 leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
@@ -484,35 +463,248 @@ private fun SteamTopActionsMenu(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SteamAccountSwitchMenu(
-    expanded: Boolean,
-    onDismissRequest: () -> Unit,
+private fun SteamAccountSwitchSheet(
+    visible: Boolean,
     accounts: List<SteamAccount>,
     selectedAccount: SteamAccount?,
-    onSelectAccount: (SteamAccount) -> Unit
+    onDismissRequest: () -> Unit,
+    onSelectAccount: (SteamAccount) -> Unit,
+    onAddAccount: () -> Unit,
+    onDeleteAccount: (SteamAccount) -> Unit
 ) {
-    PasswordTopActionsDropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismissRequest
+    if (!visible) return
+
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
     ) {
-        accounts.forEach { account ->
-            val selected = account.id == selectedAccount?.id
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = account.displayName,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                leadingIcon = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.steam_switch_account),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            accounts.forEach { account ->
+                SteamAccountOptionItem(
+                    account = account,
+                    selected = account.id == selectedAccount?.id,
+                    onClick = { onSelectAccount(account) },
+                    onDeleteAccount = { onDeleteAccount(account) }
+                )
+            }
+
+            if (accounts.isNotEmpty()) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            }
+
+            SteamAccountActionItem(
+                title = stringResource(R.string.steam_add_account_button),
+                subtitle = stringResource(R.string.steam_empty_message),
+                icon = Icons.Default.Add,
+                onClick = onAddAccount
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamAccountOptionItem(
+    account: SteamAccount,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onDeleteAccount: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        border = if (selected) {
+            null
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        },
+        tonalElevation = if (selected) 4.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Surface(
+                onClick = onClick,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.Transparent
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .padding(start = 8.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    SteamAccountIconTile(selected = selected)
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = account.displayName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = account.accountName.ifBlank { account.steamId },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier.size(28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selected) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = onDeleteAccount,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.steam_delete_account_menu),
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SteamAccountActionItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (selected) Icons.Default.Check else Icons.Default.AccountCircle,
-                        contentDescription = null
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(22.dp)
                     )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SteamAccountIconTile(selected: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        modifier = Modifier.size(44.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Default.AccountCircle,
+                contentDescription = null,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                onClick = { onSelectAccount(account) }
+                modifier = Modifier.size(22.dp)
             )
         }
     }

@@ -136,21 +136,47 @@ class SteamBoundaryGuardTest {
         assertTrue(source.contains("SteamEmptyAccountContent"))
         assertTrue(source.contains("private fun SteamCodeContent(\n    account: SteamAccount\n)"))
         assertTrue(source.contains("var showAccountMenu"))
-        assertTrue(source.contains("SteamAccountSwitchMenu"))
+        assertTrue(source.contains("SteamAccountSwitchSheet"))
         assertTrue(source.contains("R.string.steam_switch_account"))
+        assertTrue(source.contains("ModalBottomSheet"))
+        assertTrue(source.contains("rememberModalBottomSheetState"))
         assertFalse(source.contains("Modifier.widthIn(max = 72.dp)"))
+        assertFalse(source.contains("SteamAccountSwitchMenu"))
+
+        val topBarAccountAction = source
+            .substringAfter("actions = {")
+            .substringBefore("if (selectedAccount != null || showStandaloneSettingsEntry)")
+        assertTrue(topBarAccountAction.contains("showAccountMenu = true"))
+        assertFalse(topBarAccountAction.contains("uiState.accounts.isNotEmpty()"))
 
         val topActionsMenu = source
             .substringAfter("private fun SteamTopActionsMenu(")
-            .substringBefore("@Composable\nprivate fun SteamAccountSwitchMenu(")
+            .substringBefore("@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nprivate fun SteamAccountSwitchSheet(")
         assertFalse(topActionsMenu.contains("accounts: List<SteamAccount>"))
         assertFalse(topActionsMenu.contains("accounts.forEach"))
         assertFalse(topActionsMenu.contains("onSelectAccount"))
+        assertFalse(topActionsMenu.contains("onAddAccount"))
+        assertFalse(topActionsMenu.contains("onDeleteAccount"))
+        assertFalse(topActionsMenu.contains("R.string.steam_add_account_button"))
+        assertFalse(topActionsMenu.contains("R.string.steam_delete_account_menu"))
 
-        val accountSwitchMenu = source
-            .substringAfter("private fun SteamAccountSwitchMenu(")
+        val accountSwitchSheet = source
+            .substringAfter("private fun SteamAccountSwitchSheet(")
             .substringBefore("@Composable\nprivate fun SteamCodeContent(")
-        assertTrue(accountSwitchMenu.contains("accounts.forEach"))
+        assertTrue(accountSwitchSheet.contains("accounts.forEach"))
+        assertTrue(accountSwitchSheet.contains("onAddAccount"))
+        assertTrue(accountSwitchSheet.contains("onDeleteAccount"))
+        assertTrue(accountSwitchSheet.contains("R.string.steam_add_account_button"))
+        assertTrue(accountSwitchSheet.contains("R.string.steam_delete_account_menu"))
+        assertTrue(accountSwitchSheet.contains("if (accounts.isNotEmpty())"))
+        assertFalse(accountSwitchSheet.contains("PasswordTopActionsDropdownMenu"))
+
+        val accountOptionItem = accountSwitchSheet
+            .substringAfter("private fun SteamAccountOptionItem(")
+            .substringBefore("@Composable\nprivate fun SteamAccountActionItem(")
+        assertTrue(accountOptionItem.contains("Surface(\n                onClick = onClick"))
+        assertTrue(accountOptionItem.contains("Color.Transparent"))
+        assertTrue(accountOptionItem.contains("modifier = Modifier.size(48.dp)"))
     }
 
     @Test
