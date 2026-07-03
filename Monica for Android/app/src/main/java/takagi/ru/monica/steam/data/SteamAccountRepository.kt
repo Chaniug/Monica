@@ -41,6 +41,7 @@ class SteamAccountRepository(
             steamLoginSecure = payload.steamLoginSecure?.let(::encrypt),
             rawSteamGuardJson = encrypt(payload.rawJson),
             selected = shouldSelect,
+            sortOrder = existing?.sortOrder ?: dao.nextSortOrder(),
             createdAt = existing?.createdAt ?: now,
             updatedAt = now
         )
@@ -78,6 +79,10 @@ class SteamAccountRepository(
         dao.selectAccount(id)
     }
 
+    suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        dao.updateSortOrders(items)
+    }
+
     private fun encrypt(value: String): String {
         return securityManager.encryptDataLegacyCompat(value)
     }
@@ -108,6 +113,7 @@ class SteamAccountRepository(
             steamLoginSecure = decrypt(entity.steamLoginSecure),
             rawSteamGuardJson = decrypt(entity.rawSteamGuardJson).orEmpty(),
             selected = entity.selected,
+            sortOrder = entity.sortOrder,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt
         )

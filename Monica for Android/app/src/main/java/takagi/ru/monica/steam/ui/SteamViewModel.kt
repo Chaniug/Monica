@@ -101,6 +101,12 @@ class SteamViewModel(
         }
     }
 
+    fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateSortOrders(items)
+        }
+    }
+
     fun clearMessage() {
         _uiState.value = _uiState.value.copy(message = null)
     }

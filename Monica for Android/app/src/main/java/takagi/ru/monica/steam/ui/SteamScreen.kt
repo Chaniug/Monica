@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -98,6 +99,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
@@ -127,17 +129,21 @@ import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
+import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.TotpCodeCard
 import takagi.ru.monica.ui.components.UnifiedProgressBar
 import takagi.ru.monica.ui.gestures.SwipeActions
+import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.ui.navigation.easyNotesScreenEnter
 import takagi.ru.monica.ui.navigation.easyNotesScreenExit
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.rememberTotpTickerMillis
 import takagi.ru.monica.utils.SettingsManager
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 private const val STEAM_AVATAR_TIMEOUT_MS = 4_000
 private const val STEAM_AVATAR_CACHE_TTL_MS = 3L * 24L * 60L * 60L * 1000L
@@ -681,10 +687,11 @@ fun SteamScreen(
                                         deleteRequest = SteamDeleteAccountsRequest(targets)
                                     }
                                 },
+                                onUpdateSortOrders = viewModel::updateSortOrders,
                                 onOpenDetail = { account ->
                                     selectedTokenAccountIds = emptyList()
-                                    viewModel.selectAccount(account.id)
                                     detailAccountId = account.id
+                                    viewModel.selectAccount(account.id)
                                 }
                             )
                             SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
@@ -778,14 +785,39 @@ private fun SteamCodeContent(
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
     onDeleteSelected: () -> Unit,
+    onUpdateSortOrders: (List<Pair<Long, Int>>) -> Unit,
     onOpenDetail: (SteamAccount) -> Unit
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val haptic = rememberHapticFeedback()
     val selectedIds = selectedAccountIds.toSet()
     val selectionMode = selectedIds.isNotEmpty()
     val sharedProgressTimeMillis = rememberTotpTickerMillis(appSettings.validatorSmoothProgress)
     val sharedTickSeconds = sharedProgressTimeMillis / 1000L
+    val lazyListState = rememberSaveableLazyListState()
+    var localAccounts by remember(accounts) { mutableStateOf(accounts) }
+
+    LaunchedEffect(accounts) {
+        localAccounts = accounts
+    }
+
+    val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        if (selectionMode) {
+            localAccounts = localAccounts.toMutableList().apply {
+                add(to.index, removeAt(from.index))
+            }
+        }
+    }
+
+    LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+        if (!reorderableLazyListState.isAnyItemDragging && selectionMode) {
+            val newOrders = localAccounts.mapIndexed { index, account -> account.id to index }
+            if (newOrders.isNotEmpty()) {
+                onUpdateSortOrders(newOrders)
+            }
+        }
+    }
 
     fun copyCode(code: String) {
         if (code.isNotBlank()) {
@@ -813,6 +845,7 @@ private fun SteamCodeContent(
             }
 
             LazyColumn(
+                state = lazyListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
@@ -822,47 +855,74 @@ private fun SteamCodeContent(
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(accounts, key = { it.id }) { account ->
-                    val totpItem = remember(account) { account.toSteamTotpUiItem() }
-                    val totpData = remember(account) { account.toSteamTotpUiData() }
-                    SwipeActions(
-                        onSwipeLeft = {
-                            if (account.id !in selectedIds) {
-                                onToggleSelection(account)
-                            }
-                        },
-                        onSwipeRight = { onToggleSelection(account) },
-                        isSwiped = account.id in selectedIds,
-                        allowSwipeLeft = false,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        TotpCodeCard(
-                            item = totpItem,
-                            parsedTotpData = totpData,
-                            onCardClick = {
-                                if (selectionMode) {
+                items(localAccounts, key = { it.id }) { account ->
+                    ReorderableItem(
+                        reorderableLazyListState,
+                        key = account.id,
+                        enabled = selectionMode
+                    ) { isDragging ->
+                        val elevation by animateDpAsState(
+                            if (isDragging) 8.dp else 0.dp,
+                            label = "steam_token_drag_elevation"
+                        )
+                        val dragModifier = if (selectionMode) {
+                            Modifier.longPressDraggableHandle(
+                                onDragStarted = { haptic.performLongPress() },
+                                onDragStopped = { haptic.performSuccess() }
+                            )
+                        } else {
+                            Modifier
+                        }
+                        val totpItem = remember(account) { account.toSteamTotpUiItem() }
+                        val totpData = remember(account) { account.toSteamTotpUiData() }
+                        SwipeActions(
+                            onSwipeLeft = {
+                                if (account.id !in selectedIds) {
                                     onToggleSelection(account)
-                                } else {
-                                    onOpenDetail(account)
                                 }
                             },
-                            onToggleSelect = { onToggleSelection(account) },
-                            onLongClick = {
-                                copyCode(SteamTotp.generateAuthCode(account.sharedSecret, System.currentTimeMillis() / 1000L))
-                            },
-                            isSelectionMode = false,
-                            isSelected = account.id in selectedIds,
-                            leadingContent = {
-                                SteamAvatarImage(
-                                    account = account,
-                                    size = 40.dp
+                            onSwipeRight = { onToggleSelection(account) },
+                            isSwiped = account.id in selectedIds,
+                            enabled = !isDragging,
+                            allowSwipeLeft = false,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        shadowElevation = elevation.toPx()
+                                    }
+                                    .then(dragModifier)
+                            ) {
+                                TotpCodeCard(
+                                    item = totpItem,
+                                    parsedTotpData = totpData,
+                                    onCardClick = {
+                                        if (selectionMode) {
+                                            onToggleSelection(account)
+                                        } else {
+                                            onOpenDetail(account)
+                                        }
+                                    },
+                                    onToggleSelect = { onToggleSelection(account) },
+                                    onLongClick = {
+                                        copyCode(SteamTotp.generateAuthCode(account.sharedSecret, System.currentTimeMillis() / 1000L))
+                                    },
+                                    isSelectionMode = selectionMode,
+                                    isSelected = account.id in selectedIds,
+                                    leadingContent = {
+                                        SteamAvatarImage(
+                                            account = account,
+                                            size = 40.dp
+                                        )
+                                    },
+                                    onCopyCode = ::copyCode,
+                                    sharedTickSeconds = sharedTickSeconds,
+                                    sharedProgressTimeMillis = sharedProgressTimeMillis,
+                                    appSettings = appSettings
                                 )
-                            },
-                            onCopyCode = ::copyCode,
-                            sharedTickSeconds = sharedTickSeconds,
-                            sharedProgressTimeMillis = sharedProgressTimeMillis,
-                            appSettings = appSettings
-                        )
+                            }
+                        }
                     }
                 }
             }

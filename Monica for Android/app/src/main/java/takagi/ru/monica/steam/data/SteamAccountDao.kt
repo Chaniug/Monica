@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SteamAccountDao {
-    @Query("SELECT * FROM steam_accounts ORDER BY selected DESC, updatedAt DESC")
+    @Query("SELECT * FROM steam_accounts ORDER BY sortOrder ASC, id ASC")
     fun observeAccounts(): Flow<List<SteamAccountEntity>>
 
-    @Query("SELECT * FROM steam_accounts ORDER BY selected DESC, updatedAt DESC")
+    @Query("SELECT * FROM steam_accounts ORDER BY sortOrder ASC, id ASC")
     suspend fun getAccounts(): List<SteamAccountEntity>
 
     @Query("SELECT * FROM steam_accounts WHERE id = :id LIMIT 1")
@@ -24,6 +24,9 @@ interface SteamAccountDao {
 
     @Query("SELECT COUNT(*) FROM steam_accounts")
     suspend fun count(): Int
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) + 1 FROM steam_accounts")
+    suspend fun nextSortOrder(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(account: SteamAccountEntity): Long
@@ -39,6 +42,16 @@ interface SteamAccountDao {
 
     @Query("UPDATE steam_accounts SET selected = 1 WHERE id = :id")
     suspend fun markSelected(id: Long)
+
+    @Query("UPDATE steam_accounts SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateSortOrder(id: Long, sortOrder: Int)
+
+    @Transaction
+    suspend fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        items.forEach { (id, sortOrder) ->
+            updateSortOrder(id, sortOrder)
+        }
+    }
 
     @Transaction
     suspend fun selectAccount(id: Long) {

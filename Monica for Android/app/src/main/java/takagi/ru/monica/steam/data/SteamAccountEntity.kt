@@ -28,6 +28,7 @@ data class SteamAccountEntity(
     val steamLoginSecure: String?,
     val rawSteamGuardJson: String,
     val selected: Boolean = false,
+    val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -47,6 +48,7 @@ data class SteamAccount(
     val steamLoginSecure: String?,
     val rawSteamGuardJson: String,
     val selected: Boolean,
+    val sortOrder: Int,
     val createdAt: Long,
     val updatedAt: Long
 ) {
