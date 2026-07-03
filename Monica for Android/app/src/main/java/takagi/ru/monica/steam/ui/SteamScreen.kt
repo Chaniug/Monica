@@ -146,8 +146,9 @@ fun SteamScreen(
     onOpenStandaloneSettings: () -> Unit,
     modifier: Modifier = Modifier,
     pendingSteamQrResult: String? = null,
+    pendingSteamQrAccountId: Long? = null,
     onConsumePendingSteamQrResult: () -> Unit = {},
-    onScanSteamQrCode: (() -> Unit)? = null
+    onScanSteamQrCode: ((Long?) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val viewModel: SteamViewModel = viewModel(
@@ -210,12 +211,19 @@ fun SteamScreen(
         }
     }
 
-    LaunchedEffect(pendingSteamQrResult) {
+    LaunchedEffect(pendingSteamQrResult, pendingSteamQrAccountId, uiState.accounts, selectedAccount?.id) {
         val qr = pendingSteamQrResult?.trim().orEmpty()
         if (qr.isNotBlank()) {
-            selectedAccount?.let { detailAccountId = it.id }
-            scannedQrPayload = qr
-            onConsumePendingSteamQrResult()
+            val targetAccount = uiState.accounts.firstOrNull { it.id == pendingSteamQrAccountId }
+                ?: selectedAccount
+            if (pendingSteamQrAccountId == null || targetAccount?.id == pendingSteamQrAccountId) {
+                targetAccount?.let { account ->
+                    viewModel.selectAccount(account.id)
+                    detailAccountId = account.id
+                }
+                scannedQrPayload = qr
+                onConsumePendingSteamQrResult()
+            }
         }
     }
 
@@ -468,7 +476,7 @@ fun SteamScreen(
             val account = detailAccount
             val scanQr = onScanSteamQrCode
             if (account != null && account.canApproveLogins && scanQr != null) {
-                FloatingActionButton(onClick = scanQr) {
+                FloatingActionButton(onClick = { scanQr(account.id) }) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
                         contentDescription = stringResource(R.string.scan_qr_code)

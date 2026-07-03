@@ -134,6 +134,7 @@ import takagi.ru.monica.ui.screens.MdbxWebDavOpenScreen
 import takagi.ru.monica.ui.screens.KeePassKdbxViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
+import takagi.ru.monica.steam.ui.SteamQrScannerScreen
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
@@ -996,6 +997,9 @@ fun MonicaContent(
             val steamQrResult = navController.currentBackStackEntry
                 ?.savedStateHandle
                 ?.get<String>("steam_qr_result")
+            val steamQrAccountId = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<Long>("steam_qr_account_id")
 
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -1040,13 +1044,17 @@ fun MonicaContent(
                     navController.navigate(Screen.QuickTotpScan.route)
                 },
                 pendingSteamQrResult = steamQrResult,
+                pendingSteamQrAccountId = steamQrAccountId,
                 onConsumePendingSteamQrResult = {
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.remove<String>("steam_qr_result")
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<Long>("steam_qr_account_id")
                 },
-                onScanSteamQrCode = {
-                    navController.navigate(Screen.SteamQrScan.route) {
+                onScanSteamQrCode = { accountId ->
+                    navController.navigate(Screen.SteamQrScan.createRoute(accountId)) {
                         launchSingleTop = true
                     }
                 },
@@ -2280,12 +2288,29 @@ fun MonicaContent(
             )
         }
 
-        composable(Screen.SteamQrScan.route) {
-            takagi.ru.monica.ui.screens.QrScannerScreen(
-                onQrCodeScanned = { qrData ->
+        composable(
+            route = Screen.SteamQrScan.route,
+            arguments = listOf(
+                navArgument(Screen.SteamQrScan.ARG_ACCOUNT_ID) {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                }
+            )
+        ) { backStackEntry ->
+            val initialSteamAccountId = backStackEntry.arguments
+                ?.getLong(Screen.SteamQrScan.ARG_ACCOUNT_ID)
+                ?.takeIf { it > 0L }
+            SteamQrScannerScreen(
+                initialAccountId = initialSteamAccountId,
+                onQrCodeScanned = { qrData, accountId ->
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("steam_qr_result", qrData)
+                    if (accountId != null) {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("steam_qr_account_id", accountId)
+                    }
                     navController.popBackStack()
                 },
                 onNavigateBack = {

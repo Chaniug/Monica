@@ -76,8 +76,9 @@ internal fun CompactDraggableTabContent(
     onTotpOpen: (Long) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
     pendingSteamQrResult: String? = null,
+    pendingSteamQrAccountId: Long? = null,
     onConsumePendingSteamQrResult: () -> Unit = {},
-    onScanSteamQrCode: () -> Unit = {},
+    onScanSteamQrCode: (Long?) -> Unit = {},
     onNavigateToFidoQrScan: () -> Unit,
     onTotpSelectionModeChange: (
         Boolean,
@@ -359,6 +360,7 @@ internal fun CompactDraggableTabContent(
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     onOpenStandaloneSettings = onOpenStandaloneSettings,
                     pendingSteamQrResult = pendingSteamQrResult,
+                    pendingSteamQrAccountId = pendingSteamQrAccountId,
                     onConsumePendingSteamQrResult = onConsumePendingSteamQrResult,
                     onScanSteamQrCode = onScanSteamQrCode,
                     modifier = Modifier.fillMaxSize()

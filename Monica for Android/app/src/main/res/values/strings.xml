@@ -872,6 +872,8 @@
     <string name="steam_add_account_title">Add Steam account</string>
     <string name="steam_add_account_button">Add account</string>
     <string name="steam_switch_account">Switch Steam account</string>
+    <string name="steam_selected_account_marker">Selected</string>
+    <string name="steam_qr_album_select">Album</string>
     <string name="steam_add_method_mafile">Import maFile</string>
     <string name="steam_add_method_login">Sign in with Steam</string>
     <string name="steam_more_options_with_confirmations">More options, %1$d pending confirmation(s)</string>

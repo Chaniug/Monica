@@ -65,7 +65,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 fun QrScannerScreen(
     onQrCodeScanned: (String) -> Unit,
     onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    subtitle: String? = null,
+    bottomContent: @Composable (launchGallery: () -> Unit) -> Unit = { launchGallery ->
+        DefaultQrScannerBottomContent(launchGallery = launchGallery)
+    }
 ) {
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
     
@@ -83,7 +88,10 @@ fun QrScannerScreen(
             cameraPermissionState.status.isGranted -> {
                 QrCodeScanner(
                     onQrCodeScanned = onQrCodeScanned,
-                    onNavigateBack = onNavigateBack
+                    onNavigateBack = onNavigateBack,
+                    title = title ?: stringResource(R.string.scan_qr_code_title),
+                    subtitle = subtitle ?: stringResource(R.string.qr_align_hint),
+                    bottomContent = bottomContent
                 )
             }
             else -> {
@@ -147,7 +155,10 @@ private fun CameraPermissionRequest(
 @Composable
 private fun QrCodeScanner(
     onQrCodeScanned: (String) -> Unit,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    title: String,
+    subtitle: String,
+    bottomContent: @Composable (launchGallery: () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var barcodeView by remember { mutableStateOf<DecoratedBarcodeView?>(null) }
@@ -310,12 +321,12 @@ private fun QrCodeScanner(
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.scan_qr_code_title),
+                            text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = stringResource(R.string.qr_align_hint),
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -353,26 +364,33 @@ private fun QrCodeScanner(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.qr_align_hint),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium
-                    )
-                    FilledTonalButton(
-                        onClick = { photoPickerLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = stringResource(R.string.qr_pick_from_gallery)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(stringResource(R.string.qr_pick_from_gallery))
-                    }
+                    bottomContent { photoPickerLauncher.launch("image/*") }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DefaultQrScannerBottomContent(
+    launchGallery: () -> Unit
+) {
+    Text(
+        text = stringResource(R.string.qr_align_hint),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium
+    )
+    FilledTonalButton(
+        onClick = launchGallery,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Image,
+            contentDescription = stringResource(R.string.qr_pick_from_gallery)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(stringResource(R.string.qr_pick_from_gallery))
     }
 }
 
