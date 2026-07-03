@@ -1274,7 +1274,7 @@ class SteamLoginImportService(
         } catch (error: SteamApiException) {
             logDiag("replace start failed eResult=${error.eResult ?: "unknown"}")
             return ReplaceAuthenticatorStartResult.Failure(
-                mapEresultToMessage(error.eResult)
+                mapReplaceStartEresultToMessage(error.eResult)
                     ?: error.message
                     ?: "发起替换令牌失败"
             )
@@ -1290,6 +1290,16 @@ class SteamLoginImportService(
             challengeHint = "请输入短信验证码以替换现有令牌",
             message = null
         )
+    }
+
+    private fun mapReplaceStartEresultToMessage(eResult: Int?): String? {
+        return when (eResult) {
+            1 -> null
+            2 -> "Steam 登录已成功，但该账号已经绑定 Steam 验证器，Steam 拒绝转移验证器（EResult=2）。这通常表示账号没有可用手机号或当前不允许转移；请使用 maFile 导入，或在 Steam 账号绑定手机号后再试。"
+            15 -> "Steam 登录已成功，但 Steam 拒绝访问验证器转移接口（EResult=15）。请使用 maFile 导入，或稍后重新登录后再试。"
+            84 -> "Steam 登录已成功，但 Steam 暂时限制验证器转移（EResult=84），请稍后再试。"
+            else -> eResult?.let { "Steam 登录已成功，但发起验证器转移失败（EResult=$it）" }
+        }
     }
 
     private fun continueReplaceAuthenticatorFlow(

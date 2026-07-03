@@ -160,6 +160,22 @@ class SteamLoginImportServiceGuardTest {
         assertFalse(source.contains("accessToken = refreshToken"))
     }
 
+    @Test
+    fun steamLoginImportDoesNotReportTransferStartFailureAsLoginFailure() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
+        ).readText()
+
+        assertTrue(source.contains("mapReplaceStartEresultToMessage(error.eResult)"))
+        assertTrue(source.contains("Steam 登录已成功，但该账号已经绑定 Steam 验证器"))
+        assertTrue(source.contains("Steam 拒绝转移验证器（EResult=2）"))
+        assertFalse(
+            source.contains(
+                "ReplaceAuthenticatorStartResult.Failure(\n                mapEresultToMessage(error.eResult)"
+            )
+        )
+    }
+
     private fun projectFile(path: String): File {
         var dir = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         while (
