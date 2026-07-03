@@ -56,14 +56,18 @@ fun SteamQrScannerScreen(
         factory = remember(context) { SteamViewModel.factory(context) }
     )
     val uiState by viewModel.uiState.collectAsState()
-    var selectedAccountId by rememberSaveable(initialAccountId) { mutableStateOf(initialAccountId) }
+    val rememberedAccountId = remember(context) { readLastSteamQrAccountId(context) }
+    var selectedAccountId by rememberSaveable(initialAccountId, rememberedAccountId) {
+        mutableStateOf(initialAccountId ?: rememberedAccountId)
+    }
     var showAccountPicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(initialAccountId, uiState.accounts) {
+    LaunchedEffect(initialAccountId, rememberedAccountId, uiState.accounts) {
         val existingIds = uiState.accounts.map { it.id }.toSet()
         selectedAccountId = when {
             initialAccountId != null && initialAccountId in existingIds -> initialAccountId
             selectedAccountId != null && selectedAccountId in existingIds -> selectedAccountId
+            rememberedAccountId != null && rememberedAccountId in existingIds -> rememberedAccountId
             uiState.selectedAccountId != null && uiState.selectedAccountId in existingIds -> uiState.selectedAccountId
             else -> uiState.accounts.firstOrNull()?.id
         }
@@ -77,6 +81,7 @@ fun SteamQrScannerScreen(
             selectedAccountId = selectedAccountId,
             onSelectAccount = { account ->
                 selectedAccountId = account.id
+                saveLastSteamQrAccountId(context, account.id)
                 showAccountPicker = false
             },
             onDismissRequest = { showAccountPicker = false }
@@ -85,7 +90,9 @@ fun SteamQrScannerScreen(
 
     QrScannerScreen(
         onQrCodeScanned = { qrData ->
-            onQrCodeScanned(qrData, selectedAccount?.id ?: selectedAccountId)
+            val accountId = selectedAccount?.id ?: selectedAccountId
+            saveLastSteamQrAccountId(context, accountId)
+            onQrCodeScanned(qrData, accountId)
         },
         onNavigateBack = onNavigateBack,
         modifier = modifier,

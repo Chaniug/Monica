@@ -8,6 +8,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
@@ -176,12 +182,38 @@ fun SteamScreen(
     var showAddAccountDialog by remember { mutableStateOf(false) }
     var addAccountMethod by remember { mutableStateOf<SteamAddAccountMethod?>(null) }
     var selectedTokenAccountIds by rememberSaveable { mutableStateOf<List<Long>>(emptyList()) }
+    var lastSteamQrAccountId by remember { mutableStateOf(readLastSteamQrAccountId(context)) }
     var deleteRequest by remember { mutableStateOf<SteamDeleteAccountsRequest?>(null) }
     var scannedQrPayload by remember { mutableStateOf<String?>(null) }
     val pendingConfirmationCount = if (selectedAccount?.canUseConfirmations == true) {
         uiState.confirmations.size
     } else {
         0
+    }
+    val tokenQrAccount = remember(
+        uiState.accounts,
+        lastSteamQrAccountId,
+        selectedAccount?.id,
+        detailAccount,
+        selectedSection,
+        selectedTokenAccountIds
+    ) {
+        if (detailAccount == null &&
+            selectedSection == SteamSection.CODE &&
+            selectedTokenAccountIds.isEmpty()
+        ) {
+            val approvableAccounts = uiState.accounts.filter { it.canApproveLogins }
+            approvableAccounts.firstOrNull { it.id == lastSteamQrAccountId }
+                ?: approvableAccounts.firstOrNull { it.id == selectedAccount?.id }
+                ?: approvableAccounts.firstOrNull()
+        } else {
+            null
+        }
+    }
+
+    fun rememberLastSteamQrAccount(accountId: Long?) {
+        lastSteamQrAccountId = accountId
+        saveLastSteamQrAccountId(context, accountId)
     }
 
     LaunchedEffect(selectedAccount?.id) {
@@ -201,6 +233,9 @@ fun SteamScreen(
         val prunedSelection = selectedTokenAccountIds.filter { it in existingIds }
         if (prunedSelection != selectedTokenAccountIds) {
             selectedTokenAccountIds = prunedSelection
+        }
+        if (uiState.accounts.isNotEmpty() && lastSteamQrAccountId != null && lastSteamQrAccountId !in existingIds) {
+            rememberLastSteamQrAccount(null)
         }
     }
 
@@ -232,6 +267,7 @@ fun SteamScreen(
                 targetAccount?.let { account ->
                     viewModel.selectAccount(account.id)
                     detailAccountId = account.id
+                    rememberLastSteamQrAccount(account.id)
                 }
                 scannedQrPayload = qr
                 onConsumePendingSteamQrResult()
@@ -490,14 +526,33 @@ fun SteamScreen(
             )
         },
         floatingActionButton = {
-            val account = detailAccount
             val scanQr = onScanSteamQrCode
-            if (account != null && account.canApproveLogins && scanQr != null) {
-                FloatingActionButton(onClick = { scanQr(account.id) }) {
-                    Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = stringResource(R.string.scan_qr_code)
-                    )
+            val detailQrAccount = detailAccount?.takeIf { it.canApproveLogins }
+            val account = detailQrAccount ?: tokenQrAccount
+            AnimatedVisibility(
+                visible = scanQr != null && account != null,
+                enter = fadeIn(animationSpec = tween(160)) +
+                    scaleIn(initialScale = 0.9f, animationSpec = tween(180)),
+                exit = fadeOut(animationSpec = tween(120)) +
+                    scaleOut(targetScale = 0.9f, animationSpec = tween(140))
+            ) {
+                if (scanQr != null && account != null) {
+                    FloatingActionButton(
+                        onClick = {
+                            val freshAccount = detailQrAccount
+                                ?: uiState.accounts.firstOrNull {
+                                    it.canApproveLogins && it.id == readLastSteamQrAccountId(context)
+                                }
+                                ?: account
+                            rememberLastSteamQrAccount(freshAccount.id)
+                            scanQr(freshAccount.id)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = stringResource(R.string.scan_qr_code)
+                        )
+                    }
                 }
             }
         }
