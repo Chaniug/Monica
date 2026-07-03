@@ -75,6 +75,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -188,11 +190,6 @@ fun SteamScreen(
         ?: uiState.accounts.firstOrNull()
     var detailAccountId by rememberSaveable { mutableStateOf<Long?>(null) }
     val detailAccount = uiState.accounts.firstOrNull { it.id == detailAccountId }
-    val topBarTitleEndPadding = when {
-        detailAccount != null && showStandaloneSettingsEntry -> 64.dp
-        detailAccount != null -> 0.dp
-        else -> 180.dp
-    }
     var selectedSection by rememberSaveable { mutableStateOf(SteamSection.CODE) }
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
@@ -414,46 +411,32 @@ fun SteamScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            ExpressiveTopBar(
-                title = stringResource(R.string.nav_steam),
-                searchQuery = "",
-                onSearchQueryChange = {},
-                isSearchExpanded = false,
-                onSearchExpandedChange = {},
-                searchHint = stringResource(R.string.nav_steam),
-                collapsedTitleEndPadding = topBarTitleEndPadding,
-                navigationIcon = if (detailAccount != null) {
-                    {
-                        IconButton(
-                            onClick = {
-                                detailAccountId = null
-                                scannedQrPayload = null
+            if (detailAccount != null) {
+                SteamDetailTopBar(
+                    title = stringResource(R.string.nav_steam),
+                    onNavigateBack = {
+                        detailAccountId = null
+                        scannedQrPayload = null
+                    }
+                )
+            } else {
+                ExpressiveTopBar(
+                    title = stringResource(R.string.nav_steam),
+                    searchQuery = "",
+                    onSearchQueryChange = {},
+                    isSearchExpanded = false,
+                    onSearchExpandedChange = {},
+                    searchHint = stringResource(R.string.nav_steam),
+                    actions = {
+                        if (selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS) {
+                            IconButton(onClick = { viewModel.refreshConfirmations() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = stringResource(R.string.refresh),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = stringResource(R.string.back),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
-                    }
-                } else {
-                    null
-                },
-                actions = {
-                    if (detailAccount == null &&
-                        selectedAccount != null &&
-                        selectedSection == SteamSection.CONFIRMATIONS
-                    ) {
-                        IconButton(onClick = { viewModel.refreshConfirmations() }) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = stringResource(R.string.refresh),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    if (detailAccount == null) {
                         IconButton(
                             onClick = {
                                 showTopActionsMenu = false
@@ -466,85 +449,63 @@ fun SteamScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    if (detailAccount == null && selectedAccount != null) {
-                        val targetSection = when (selectedSection) {
-                            SteamSection.CODE -> SteamSection.CONFIRMATIONS
-                            SteamSection.CONFIRMATIONS -> SteamSection.CODE
-                        }
-                        IconButton(
-                            onClick = {
-                                selectedSection = targetSection
-                                if (targetSection == SteamSection.CONFIRMATIONS) {
-                                    viewModel.refreshConfirmations()
-                                }
+                        if (selectedAccount != null) {
+                            val targetSection = when (selectedSection) {
+                                SteamSection.CODE -> SteamSection.CONFIRMATIONS
+                                SteamSection.CONFIRMATIONS -> SteamSection.CODE
                             }
-                        ) {
-                            BadgedBox(
-                                badge = {
-                                    if (targetSection == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
-                                        Badge {
-                                            Text(badgeCountText(pendingConfirmationCount))
-                                        }
+                            IconButton(
+                                onClick = {
+                                    selectedSection = targetSection
+                                    if (targetSection == SteamSection.CONFIRMATIONS) {
+                                        viewModel.refreshConfirmations()
                                     }
                                 }
                             ) {
-                                Icon(
-                                    imageVector = targetSection.icon,
-                                    contentDescription = stringResource(targetSection.labelRes),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                BadgedBox(
+                                    badge = {
+                                        if (targetSection == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
+                                            Badge {
+                                                Text(badgeCountText(pendingConfirmationCount))
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = targetSection.icon,
+                                        contentDescription = stringResource(targetSection.labelRes),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        if (showStandaloneSettingsEntry) {
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        showTopActionsMenu = true
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.more_options),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                SteamTopActionsMenu(
+                                    expanded = showTopActionsMenu,
+                                    onDismissRequest = { showTopActionsMenu = false },
+                                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                                    onOpenStandaloneSettings = {
+                                        showTopActionsMenu = false
+                                        onOpenStandaloneSettings()
+                                    }
                                 )
                             }
                         }
                     }
-                    val shouldShowTopActionsMenu = detailAccount == null && showStandaloneSettingsEntry
-                    if (shouldShowTopActionsMenu) {
-                        Box {
-                            IconButton(
-                                onClick = {
-                                    showTopActionsMenu = true
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.more_options),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            SteamTopActionsMenu(
-                                expanded = showTopActionsMenu,
-                                onDismissRequest = { showTopActionsMenu = false },
-                                showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                onOpenStandaloneSettings = {
-                                    showTopActionsMenu = false
-                                    onOpenStandaloneSettings()
-                                }
-                            )
-                        }
-                    } else if (detailAccount != null && showStandaloneSettingsEntry) {
-                        Box {
-                            IconButton(
-                                onClick = { showTopActionsMenu = true }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.more_options),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            SteamTopActionsMenu(
-                                expanded = showTopActionsMenu,
-                                onDismissRequest = { showTopActionsMenu = false },
-                                showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                onOpenStandaloneSettings = {
-                                    showTopActionsMenu = false
-                                    onOpenStandaloneSettings()
-                                }
-                            )
-                        }
-                    }
-                }
-            )
+                )
+            }
         },
         floatingActionButton = {
             val scanQr = onScanSteamQrCode
@@ -671,6 +632,37 @@ fun SteamScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SteamDetailTopBar(
+    title: String,
+    onNavigateBack: () -> Unit
+) {
+    TopAppBar(
+        title = {
+            Text(
+                text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = onNavigateBack) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        actions = {},
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface
+        )
+    )
 }
 
 @Composable
