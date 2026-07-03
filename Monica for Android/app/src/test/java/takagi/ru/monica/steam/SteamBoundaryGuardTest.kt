@@ -290,6 +290,12 @@ class SteamBoundaryGuardTest {
         assertFalse(codeContent.contains("onLongClick = { onToggleSelection(account) }"))
         assertTrue(codeContent.contains("SteamAvatarImage("))
 
+        val openDetailBlock = source
+            .substringAfter("onOpenDetail = { account ->")
+            .substringBefore("}")
+        assertTrue(openDetailBlock.contains("detailAccountId = account.id"))
+        assertFalse(openDetailBlock.contains("viewModel.selectAccount(account.id)"))
+
         val detailContent = source
             .substringAfter("private fun SteamAccountDetailContent(")
             .substringBefore("@Composable\nprivate fun SteamAccountCredentialCard(")

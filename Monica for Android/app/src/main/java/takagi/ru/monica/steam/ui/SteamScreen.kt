@@ -691,7 +691,6 @@ fun SteamScreen(
                                 onOpenDetail = { account ->
                                     selectedTokenAccountIds = emptyList()
                                     detailAccountId = account.id
-                                    viewModel.selectAccount(account.id)
                                 }
                             )
                             SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
