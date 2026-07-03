@@ -1566,36 +1566,59 @@ class TotpViewModel(
      * @param item 要删除的项目
      * @param softDelete 是否软删除（移入回收站），默认为 true
      */
-    fun deleteTotpItem(item: SecureItem, softDelete: Boolean = true) {
+    fun deleteTotpItems(items: List<SecureItem>, softDelete: Boolean = true) {
+        val deletingItemIds = items.mapTo(mutableSetOf()) { it.id }
+        items.forEach { item ->
+            deleteTotpItem(
+                item = item,
+                softDelete = softDelete,
+                deletingItemIds = deletingItemIds
+            )
+        }
+    }
+
+    fun deleteTotpItem(
+        item: SecureItem,
+        softDelete: Boolean = true,
+        deletingItemIds: Set<Long> = emptySet()
+    ) {
         viewModelScope.launch {
             val totpData = parseStoredTotpData(item)
 
             if (totpData?.boundPasswordId != null && totpData.secret.isNotBlank()) {
                 val boundId = totpData.boundPasswordId
-                val password = passwordRepository.getPasswordEntryById(boundId) ?: return@launch
-                val passwordKey = buildTotpIdentityKeyFromRawKey(password.authenticatorKey)
-                val itemKey = buildTotpIdentityKey(totpData)
-                val hasEquivalentBoundItem = repository.getItemsByType(ItemType.TOTP)
-                    .first()
-                    .any { candidate ->
-                        if (candidate.id == item.id || candidate.isDeleted) return@any false
-                        val candidateData = parseStoredTotpData(candidate) ?: return@any false
-                        candidateData.boundPasswordId == boundId &&
-                            buildTotpIdentityKey(candidateData) == itemKey
-                    }
-                if (passwordKey != null && passwordKey == itemKey && !hasEquivalentBoundItem) {
-                    if (password.bitwardenVaultId != null && password.bitwardenCipherId != null) {
-                        // For Bitwarden-linked passwords, mark as locally modified so sync can clear remote login.totp.
-                        passwordRepository.updatePasswordEntry(
-                            password.copy(
-                                authenticatorKey = "",
-                                bitwardenLocalModified = true,
-                                updatedAt = Date()
+                val password = passwordRepository.getPasswordEntryById(boundId)
+                if (password != null) {
+                    val passwordKey = buildTotpIdentityKeyFromRawKey(password.authenticatorKey)
+                    val itemKey = buildTotpIdentityKey(totpData)
+                    val hasEquivalentBoundItem = repository.getItemsByType(ItemType.TOTP)
+                        .first()
+                        .any { candidate ->
+                            if (
+                                candidate.id == item.id ||
+                                candidate.id in deletingItemIds ||
+                                candidate.isDeleted
+                            ) {
+                                return@any false
+                            }
+                            val candidateData = parseStoredTotpData(candidate) ?: return@any false
+                            candidateData.boundPasswordId == boundId &&
+                                buildTotpIdentityKey(candidateData) == itemKey
+                        }
+                    if (passwordKey != null && passwordKey == itemKey && !hasEquivalentBoundItem) {
+                        if (password.bitwardenVaultId != null && password.bitwardenCipherId != null) {
+                            // For Bitwarden-linked passwords, mark as locally modified so sync can clear remote login.totp.
+                            passwordRepository.updatePasswordEntry(
+                                password.copy(
+                                    authenticatorKey = "",
+                                    bitwardenLocalModified = true,
+                                    updatedAt = Date()
+                                )
                             )
-                        )
-                        requestBitwardenMutationSync(password.bitwardenVaultId)
-                    } else {
-                        updatePasswordAuthenticatorKeyForStorage(boundId, "")
+                            requestBitwardenMutationSync(password.bitwardenVaultId)
+                        } else {
+                            updatePasswordAuthenticatorKeyForStorage(boundId, "")
+                        }
                     }
                 }
             }

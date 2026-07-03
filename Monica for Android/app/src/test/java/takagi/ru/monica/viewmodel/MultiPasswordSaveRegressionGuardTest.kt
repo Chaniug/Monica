@@ -2626,6 +2626,37 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun deletingPasswordBoundAuthenticatorWarnsAndStillDeletesPersistedTotp() {
+        val totpViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/TotpViewModel.kt"
+        ).readText()
+        val totpListContentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/totp/TotpListContent.kt"
+        ).readText()
+        val deleteTotpBody = totpViewModelSource
+            .substringAfter("fun deleteTotpItem(")
+            .substringBefore("// Virtual TOTP items are derived from password.authenticatorKey")
+
+        assertFalse(
+            "Deleting a real bound authenticator must not abort just because the bound password row is missing.",
+            deleteTotpBody.contains("passwordRepository.getPasswordEntryById(boundId) ?: return@launch")
+        )
+        assertTrue(
+            "Batch deletion must exclude every item in the same delete request when deciding whether password.authenticatorKey should remain.",
+            totpViewModelSource.contains("fun deleteTotpItems(") &&
+                totpViewModelSource.contains("deletingItemIds: Set<Long> = emptySet()") &&
+                deleteTotpBody.contains("candidate.id in deletingItemIds")
+        )
+        assertTrue(
+            "The authenticator page must warn before deleting password-bound authenticators, including multi-select batches.",
+            totpListContentSource.contains("BoundTotpDeleteWarningDialog(") &&
+                totpListContentSource.contains("pendingBoundSingleDelete") &&
+                totpListContentSource.contains("pendingBoundBatchDelete") &&
+                totpListContentSource.contains("viewModel.deleteTotpItems(toDelete)")
+        )
+    }
+
+    @Test
     fun saveFailuresAreReportedWithNonSecretDiagnostics() {
         val passwordViewModelSource = projectFile(
             "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"

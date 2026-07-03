@@ -1462,6 +1462,12 @@
     <string name="batch_delete_passwords_message">确定要删除 %d 个密码吗?</string>
     <string name="batch_delete_totp_title">批量删除TOTP</string>
     <string name="batch_delete_totp_message">确定要删除 %d 个TOTP项吗?</string>
+    <string name="bound_totp_delete_warning_title_single">删除已绑定的验证器？</string>
+    <string name="bound_totp_delete_warning_title_multi">删除已绑定的验证器？</string>
+    <string name="bound_totp_delete_warning_message_single">这个验证器已绑定到一个密码。删除后，也会从该密码中移除验证器密钥。</string>
+    <string name="bound_totp_delete_warning_message_multi">以下验证器已绑定到密码。删除后，也会从这些密码中移除验证器密钥。</string>
+    <string name="bound_totp_delete_missing_password">缺失的密码 #%1$d</string>
+    <string name="bound_totp_delete_warning_continue">继续</string>
     <string name="batch_delete_documents_title">批量删除证件</string>
     <string name="batch_delete_documents_message">确定要删除 %d 个证件吗?</string>
     <string name="batch_delete_bankcards_title">批量删除银行卡</string>

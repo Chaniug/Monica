@@ -110,6 +110,7 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.PasskeyBindingCodec
@@ -407,6 +408,8 @@ fun TotpListContent(
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
     var singleItemPasswordInput by remember { mutableStateOf("") }
     var showSingleItemPasswordVerify by remember { mutableStateOf(false) }
+    var pendingBoundSingleDelete by remember { mutableStateOf<SecureItem?>(null) }
+    var pendingBoundBatchDelete by remember { mutableStateOf<List<SecureItem>>(emptyList()) }
     
     // 待删除项ID集合（用于隐藏即将删除的项）
     var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
@@ -417,6 +420,44 @@ fun TotpListContent(
     // 过滤掉待删除的项
     val filteredTotpItems = remember(totpItems, deletedItemIds) {
         totpItems.filter { it.id !in deletedItemIds }
+    }
+
+    fun boundPasswordIdFor(item: SecureItem): Long? {
+        return (totpDataById[item.id] ?: viewModel.parseTotpDataForDisplay(item))?.boundPasswordId
+    }
+
+    fun requestDeleteItem(item: SecureItem) {
+        if (boundPasswordIdFor(item) != null) {
+            pendingBoundSingleDelete = item
+            return
+        }
+
+        itemToDelete = item
+        deletedItemIds = deletedItemIds + item.id
+    }
+
+    fun requestBatchDelete() {
+        val toDelete = totpItems.filter { selectedItems.contains(it.id) }
+        if (toDelete.isEmpty()) return
+
+        val boundItems = toDelete.filter { boundPasswordIdFor(it) != null }
+        if (boundItems.isNotEmpty()) {
+            pendingBoundBatchDelete = boundItems
+        } else {
+            showBatchDeleteDialog = true
+        }
+    }
+
+    fun buildBoundDeleteImpacts(items: List<SecureItem>): List<BoundTotpDeleteImpact> {
+        return items.mapNotNull { item ->
+            val passwordId = boundPasswordIdFor(item) ?: return@mapNotNull null
+            val passwordTitle = passwordMap[passwordId]?.title
+                ?: context.getString(R.string.bound_totp_delete_missing_password, passwordId)
+            BoundTotpDeleteImpact(
+                authenticatorTitle = item.title,
+                passwordTitle = passwordTitle
+            )
+        }
     }
     
     // 定义回调函数
@@ -434,7 +475,7 @@ fun TotpListContent(
     }
     
     val deleteSelected = {
-        showBatchDeleteDialog = true
+        requestBatchDelete()
     }
 
     val moveToCategory = {
@@ -994,8 +1035,7 @@ fun TotpListContent(
                             onSwipeLeft = {
                                 // 左滑删除
                                 haptic.performWarning()
-                                itemToDelete = item
-                                deletedItemIds = deletedItemIds + item.id
+                                requestDeleteItem(item)
                             },
                             onSwipeRight = {
                                 // 右滑选择
@@ -1034,8 +1074,7 @@ fun TotpListContent(
                                     },
                                     onDelete = {
                                         haptic.performWarning()
-                                        itemToDelete = item
-                                        deletedItemIds = deletedItemIds + item.id
+                                        requestDeleteItem(item)
                                     },
                                     onToggleFavorite = { id, isFavorite ->
                                         viewModel.toggleFavorite(id, isFavorite)
@@ -1083,6 +1122,36 @@ fun TotpListContent(
         QrCodeDialog(
             item = item,
             onDismiss = { itemToShowQr = null }
+        )
+    }
+
+    pendingBoundSingleDelete?.let { item ->
+        BoundTotpDeleteWarningDialog(
+            impacts = buildBoundDeleteImpacts(listOf(item)),
+            isBatch = false,
+            onDismiss = {
+                pendingBoundSingleDelete = null
+            },
+            onConfirm = {
+                pendingBoundSingleDelete = null
+                itemToDelete = item
+                deletedItemIds = deletedItemIds + item.id
+            }
+        )
+    }
+
+    if (pendingBoundBatchDelete.isNotEmpty()) {
+        val pendingItems = pendingBoundBatchDelete
+        BoundTotpDeleteWarningDialog(
+            impacts = buildBoundDeleteImpacts(pendingItems),
+            isBatch = true,
+            onDismiss = {
+                pendingBoundBatchDelete = emptyList()
+            },
+            onConfirm = {
+                pendingBoundBatchDelete = emptyList()
+                showBatchDeleteDialog = true
+            }
         )
     }
     
@@ -1161,7 +1230,7 @@ fun TotpListContent(
                     onSuccess = {
                         coroutineScope.launch {
                             val toDelete = totpItems.filter { selectedItems.contains(it.id) }
-                            toDelete.forEach { onDeleteTotp(it) }
+                            viewModel.deleteTotpItems(toDelete)
                             android.widget.Toast.makeText(
                                 context,
                                 context.getString(R.string.deleted_items, toDelete.size),
@@ -1200,7 +1269,7 @@ fun TotpListContent(
                 if (SecurityManager(context).verifyMasterPassword(passwordInput)) {
                     coroutineScope.launch {
                         val toDelete = totpItems.filter { selectedItems.contains(it.id) }
-                        toDelete.forEach { onDeleteTotp(it) }
+                        viewModel.deleteTotpItems(toDelete)
                         android.widget.Toast.makeText(
                             context,
                             context.getString(R.string.deleted_items, toDelete.size),
@@ -1241,6 +1310,100 @@ fun TotpListContent(
         bitwardenRepository = bitwardenRepository,
         keepassBridge = keepassBridge,
         scope = scope
+    )
+}
+
+private data class BoundTotpDeleteImpact(
+    val authenticatorTitle: String,
+    val passwordTitle: String
+)
+
+@Composable
+private fun BoundTotpDeleteWarningDialog(
+    impacts: List<BoundTotpDeleteImpact>,
+    isBatch: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.LinkOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(
+                    if (isBatch) {
+                        R.string.bound_totp_delete_warning_title_multi
+                    } else {
+                        R.string.bound_totp_delete_warning_title_single
+                    }
+                )
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(
+                        if (isBatch) {
+                            R.string.bound_totp_delete_warning_message_multi
+                        } else {
+                            R.string.bound_totp_delete_warning_message_single
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                impacts.forEach { impact ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.28f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = impact.authenticatorTitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = impact.passwordTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text(stringResource(R.string.bound_totp_delete_warning_continue))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
     )
 }
 

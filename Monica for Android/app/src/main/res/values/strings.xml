@@ -1505,6 +1505,12 @@
     <string name="batch_delete_passwords_message">Are you sure you want to delete %d passwords?</string>
     <string name="batch_delete_totp_title">Batch Delete TOTP</string>
     <string name="batch_delete_totp_message">Are you sure you want to delete %d TOTP items?</string>
+    <string name="bound_totp_delete_warning_title_single">Delete linked authenticator?</string>
+    <string name="bound_totp_delete_warning_title_multi">Delete linked authenticators?</string>
+    <string name="bound_totp_delete_warning_message_single">This authenticator is linked to a password. Deleting it will also remove the authenticator key from that password.</string>
+    <string name="bound_totp_delete_warning_message_multi">These authenticators are linked to passwords. Deleting them will also remove authenticator keys from those passwords.</string>
+    <string name="bound_totp_delete_missing_password">Missing password #%1$d</string>
+    <string name="bound_totp_delete_warning_continue">Continue</string>
     <string name="batch_delete_documents_title">Batch Delete Documents</string>
     <string name="batch_delete_documents_message">Are you sure you want to delete %d documents?</string>
     <string name="batch_delete_bankcards_title">Batch Delete Bank Cards</string>
