@@ -26,9 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,8 +100,10 @@ import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.steam.core.SteamTotp
@@ -114,8 +113,11 @@ import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.TotpCodeCard
+import takagi.ru.monica.ui.components.UnifiedProgressBar
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
+import takagi.ru.monica.ui.rememberTotpTickerMillis
+import takagi.ru.monica.utils.SettingsManager
 
 private const val STEAM_AVATAR_TIMEOUT_MS = 4_000
 private const val STEAM_AVATAR_CACHE_TTL_MS = 3L * 24L * 60L * 60L * 1000L
@@ -160,6 +162,8 @@ fun SteamScreen(
     val viewModel: SteamViewModel = viewModel(
         factory = remember(context) { SteamViewModel.factory(context) }
     )
+    val settingsManager = remember { SettingsManager(context.applicationContext) }
+    val appSettings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
     val uiState by viewModel.uiState.collectAsState()
     val selectedAccount = uiState.accounts.firstOrNull { it.id == uiState.selectedAccountId }
         ?: uiState.accounts.firstOrNull()
@@ -524,6 +528,7 @@ fun SteamScreen(
                         SteamSection.CODE -> SteamCodeContent(
                             accounts = uiState.accounts,
                             selectedAccountIds = selectedTokenAccountIds,
+                            appSettings = appSettings,
                             onToggleSelection = { account ->
                                 selectedTokenAccountIds = if (account.id in selectedTokenAccountIds) {
                                     selectedTokenAccountIds - account.id
@@ -614,6 +619,7 @@ private fun SteamTopActionsMenu(
 private fun SteamCodeContent(
     accounts: List<SteamAccount>,
     selectedAccountIds: List<Long>,
+    appSettings: AppSettings,
     onToggleSelection: (SteamAccount) -> Unit,
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
@@ -624,6 +630,8 @@ private fun SteamCodeContent(
     val clipboard = LocalClipboardManager.current
     val selectedIds = selectedAccountIds.toSet()
     val selectionMode = selectedIds.isNotEmpty()
+    val sharedProgressTimeMillis = rememberTotpTickerMillis(appSettings.validatorSmoothProgress)
+    val sharedTickSeconds = sharedProgressTimeMillis / 1000L
 
     fun copyCode(code: String) {
         if (code.isNotBlank()) {
@@ -637,56 +645,71 @@ private fun SteamCodeContent(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                top = 16.dp,
-                end = 16.dp,
-                bottom = if (selectionMode) 112.dp else 80.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(accounts, key = { it.id }) { account ->
-                val totpItem = remember(account) { account.toSteamTotpUiItem() }
-                val totpData = remember(account) { account.toSteamTotpUiData() }
-                SwipeActions(
-                    onSwipeLeft = {
-                        if (account.id !in selectedIds) {
-                            onToggleSelection(account)
-                        }
-                    },
-                    onSwipeRight = { onToggleSelection(account) },
-                    isSwiped = account.id in selectedIds,
-                    allowSwipeLeft = false,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    TotpCodeCard(
-                        item = totpItem,
-                        parsedTotpData = totpData,
-                        onCardClick = {
-                            if (selectionMode) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (appSettings.validatorUnifiedProgressBar == UnifiedProgressBarMode.ENABLED &&
+                accounts.isNotEmpty()
+            ) {
+                UnifiedProgressBar(
+                    style = appSettings.validatorProgressBarStyle,
+                    currentSeconds = sharedTickSeconds,
+                    period = 30,
+                    smoothProgress = appSettings.validatorSmoothProgress,
+                    timeOffset = (appSettings.totpTimeOffset * 1000).toLong()
+                )
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp,
+                    bottom = if (selectionMode) 112.dp else 80.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(accounts, key = { it.id }) { account ->
+                    val totpItem = remember(account) { account.toSteamTotpUiItem() }
+                    val totpData = remember(account) { account.toSteamTotpUiData() }
+                    SwipeActions(
+                        onSwipeLeft = {
+                            if (account.id !in selectedIds) {
                                 onToggleSelection(account)
-                            } else {
-                                onOpenDetail(account)
                             }
                         },
-                        onToggleSelect = { onToggleSelection(account) },
-                        onLongClick = {
-                            copyCode(SteamTotp.generateAuthCode(account.sharedSecret, System.currentTimeMillis() / 1000L))
-                        },
-                        isSelectionMode = false,
-                        isSelected = account.id in selectedIds,
-                        leadingContent = {
-                            SteamAvatarImage(
-                                account = account,
-                                size = 40.dp
-                            )
-                        },
-                        onCopyCode = ::copyCode
-                    )
+                        onSwipeRight = { onToggleSelection(account) },
+                        isSwiped = account.id in selectedIds,
+                        allowSwipeLeft = false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        TotpCodeCard(
+                            item = totpItem,
+                            parsedTotpData = totpData,
+                            onCardClick = {
+                                if (selectionMode) {
+                                    onToggleSelection(account)
+                                } else {
+                                    onOpenDetail(account)
+                                }
+                            },
+                            onToggleSelect = { onToggleSelection(account) },
+                            onLongClick = {
+                                copyCode(SteamTotp.generateAuthCode(account.sharedSecret, System.currentTimeMillis() / 1000L))
+                            },
+                            isSelectionMode = false,
+                            isSelected = account.id in selectedIds,
+                            leadingContent = {
+                                SteamAvatarImage(
+                                    account = account,
+                                    size = 40.dp
+                                )
+                            },
+                            onCopyCode = ::copyCode,
+                            sharedTickSeconds = sharedTickSeconds,
+                            sharedProgressTimeMillis = sharedProgressTimeMillis,
+                            appSettings = appSettings
+                        )
+                    }
                 }
             }
         }
