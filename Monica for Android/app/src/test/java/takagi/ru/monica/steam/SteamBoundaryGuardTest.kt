@@ -49,6 +49,58 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun steamLocalStorageEncryptsAccountFieldsAndMigratesExistingRows() {
+        val repositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/data/SteamAccountRepository.kt"
+        ).readText()
+        val daoSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/data/SteamAccountDao.kt"
+        ).readText()
+        val databaseSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/data/SteamDatabase.kt"
+        ).readText()
+
+        assertTrue(repositorySource.contains("steamId = encrypt(payload.steamId)"))
+        assertTrue(repositorySource.contains("accountName = encrypt(payload.accountName)"))
+        assertTrue(repositorySource.contains("displayName = encrypt(payload.displayName)"))
+        assertTrue(repositorySource.contains("deviceId = encrypt(payload.deviceId)"))
+        assertTrue(repositorySource.contains("sharedSecret = encrypt(payload.sharedSecret)"))
+        assertTrue(repositorySource.contains("rawSteamGuardJson = encrypt(payload.rawJson)"))
+        assertTrue(repositorySource.contains("displayName = encrypt(displayName.trim().ifBlank { existingPlain.accountName })"))
+
+        assertTrue(repositorySource.contains("steamId = decrypt(entity.steamId).orEmpty()"))
+        assertTrue(repositorySource.contains("accountName = decrypt(entity.accountName).orEmpty()"))
+        assertTrue(repositorySource.contains("displayName = decrypt(entity.displayName).orEmpty()"))
+        assertTrue(repositorySource.contains("deviceId = decrypt(entity.deviceId).orEmpty()"))
+        assertTrue(repositorySource.contains("findExistingBySteamId"))
+        assertFalse(daoSource.contains("getBySteamId"))
+
+        assertTrue(databaseSource.contains("version = 2"))
+        assertTrue(databaseSource.contains(".addMigrations(migration1To2(context.applicationContext))"))
+        assertTrue(databaseSource.contains("encryptExistingSteamRows"))
+        assertTrue(databaseSource.contains("\"steam_id\""))
+        assertTrue(databaseSource.contains("\"accountName\""))
+        assertTrue(databaseSource.contains("\"displayName\""))
+        assertTrue(databaseSource.contains("\"deviceId\""))
+        assertTrue(databaseSource.contains("\"rawSteamGuardJson\""))
+        assertTrue(databaseSource.contains("securityManager.encryptDataLegacyCompat(value)"))
+    }
+
+    @Test
+    fun steamLoginImportLogsDoNotPersistRawAccountData() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
+        ).readText()
+
+        assertFalse(source.contains("payload=${'$'}beginPayload"))
+        assertFalse(source.contains("phoneHint=${'$'}phoneHint"))
+        assertFalse(source.contains("user=${'$'}userName"))
+        assertFalse(source.contains("steamId=${'$'}steamId"))
+        assertFalse(source.contains("Legacy RSA response invalid: ${'$'}response"))
+        assertFalse(source.contains("message=${'$'}{responseMessage ?: \"\"}"))
+    }
+
+    @Test
     fun steamPageDoesNotUseLegacyTotpImportWritePath() {
         val steamSources = listOf(
             "app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt",

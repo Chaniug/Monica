@@ -243,9 +243,10 @@ class SteamLoginImportService(
             val steamId = beginPayload.stringAny("steamid", "steam_id", "steamId")
             if (clientId.isNullOrBlank() || requestId.isNullOrBlank() || steamId.isNullOrBlank()) {
                 val eResult = beginAuthResponse.eResultInt()
+                val payloadKeys = beginPayload.keys.joinToString(",")
                 android.util.Log.w(
                     TAG,
-                    "BeginAuth missing required fields. eResult=$eResult, payload=$beginPayload"
+                    "BeginAuth missing required fields. eResult=$eResult, payloadKeys=[$payloadKeys]"
                 )
                 val fallbackResult = beginLegacyLogin(userName.trim(), password)
                 if (fallbackResult !is LoginResult.Failure) {
@@ -691,7 +692,7 @@ class SteamLoginImportService(
 
         android.util.Log.i(
             TAG,
-            "AddAuthenticator awaiting finalization: status=$status, confirmType=$confirmType, phoneHint=$phoneHint"
+            "AddAuthenticator awaiting finalization: status=$status, confirmType=$confirmType"
         )
         return AddAuthenticatorStartResult.AwaitingFinalization(
             payload = SteamGuardPayload(
@@ -825,13 +826,13 @@ class SteamLoginImportService(
         val payload = response.responseObject()
         val status = payload?.intAny("status") ?: response.intAny("status")
         val eResult = response.eResultInt()
-        val responseMessage = payload?.messageString() ?: response.messageString()
         val responseKeys = response.keys.joinToString(",")
         val payloadKeys = payload?.keys?.joinToString(",").orEmpty()
         android.util.Log.i(
             TAG,
-            "startReplaceAuthenticatorChallenge response: status=$status, eResult=$eResult, responseKeys=[$responseKeys], payloadKeys=[$payloadKeys], message=${responseMessage ?: ""}"
+            "startReplaceAuthenticatorChallenge response: status=$status, eResult=$eResult, responseKeys=[$responseKeys], payloadKeys=[$payloadKeys]"
         )
+        val responseMessage = payload?.messageString() ?: response.messageString()
 
         val explicitSuccess = response.successBoolean() == true ||
             payload?.boolAny("success") == true ||
@@ -880,7 +881,7 @@ class SteamLoginImportService(
 
         android.util.Log.i(
             TAG,
-            "startReplaceAuthenticatorChallenge success for user=$userName, steamId=$steamId, challengeType=$challengeType"
+            "startReplaceAuthenticatorChallenge success: challengeType=$challengeType"
         )
         return ReplaceAuthenticatorStartResult.Success(
             challengeType = challengeType,
@@ -1224,7 +1225,7 @@ class SteamLoginImportService(
         val exponent = response.stringAny("publickey_exp", "publickey_exponent")
         val timestamp = response.stringAny("timestamp", "rsatimestamp")
         if (modulus.isNullOrBlank() || exponent.isNullOrBlank() || timestamp.isNullOrBlank()) {
-            android.util.Log.w(TAG, "Legacy RSA response invalid: $response")
+            android.util.Log.w(TAG, "Legacy RSA response invalid: keys=[${response.keys.joinToString(",")}]")
             return null
         }
 

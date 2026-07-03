@@ -24,14 +24,14 @@ class SteamAccountRepository(
 
     suspend fun upsertFromMaFile(payload: SteamMaFilePayload): Long {
         val now = System.currentTimeMillis()
-        val existing = dao.getBySteamId(payload.steamId)
+        val existing = findExistingBySteamId(payload.steamId)
         val shouldSelect = existing?.selected ?: (dao.count() == 0)
         val entity = SteamAccountEntity(
             id = existing?.id ?: 0L,
-            steamId = payload.steamId,
-            accountName = payload.accountName,
-            displayName = payload.displayName,
-            deviceId = payload.deviceId,
+            steamId = encrypt(payload.steamId),
+            accountName = encrypt(payload.accountName),
+            displayName = encrypt(payload.displayName),
+            deviceId = encrypt(payload.deviceId),
             sharedSecret = encrypt(payload.sharedSecret),
             identitySecret = payload.identitySecret?.let(::encrypt),
             revocationCode = payload.revocationCode?.let(::encrypt),
@@ -57,9 +57,10 @@ class SteamAccountRepository(
 
     suspend fun updateDisplayName(id: Long, displayName: String) {
         val existing = dao.getById(id) ?: return
+        val existingPlain = decryptEntity(existing)
         dao.update(
             existing.copy(
-                displayName = displayName.trim().ifBlank { existing.accountName },
+                displayName = encrypt(displayName.trim().ifBlank { existingPlain.accountName }),
                 updatedAt = System.currentTimeMillis()
             )
         )
@@ -85,13 +86,19 @@ class SteamAccountRepository(
         return value?.let { securityManager.decryptDataIfMonicaCiphertext(it) }
     }
 
+    private suspend fun findExistingBySteamId(steamId: String): SteamAccountEntity? {
+        return dao.getAccounts().firstOrNull { entity ->
+            decrypt(entity.steamId) == steamId
+        }
+    }
+
     private fun decryptEntity(entity: SteamAccountEntity): SteamAccount {
         return SteamAccount(
             id = entity.id,
-            steamId = entity.steamId,
-            accountName = entity.accountName,
-            displayName = entity.displayName,
-            deviceId = entity.deviceId,
+            steamId = decrypt(entity.steamId).orEmpty(),
+            accountName = decrypt(entity.accountName).orEmpty(),
+            displayName = decrypt(entity.displayName).orEmpty(),
+            deviceId = decrypt(entity.deviceId).orEmpty(),
             sharedSecret = decrypt(entity.sharedSecret).orEmpty(),
             identitySecret = decrypt(entity.identitySecret),
             revocationCode = decrypt(entity.revocationCode),

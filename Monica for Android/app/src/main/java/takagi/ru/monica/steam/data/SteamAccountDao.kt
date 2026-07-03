@@ -19,9 +19,6 @@ interface SteamAccountDao {
     @Query("SELECT * FROM steam_accounts WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): SteamAccountEntity?
 
-    @Query("SELECT * FROM steam_accounts WHERE steam_id = :steamId LIMIT 1")
-    suspend fun getBySteamId(steamId: String): SteamAccountEntity?
-
     @Query("SELECT * FROM steam_accounts WHERE selected = 1 LIMIT 1")
     suspend fun getSelected(): SteamAccountEntity?
 
