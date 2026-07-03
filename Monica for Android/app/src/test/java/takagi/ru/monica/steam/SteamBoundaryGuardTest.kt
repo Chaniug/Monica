@@ -85,6 +85,42 @@ class SteamBoundaryGuardTest {
         assertTrue(source.contains("private fun SteamCodeContent(\n    account: SteamAccount,"))
     }
 
+    @Test
+    fun steamPageSupportsQrScanSmoothProgressAndBulkSelection() {
+        val screenSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+        val mainActivitySource = projectFile("app/src/main/java/takagi/ru/monica/MainActivity.kt")
+            .readText()
+        val navSource = projectFile("app/src/main/java/takagi/ru/monica/navigation/Screens.kt")
+            .readText()
+        val bottomNavSource = projectFile("app/src/main/java/takagi/ru/monica/ui/main/navigation/BottomNavModel.kt")
+            .readText()
+
+        assertTrue(navSource.contains("object SteamQrScan : Screen(\"steam_qr_scan\")"))
+        assertTrue(mainActivitySource.contains("steam_qr_result"))
+        assertTrue(mainActivitySource.contains("Screen.SteamQrScan.route"))
+        assertTrue(screenSource.contains("pendingSteamQrResult"))
+        assertTrue(screenSource.contains("onScanSteamQrCode"))
+        assertTrue(screenSource.contains("pendingScannedQr"))
+        assertTrue(screenSource.contains("R.string.steam_qr_login_title"))
+        assertTrue(screenSource.contains("R.string.scan_qr_code"))
+        assertTrue(screenSource.contains("R.string.select_all"))
+        assertTrue(screenSource.contains("R.string.deselect_all"))
+
+        assertTrue(viewModelSource.contains("CODE_TICK_INTERVAL_MS = 250L"))
+        assertTrue(viewModelSource.contains("periodProgress"))
+        assertTrue(screenSource.contains("animateFloatAsState"))
+        assertTrue(screenSource.contains("SteamCodePeriodProgress"))
+
+        assertTrue(viewModelSource.contains("fun selectAllConfirmations()"))
+        assertTrue(viewModelSource.contains("fun clearSelectedConfirmations()"))
+        assertTrue(bottomNavSource.contains("Icons.Default.VerifiedUser"))
+        assertFalse(bottomNavSource.contains("SportsEsports"))
+        assertFalse(screenSource.contains("SportsEsports"))
+    }
+
     private fun projectFile(path: String): File {
         var dir = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         while (

@@ -53,9 +53,9 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.AlertDialog
@@ -1570,5 +1570,5 @@ private fun tabIcon(tab: BottomNavContentTab): ImageVector = when (tab) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.SEND -> Icons.Default.Send
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
-    BottomNavContentTab.STEAM -> Icons.Default.SportsEsports
+    BottomNavContentTab.STEAM -> Icons.Default.VerifiedUser
 }

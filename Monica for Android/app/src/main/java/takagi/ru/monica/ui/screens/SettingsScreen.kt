@@ -2308,7 +2308,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.NOTES -> Icons.Default.Note
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
-    BottomNavContentTab.STEAM -> Icons.Default.SportsEsports
+    BottomNavContentTab.STEAM -> Icons.Default.VerifiedUser
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {

@@ -36,6 +36,7 @@ data class SteamUiState(
     val selectedAccountId: Long? = null,
     val currentCode: String = "",
     val secondsRemaining: Int = 30,
+    val periodProgress: Float = 1f,
     val confirmations: List<SteamConfirmation> = emptyList(),
     val pendingLogins: List<SteamPendingLogin> = emptyList(),
     val selectedConfirmationIds: Set<String> = emptySet(),
@@ -68,13 +69,13 @@ class SteamViewModel(
     init {
         viewModelScope.launch {
             repository.observeAccounts().collect { accounts ->
-                updateForAccounts(accounts, System.currentTimeMillis() / 1000L)
+                updateForAccounts(accounts, System.currentTimeMillis())
             }
         }
         viewModelScope.launch {
             while (isActive) {
-                updateCodeTick(System.currentTimeMillis() / 1000L)
-                delay(1000L)
+                updateCodeTick(System.currentTimeMillis())
+                delay(CODE_TICK_INTERVAL_MS)
             }
         }
         viewModelScope.launch {
@@ -232,6 +233,17 @@ class SteamViewModel(
         val selected = _uiState.value.selectedConfirmationIds.toMutableSet()
         if (!selected.add(id)) selected.remove(id)
         _uiState.value = _uiState.value.copy(selectedConfirmationIds = selected)
+    }
+
+    fun selectAllConfirmations() {
+        val ids = _uiState.value.confirmations.map { it.id }.toSet()
+        if (ids.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(selectedConfirmationIds = ids)
+        }
+    }
+
+    fun clearSelectedConfirmations() {
+        _uiState.value = _uiState.value.copy(selectedConfirmationIds = emptySet())
     }
 
     fun respondSelectedConfirmations(accept: Boolean) {
@@ -433,27 +445,41 @@ class SteamViewModel(
             ?: state.accounts.firstOrNull()
     }
 
-    private fun updateForAccounts(accounts: List<SteamAccount>, nowSeconds: Long) {
+    private fun updateForAccounts(accounts: List<SteamAccount>, nowMillis: Long) {
         val selected = accounts.firstOrNull { it.selected } ?: accounts.firstOrNull()
         val previous = _uiState.value
         val selectedChanged = previous.selectedAccountId != selected?.id
+        val nowSeconds = nowMillis / 1000L
         _uiState.value = previous.copy(
             accounts = accounts,
             selectedAccountId = selected?.id,
             currentCode = selected?.let { SteamTotp.generateAuthCode(it.sharedSecret, nowSeconds) }.orEmpty(),
-            secondsRemaining = SteamTotp.secondsRemaining(nowSeconds),
+            secondsRemaining = secondsRemaining(nowMillis),
+            periodProgress = periodProgress(nowMillis),
             confirmations = if (selectedChanged) emptyList() else previous.confirmations,
             pendingLogins = if (selectedChanged) emptyList() else previous.pendingLogins,
             selectedConfirmationIds = if (selectedChanged) emptySet() else previous.selectedConfirmationIds
         )
     }
 
-    private fun updateCodeTick(nowSeconds: Long) {
+    private fun updateCodeTick(nowMillis: Long) {
         val account = selectedAccount()
+        val nowSeconds = nowMillis / 1000L
         _uiState.value = _uiState.value.copy(
             currentCode = account?.let { SteamTotp.generateAuthCode(it.sharedSecret, nowSeconds) }.orEmpty(),
-            secondsRemaining = SteamTotp.secondsRemaining(nowSeconds)
+            secondsRemaining = secondsRemaining(nowMillis),
+            periodProgress = periodProgress(nowMillis)
         )
+    }
+
+    private fun secondsRemaining(nowMillis: Long): Int {
+        val remainingMillis = CODE_PERIOD_MS - Math.floorMod(nowMillis, CODE_PERIOD_MS)
+        return ((remainingMillis + 999L) / 1000L).toInt().coerceIn(1, 30)
+    }
+
+    private fun periodProgress(nowMillis: Long): Float {
+        val remainingMillis = CODE_PERIOD_MS - Math.floorMod(nowMillis, CODE_PERIOD_MS)
+        return (remainingMillis.toFloat() / CODE_PERIOD_MS.toFloat()).coerceIn(0f, 1f)
     }
 
     private fun setLoading(loading: Boolean) {
@@ -469,6 +495,9 @@ class SteamViewModel(
     }
 
     companion object {
+        private const val CODE_PERIOD_MS = 30_000L
+        private const val CODE_TICK_INTERVAL_MS = 250L
+
         fun factory(context: Context): ViewModelProvider.Factory {
             val appContext = context.applicationContext
             return object : ViewModelProvider.Factory {

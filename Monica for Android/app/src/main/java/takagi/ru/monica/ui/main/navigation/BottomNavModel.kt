@@ -8,8 +8,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.ui.graphics.vector.ImageVector
 import takagi.ru.monica.R
@@ -31,7 +31,7 @@ sealed class BottomNavItem(
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
     object Send : BottomNavItem(BottomNavContentTab.SEND, Icons.Default.Send)
     object Passkey : BottomNavItem(BottomNavContentTab.PASSKEY, Icons.Default.Key)
-    object Steam : BottomNavItem(BottomNavContentTab.STEAM, Icons.Default.SportsEsports)
+    object Steam : BottomNavItem(BottomNavContentTab.STEAM, Icons.Default.VerifiedUser)
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
 

@@ -897,6 +897,7 @@
     <string name="steam_no_login_session">No login session</string>
     <string name="steam_no_pending_logins">No pending logins</string>
     <string name="steam_qr_link_label">Steam QR link</string>
+    <string name="steam_qr_login_title">Steam QR login</string>
     <string name="steam_unknown_device">Unknown device</string>
     <string name="steam_ip_label">IP</string>
     <string name="steam_location_label">Location</string>

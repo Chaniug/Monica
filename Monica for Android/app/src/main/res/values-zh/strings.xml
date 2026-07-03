@@ -890,6 +890,7 @@
     <string name="steam_no_login_session">没有可用的登录批准会话</string>
     <string name="steam_no_pending_logins">暂无待批准登录</string>
     <string name="steam_qr_link_label">Steam 二维码链接</string>
+    <string name="steam_qr_login_title">Steam 二维码登录</string>
     <string name="steam_unknown_device">未知设备</string>
     <string name="steam_ip_label">IP</string>
     <string name="steam_location_label">位置</string>

@@ -993,6 +993,9 @@ fun MonicaContent(
             val mainQrResult = navController.currentBackStackEntry
                 ?.savedStateHandle
                 ?.get<String>("qr_result")
+            val steamQrResult = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>("steam_qr_result")
 
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -1035,6 +1038,17 @@ fun MonicaContent(
                 },
                 onNavigateToQuickTotpScan = {
                     navController.navigate(Screen.QuickTotpScan.route)
+                },
+                pendingSteamQrResult = steamQrResult,
+                onConsumePendingSteamQrResult = {
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<String>("steam_qr_result")
+                },
+                onScanSteamQrCode = {
+                    navController.navigate(Screen.SteamQrScan.route) {
+                        launchSingleTop = true
+                    }
                 },
                 pendingPasswordAuthenticatorQrResult = mainQrResult,
                 onConsumePendingPasswordAuthenticatorQrResult = {
@@ -2258,6 +2272,20 @@ fun MonicaContent(
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("qr_result", qrData)
+                    navController.popBackStack()
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.SteamQrScan.route) {
+            takagi.ru.monica.ui.screens.QrScannerScreen(
+                onQrCodeScanned = { qrData ->
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("steam_qr_result", qrData)
                     navController.popBackStack()
                 },
                 onNavigateBack = {

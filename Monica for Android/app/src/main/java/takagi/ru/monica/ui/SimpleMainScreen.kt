@@ -755,6 +755,9 @@ fun SimpleMainScreen(
     onNavigateToAddSshKey: (Long?) -> Unit = {},
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
+    pendingSteamQrResult: String? = null,
+    onConsumePendingSteamQrResult: () -> Unit = {},
+    onScanSteamQrCode: () -> Unit = {},
     pendingPasswordAuthenticatorQrResult: String? = null,
     onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
     onScanPasswordAuthenticatorQrCode: () -> Unit = {},
@@ -1935,6 +1938,9 @@ fun SimpleMainScreen(
                     onTotpOpen = handleTotpOpen,
                     onNavigateToAddTotp = onNavigateToAddTotp,
                     onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                    pendingSteamQrResult = pendingSteamQrResult,
+                    onConsumePendingSteamQrResult = onConsumePendingSteamQrResult,
+                    onScanSteamQrCode = onScanSteamQrCode,
                     onNavigateToFidoQrScan = onNavigateToFidoQrScan,
                     onTotpSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                         isTotpSelectionMode = isSelectionMode
@@ -2406,6 +2412,9 @@ fun SimpleMainScreen(
                     SteamScreen(
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
                         onOpenStandaloneSettings = onNavigateToStandaloneSettings,
+                        pendingSteamQrResult = pendingSteamQrResult,
+                        onConsumePendingSteamQrResult = onConsumePendingSteamQrResult,
+                        onScanSteamQrCode = onScanSteamQrCode,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -2810,6 +2819,9 @@ fun SimpleMainScreen(
                         SteamScreen(
                             showStandaloneSettingsEntry = shouldHideBottomNavigation,
                             onOpenStandaloneSettings = onNavigateToStandaloneSettings,
+                            pendingSteamQrResult = pendingSteamQrResult,
+                            onConsumePendingSteamQrResult = onConsumePendingSteamQrResult,
+                            onScanSteamQrCode = onScanSteamQrCode,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

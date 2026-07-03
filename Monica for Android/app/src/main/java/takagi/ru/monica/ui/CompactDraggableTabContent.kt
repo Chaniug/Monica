@@ -75,6 +75,9 @@ internal fun CompactDraggableTabContent(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     onTotpOpen: (Long) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
+    pendingSteamQrResult: String? = null,
+    onConsumePendingSteamQrResult: () -> Unit = {},
+    onScanSteamQrCode: () -> Unit = {},
     onNavigateToFidoQrScan: () -> Unit,
     onTotpSelectionModeChange: (
         Boolean,
@@ -355,6 +358,9 @@ internal fun CompactDraggableTabContent(
                 SteamScreen(
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     onOpenStandaloneSettings = onOpenStandaloneSettings,
+                    pendingSteamQrResult = pendingSteamQrResult,
+                    onConsumePendingSteamQrResult = onConsumePendingSteamQrResult,
+                    onScanSteamQrCode = onScanSteamQrCode,
                     modifier = Modifier.fillMaxSize()
                 )
             }

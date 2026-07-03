@@ -5,6 +5,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,8 +38,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -113,7 +116,10 @@ private data class LoginActionRequest(
 fun SteamScreen(
     showStandaloneSettingsEntry: Boolean,
     onOpenStandaloneSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pendingSteamQrResult: String? = null,
+    onConsumePendingSteamQrResult: () -> Unit = {},
+    onScanSteamQrCode: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val viewModel: SteamViewModel = viewModel(
@@ -127,6 +133,7 @@ fun SteamScreen(
     var showAddAccountDialog by remember { mutableStateOf(false) }
     var addAccountMethod by remember { mutableStateOf<SteamAddAccountMethod?>(null) }
     var deleteTarget by remember { mutableStateOf<SteamAccount?>(null) }
+    var scannedQrPayload by remember { mutableStateOf<String?>(null) }
     val pendingConfirmationCount = if (selectedAccount?.canUseConfirmations == true) {
         uiState.confirmations.size
     } else {
@@ -149,6 +156,15 @@ fun SteamScreen(
         if (uiState.accounts.isNotEmpty()) {
             showAddAccountDialog = false
             addAccountMethod = null
+        }
+    }
+
+    LaunchedEffect(pendingSteamQrResult) {
+        val qr = pendingSteamQrResult?.trim().orEmpty()
+        if (qr.isNotBlank()) {
+            selectedSection = SteamSection.LOGIN_APPROVAL
+            scannedQrPayload = qr
+            onConsumePendingSteamQrResult()
         }
     }
 
@@ -233,7 +249,7 @@ fun SteamScreen(
                             contentPadding = PaddingValues(horizontal = 8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SportsEsports,
+                                imageVector = Icons.Default.VerifiedUser,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -344,7 +360,8 @@ fun SteamScreen(
                         SteamSection.CODE -> SteamCodeContent(
                             account = selectedAccount,
                             code = uiState.currentCode,
-                            secondsRemaining = uiState.secondsRemaining
+                            secondsRemaining = uiState.secondsRemaining,
+                            periodProgress = uiState.periodProgress
                         )
                         SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
                             account = selectedAccount,
@@ -352,13 +369,18 @@ fun SteamScreen(
                             selectedIds = uiState.selectedConfirmationIds,
                             onRefresh = { viewModel.refreshConfirmations() },
                             onToggle = viewModel::toggleConfirmation,
+                            onSelectAll = viewModel::selectAllConfirmations,
+                            onClearSelection = viewModel::clearSelectedConfirmations,
                             onRespond = viewModel::respondConfirmation,
                             onRespondSelected = viewModel::respondSelectedConfirmations
                         )
                         SteamSection.LOGIN_APPROVAL -> SteamLoginApprovalContent(
                             account = selectedAccount,
                             pendingLogins = uiState.pendingLogins,
+                            pendingScannedQr = scannedQrPayload,
+                            onScannedQrHandled = { scannedQrPayload = null },
                             onRefresh = { viewModel.refreshPendingLogins() },
+                            onScanQrCode = onScanSteamQrCode,
                             onRespondPending = viewModel::respondPendingLogin,
                             onRespondQr = viewModel::respondQr
                         )
@@ -440,7 +462,7 @@ private fun SteamTopActionsMenu(
                             imageVector = if (account.id == selectedAccount.id) {
                                 Icons.Default.Check
                             } else {
-                                Icons.Default.SportsEsports
+                                Icons.Default.VerifiedUser
                             },
                             contentDescription = null
                         )
@@ -481,9 +503,15 @@ private fun SteamTopActionsMenu(
 private fun SteamCodeContent(
     account: SteamAccount,
     code: String,
-    secondsRemaining: Int
+    secondsRemaining: Int,
+    periodProgress: Float
 ) {
     val clipboard = LocalClipboardManager.current
+    val animatedProgress by animateFloatAsState(
+        targetValue = periodProgress,
+        animationSpec = tween(durationMillis = 220, easing = LinearEasing),
+        label = "SteamCodePeriodProgress"
+    )
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -513,7 +541,7 @@ private fun SteamCodeContent(
                         )
                     }
                     LinearProgressIndicator(
-                        progress = { secondsRemaining / 30f },
+                        progress = { animatedProgress },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -597,11 +625,15 @@ private fun SteamConfirmationsContent(
     selectedIds: Set<String>,
     onRefresh: () -> Unit,
     onToggle: (String) -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
     onRespond: (SteamConfirmation, Boolean) -> Unit,
     onRespondSelected: (Boolean) -> Unit
 ) {
     var pendingAction by remember { mutableStateOf<ConfirmationActionRequest?>(null) }
     val selectedConfirmations = confirmations.filter { it.id in selectedIds }
+    val allSelected = confirmations.isNotEmpty() &&
+        confirmations.all { it.id in selectedIds }
 
     pendingAction?.let { request ->
         AlertDialog(
@@ -673,33 +705,58 @@ private fun SteamConfirmationsContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRefresh, enabled = account?.canUseConfirmations == true) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.refresh))
-                }
-                FilledTonalButton(
-                    onClick = {
-                        pendingAction = ConfirmationActionRequest(
-                            confirmations = selectedConfirmations,
-                            accept = true
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onRefresh, enabled = account?.canUseConfirmations == true) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.refresh))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (allSelected) {
+                                onClearSelection()
+                            } else {
+                                onSelectAll()
+                            }
+                        },
+                        enabled = account?.canUseConfirmations == true && confirmations.isNotEmpty()
+                    ) {
+                        Icon(
+                            imageVector = if (allSelected) Icons.Default.Close else Icons.Default.Check,
+                            contentDescription = null
                         )
-                    },
-                    enabled = selectedConfirmations.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.steam_approve))
-                }
-                OutlinedButton(
-                    onClick = {
-                        pendingAction = ConfirmationActionRequest(
-                            confirmations = selectedConfirmations,
-                            accept = false
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(
+                                if (allSelected) R.string.deselect_all else R.string.select_all
+                            )
                         )
-                    },
-                    enabled = selectedConfirmations.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.steam_reject))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(
+                        onClick = {
+                            pendingAction = ConfirmationActionRequest(
+                                confirmations = selectedConfirmations,
+                                accept = true
+                            )
+                        },
+                        enabled = selectedConfirmations.isNotEmpty()
+                    ) {
+                        Text(stringResource(R.string.steam_approve))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            pendingAction = ConfirmationActionRequest(
+                                confirmations = selectedConfirmations,
+                                accept = false
+                            )
+                        },
+                        enabled = selectedConfirmations.isNotEmpty()
+                    ) {
+                        Text(stringResource(R.string.steam_reject))
+                    }
                 }
             }
         }
@@ -766,13 +823,26 @@ private fun ConfirmationRow(
 private fun SteamLoginApprovalContent(
     account: SteamAccount?,
     pendingLogins: List<SteamPendingLogin>,
+    pendingScannedQr: String?,
+    onScannedQrHandled: () -> Unit,
     onRefresh: () -> Unit,
+    onScanQrCode: (() -> Unit)?,
     onRespondPending: (SteamPendingLogin, Boolean) -> Unit,
     onRespondQr: (String, Boolean) -> Unit
 ) {
     var qrText by remember { mutableStateOf("") }
     var pendingAction by remember { mutableStateOf<LoginActionRequest?>(null) }
     var pendingQrAction by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var scannedQrAction by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingScannedQr) {
+        val qr = pendingScannedQr?.trim().orEmpty()
+        if (qr.isNotBlank()) {
+            qrText = qr
+            scannedQrAction = qr
+            onScannedQrHandled()
+        }
+    }
 
     pendingAction?.let { request ->
         AlertDialog(
@@ -848,6 +918,41 @@ private fun SteamLoginApprovalContent(
         )
     }
 
+    scannedQrAction?.let { rawQr ->
+        AlertDialog(
+            onDismissRequest = { scannedQrAction = null },
+            title = { Text(stringResource(R.string.steam_qr_login_title)) },
+            text = {
+                Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            onRespondQr(rawQr, false)
+                            scannedQrAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_reject))
+                    }
+                    TextButton(
+                        onClick = {
+                            onRespondQr(rawQr, true)
+                            scannedQrAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_approve))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { scannedQrAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -859,6 +964,14 @@ private fun SteamLoginApprovalContent(
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.refresh))
+                }
+                OutlinedButton(
+                    onClick = { onScanQrCode?.invoke() },
+                    enabled = account?.canApproveLogins == true && onScanQrCode != null
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.scan_qr_code))
                 }
             }
         }
@@ -976,7 +1089,7 @@ private fun SteamEmptyAccountContent(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.SportsEsports,
+                imageVector = Icons.Default.VerifiedUser,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary
             )
