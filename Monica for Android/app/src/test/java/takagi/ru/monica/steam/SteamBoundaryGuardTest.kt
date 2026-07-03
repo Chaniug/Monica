@@ -146,6 +146,7 @@ class SteamBoundaryGuardTest {
         assertFalse(source.contains("SteamTokenSelectionBar"))
         assertTrue(source.contains("SteamAccountDetailContent"))
         assertTrue(source.contains("SteamLoginApprovalSection"))
+        assertTrue(source.contains("SteamAuthorizedDevicesSection"))
         assertTrue(source.contains("SteamAvatarImage"))
         assertTrue(source.contains("STEAM_AVATAR_CACHE_TTL_MS"))
         assertTrue(source.contains("steamAvatarCacheFile"))
@@ -235,6 +236,22 @@ class SteamBoundaryGuardTest {
         assertTrue(codeContent.contains("appSettings = appSettings"))
         assertFalse(codeContent.contains("onLongClick = { onToggleSelection(account) }"))
         assertTrue(codeContent.contains("SteamAvatarImage("))
+
+        val detailContent = source
+            .substringAfter("private fun SteamAccountDetailContent(")
+            .substringBefore("@Composable\nprivate fun SteamAccountCredentialCard(")
+        assertTrue(detailContent.contains("authorizedDevices: List<SteamAuthorizedDevice>"))
+        assertTrue(detailContent.contains("SteamAuthorizedDevicesSection("))
+        assertTrue(source.contains("uiState.authorizedDevices"))
+        assertTrue(source.contains("viewModel.refreshAuthorizedDevices(detailAccount.id)"))
+
+        val authorizedDevicesContent = source
+            .substringAfter("private fun SteamAuthorizedDevicesSection(")
+            .substringBefore("@Composable\nprivate fun SteamAuthorizedDeviceRow(")
+        assertTrue(authorizedDevicesContent.contains("R.string.steam_authorized_devices_label"))
+        assertTrue(authorizedDevicesContent.contains("R.string.steam_no_authorized_device_session"))
+        assertTrue(authorizedDevicesContent.contains("R.string.steam_no_authorized_devices"))
+        assertTrue(authorizedDevicesContent.contains("onRefresh"))
 
         val confirmationsContent = source
             .substringAfter("private fun SteamConfirmationsContent(")
@@ -389,6 +406,15 @@ class SteamBoundaryGuardTest {
         assertTrue(serviceSource.contains("val imageUrl: String"))
         assertTrue(serviceSource.contains("imageUrl = imageUrl()"))
         assertTrue(serviceSource.contains("\"image_url\""))
+
+        val authorizedDeviceServiceSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/network/SteamAuthorizedDeviceService.kt"
+        ).readText()
+        assertTrue(authorizedDeviceServiceSource.contains("method = \"EnumerateTokens\""))
+        assertTrue(authorizedDeviceServiceSource.contains("writeBool(1, false)"))
+        assertTrue(authorizedDeviceServiceSource.contains("fields[9]?.bytes?.let(::parseUsage)"))
+        assertTrue(authorizedDeviceServiceSource.contains("fields[10]?.bytes?.let(::parseUsage)"))
+        assertFalse(authorizedDeviceServiceSource.contains("Revoke"))
     }
 
     private fun projectFile(path: String): File {

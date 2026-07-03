@@ -879,6 +879,7 @@
     <string name="steam_confirmations_label">交易确认</string>
     <string name="steam_login_approval_label">登录批准</string>
     <string name="steam_credentials_label">账号信息</string>
+    <string name="steam_authorized_devices_label">已授权设备</string>
     <string name="steam_account_avatar_description">Steam 账号头像</string>
     <string name="steam_empty_field">暂无</string>
     <string name="steam_selected_accounts_count">已选 %1$d 个</string>
@@ -903,9 +904,18 @@
     <string name="steam_reject_qr_login_title">拒绝 Steam 二维码登录</string>
     <string name="steam_no_login_session">没有可用的登录批准会话</string>
     <string name="steam_no_pending_logins">暂无待批准登录</string>
+    <string name="steam_no_authorized_device_session">没有可用的已授权设备会话</string>
+    <string name="steam_no_authorized_devices">暂无已授权设备</string>
+    <string name="steam_cannot_refresh_authorized_devices">无法刷新已授权设备</string>
     <string name="steam_qr_link_label">Steam 二维码链接</string>
     <string name="steam_qr_login_title">Steam 二维码登录</string>
     <string name="steam_unknown_device">未知设备</string>
+    <string name="steam_device_logged_in">在线</string>
+    <string name="steam_device_logged_out">已登出</string>
+    <string name="steam_platform_client">Steam 客户端</string>
+    <string name="steam_platform_web">网页浏览器</string>
+    <string name="steam_platform_mobile">手机 App</string>
+    <string name="steam_platform_unknown">未知平台</string>
     <string name="steam_ip_label">IP</string>
     <string name="steam_location_label">位置</string>
     <string name="steam_time_label">时间</string>

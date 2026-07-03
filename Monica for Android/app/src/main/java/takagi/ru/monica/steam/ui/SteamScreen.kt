@@ -114,6 +114,7 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.steam.core.SteamTotp
 import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
@@ -249,6 +250,12 @@ fun SteamScreen(
     LaunchedEffect(detailAccount?.id, detailAccount?.canApproveLogins) {
         if (detailAccount?.canApproveLogins == true) {
             viewModel.refreshPendingLogins(silent = true)
+        }
+    }
+
+    LaunchedEffect(detailAccount?.id, detailAccount?.accessToken) {
+        detailAccount?.let { account ->
+            viewModel.refreshAuthorizedDevices(account.id, silent = true)
         }
     }
 
@@ -566,9 +573,11 @@ fun SteamScreen(
                     SteamAccountDetailContent(
                         account = detailAccount,
                         pendingLogins = uiState.pendingLogins,
+                        authorizedDevices = uiState.authorizedDevices,
                         pendingScannedQr = scannedQrPayload,
                         onScannedQrHandled = { scannedQrPayload = null },
                         onRefreshLogins = { viewModel.refreshPendingLogins() },
+                        onRefreshAuthorizedDevices = { viewModel.refreshAuthorizedDevices(detailAccount.id) },
                         onRespondPending = viewModel::respondPendingLogin,
                         onRespondQr = viewModel::respondQr
                     )
@@ -777,9 +786,11 @@ private fun SteamCodeContent(
 private fun SteamAccountDetailContent(
     account: SteamAccount,
     pendingLogins: List<SteamPendingLogin>,
+    authorizedDevices: List<SteamAuthorizedDevice>,
     pendingScannedQr: String?,
     onScannedQrHandled: () -> Unit,
     onRefreshLogins: () -> Unit,
+    onRefreshAuthorizedDevices: () -> Unit,
     onRespondPending: (SteamPendingLogin, Boolean) -> Unit,
     onRespondQr: (String, Boolean) -> Unit
 ) {
@@ -829,6 +840,13 @@ private fun SteamAccountDetailContent(
                 onRefresh = onRefreshLogins,
                 onRespondPending = onRespondPending,
                 onRespondQr = onRespondQr
+            )
+        }
+        item {
+            SteamAuthorizedDevicesSection(
+                account = account,
+                devices = authorizedDevices,
+                onRefresh = onRefreshAuthorizedDevices
             )
         }
         item {
@@ -1473,6 +1491,132 @@ private fun SteamConfirmationAccountCard(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun SteamAuthorizedDevicesSection(
+    account: SteamAccount,
+    devices: List<SteamAuthorizedDevice>,
+    onRefresh: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.steam_authorized_devices_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !account.accessToken.isNullOrBlank()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.refresh)
+                    )
+                }
+            }
+
+            if (account.accessToken.isNullOrBlank()) {
+                EmptyState(stringResource(R.string.steam_no_authorized_device_session))
+            } else if (devices.isEmpty()) {
+                EmptyState(stringResource(R.string.steam_no_authorized_devices))
+            } else {
+                devices.forEach { device ->
+                    SteamAuthorizedDeviceRow(device)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SteamAuthorizedDeviceRow(device: SteamAuthorizedDevice) {
+    val lastSeen = device.lastSeen
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = device.description.ifBlank { stringResource(R.string.steam_unknown_device) },
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = stringResource(
+                        if (device.loggedIn) {
+                            R.string.steam_device_logged_in
+                        } else {
+                            R.string.steam_device_logged_out
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (device.loggedIn) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+            Text(
+                text = steamPlatformLabel(device.platformType),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (lastSeen != null) {
+                Text(
+                    text = listOf(
+                        lastSeen.location.takeIf { it.isNotBlank() },
+                        lastSeen.timeSeconds.takeIf { it > 0L }?.let {
+                            formatSteamLoginTime(it * 1000L)
+                        }
+                    ).filterNotNull().joinToString(" · "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun steamPlatformLabel(platformType: Int): String {
+    return when (platformType) {
+        1 -> stringResource(R.string.steam_platform_client)
+        2 -> stringResource(R.string.steam_platform_web)
+        3 -> stringResource(R.string.steam_platform_mobile)
+        else -> stringResource(R.string.steam_platform_unknown)
     }
 }
 

@@ -23,6 +23,8 @@ import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.data.SteamAccountRepository
 import takagi.ru.monica.steam.data.SteamDatabase
 import takagi.ru.monica.steam.importer.SteamMaFileParser
+import takagi.ru.monica.steam.network.SteamAuthorizedDevice
+import takagi.ru.monica.steam.network.SteamAuthorizedDeviceService
 import takagi.ru.monica.steam.network.SteamBatchResult
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamConfirmationService
@@ -39,6 +41,7 @@ data class SteamUiState(
     val periodProgress: Float = 1f,
     val confirmations: List<SteamConfirmation> = emptyList(),
     val pendingLogins: List<SteamPendingLogin> = emptyList(),
+    val authorizedDevices: List<SteamAuthorizedDevice> = emptyList(),
     val selectedConfirmationIds: Set<String> = emptySet(),
     val pendingLoginChallenge: SteamLoginChallengeUi? = null,
     val loading: Boolean = false,
@@ -59,6 +62,7 @@ class SteamViewModel(
     private val repository: SteamAccountRepository,
     private val parser: SteamMaFileParser = SteamMaFileParser(),
     private val confirmationService: SteamConfirmationService = SteamConfirmationService(),
+    private val authorizedDeviceService: SteamAuthorizedDeviceService = SteamAuthorizedDeviceService(),
     private val loginApprovalService: SteamLoginApprovalService = SteamLoginApprovalService(),
     private val loginImportService: SteamLoginImportService = SteamLoginImportService()
 ) : ViewModel() {
@@ -204,6 +208,7 @@ class SteamViewModel(
             _uiState.value = _uiState.value.copy(
                 confirmations = emptyList(),
                 pendingLogins = emptyList(),
+                authorizedDevices = emptyList(),
                 selectedConfirmationIds = emptySet()
             )
         }
@@ -296,6 +301,30 @@ class SteamViewModel(
             }.onFailure { error ->
                 if (!silent) setMessage(
                     error.message ?: appContext.getString(R.string.steam_cannot_refresh_logins)
+                )
+            }
+            if (!silent) setLoading(false)
+        }
+    }
+
+    fun refreshAuthorizedDevices(accountId: Long, silent: Boolean = false) {
+        viewModelScope.launch {
+            val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            if (account.accessToken.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(authorizedDevices = emptyList())
+                return@launch
+            }
+            if (!silent) setLoading(true)
+            runCatching {
+                withContext(Dispatchers.IO) { authorizedDeviceService.fetch(account) }
+            }.onSuccess { devices ->
+                if (_uiState.value.accounts.any { it.id == accountId }) {
+                    _uiState.value = _uiState.value.copy(authorizedDevices = devices)
+                }
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(authorizedDevices = emptyList())
+                if (!silent) setMessage(
+                    error.message ?: appContext.getString(R.string.steam_cannot_refresh_authorized_devices)
                 )
             }
             if (!silent) setLoading(false)
@@ -465,6 +494,7 @@ class SteamViewModel(
             periodProgress = periodProgress(nowMillis),
             confirmations = if (selectedChanged) emptyList() else previous.confirmations,
             pendingLogins = if (selectedChanged) emptyList() else previous.pendingLogins,
+            authorizedDevices = if (selectedChanged) emptyList() else previous.authorizedDevices,
             selectedConfirmationIds = if (selectedChanged) emptySet() else previous.selectedConfirmationIds
         )
     }
