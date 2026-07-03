@@ -892,6 +892,7 @@
     <string name="steam_no_confirmations">暂无待确认项目</string>
     <string name="steam_approve_login_title">批准 Steam 登录</string>
     <string name="steam_reject_login_title">拒绝 Steam 登录</string>
+    <string name="steam_login_request_title">Steam 登录请求</string>
     <string name="steam_approve_qr_login_title">批准 Steam 二维码登录</string>
     <string name="steam_reject_qr_login_title">拒绝 Steam 二维码登录</string>
     <string name="steam_no_login_session">没有可用的登录批准会话</string>
@@ -901,6 +902,7 @@
     <string name="steam_unknown_device">未知设备</string>
     <string name="steam_ip_label">IP</string>
     <string name="steam_location_label">位置</string>
+    <string name="steam_time_label">时间</string>
     <string name="steam_client_label">Client</string>
     <string name="steam_login_fallback_title">Steam 登录</string>
     <string name="steam_client_id_fallback">client %1$d</string>

@@ -206,6 +206,10 @@ class SteamBoundaryGuardTest {
         assertTrue(screenSource.contains("pendingScannedQr"))
         assertTrue(screenSource.contains("R.string.steam_qr_login_title"))
         assertTrue(screenSource.contains("R.string.scan_qr_code"))
+        assertTrue(screenSource.contains("autoPromptedClientIds"))
+        assertTrue(screenSource.contains("R.string.steam_login_request_title"))
+        assertTrue(screenSource.contains("R.string.steam_time_label"))
+        assertTrue(screenSource.contains("formatSteamLoginTime(login.detectedAtMillis)"))
         assertTrue(screenSource.contains("R.string.select_all"))
         assertTrue(screenSource.contains("R.string.deselect_all"))
 

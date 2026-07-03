@@ -899,6 +899,7 @@
     <string name="steam_no_confirmations">No confirmations</string>
     <string name="steam_approve_login_title">Approve Steam login</string>
     <string name="steam_reject_login_title">Reject Steam login</string>
+    <string name="steam_login_request_title">Steam login request</string>
     <string name="steam_approve_qr_login_title">Approve Steam QR login</string>
     <string name="steam_reject_qr_login_title">Reject Steam QR login</string>
     <string name="steam_no_login_session">No login session</string>
@@ -908,6 +909,7 @@
     <string name="steam_unknown_device">Unknown device</string>
     <string name="steam_ip_label">IP</string>
     <string name="steam_location_label">Location</string>
+    <string name="steam_time_label">Time</string>
     <string name="steam_client_label">Client</string>
     <string name="steam_login_fallback_title">Steam login</string>
     <string name="steam_client_id_fallback">client %1$d</string>

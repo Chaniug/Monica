@@ -27,7 +27,8 @@ data class SteamPendingLogin(
     val ip: String,
     val city: String,
     val country: String,
-    val deviceName: String
+    val deviceName: String,
+    val detectedAtMillis: Long = System.currentTimeMillis()
 ) {
     val location: String
         get() = listOf(city, country).filter { it.isNotBlank() }.joinToString(", ")

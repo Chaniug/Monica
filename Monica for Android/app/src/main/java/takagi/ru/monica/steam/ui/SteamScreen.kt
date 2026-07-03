@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -89,6 +90,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.xml.parsers.DocumentBuilderFactory
@@ -127,8 +131,7 @@ private data class ConfirmationActionRequest(
 )
 
 private data class LoginActionRequest(
-    val login: SteamPendingLogin,
-    val approve: Boolean
+    val login: SteamPendingLogin
 )
 
 private data class SteamDeleteAccountsRequest(
@@ -1245,6 +1248,7 @@ private fun SteamLoginApprovalSection(
     var pendingAction by remember { mutableStateOf<LoginActionRequest?>(null) }
     var pendingQrAction by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var scannedQrAction by remember { mutableStateOf<String?>(null) }
+    var autoPromptedClientIds by remember(account.id) { mutableStateOf<Set<Long>>(emptySet()) }
 
     LaunchedEffect(pendingScannedQr) {
         val qr = pendingScannedQr?.trim().orEmpty()
@@ -1255,35 +1259,48 @@ private fun SteamLoginApprovalSection(
         }
     }
 
+    LaunchedEffect(account.id, account.canApproveLogins, pendingLogins) {
+        val activeIds = pendingLogins.map { it.clientId }.toSet()
+        val promptedActiveIds = autoPromptedClientIds.intersect(activeIds)
+        if (promptedActiveIds != autoPromptedClientIds) {
+            autoPromptedClientIds = promptedActiveIds
+        }
+        if (account.canApproveLogins && pendingAction == null) {
+            val login = pendingLogins.firstOrNull { it.clientId !in promptedActiveIds }
+            if (login != null) {
+                autoPromptedClientIds = promptedActiveIds + login.clientId
+                pendingAction = LoginActionRequest(login)
+            }
+        }
+    }
+
     pendingAction?.let { request ->
         AlertDialog(
             onDismissRequest = { pendingAction = null },
             title = {
-                Text(
-                    stringResource(
-                        if (request.approve) {
-                            R.string.steam_approve_login_title
-                        } else {
-                            R.string.steam_reject_login_title
-                        }
-                    )
-                )
+                Text(stringResource(R.string.steam_login_request_title))
             },
             text = {
                 LoginActionDetails(request.login)
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        onRespondPending(request.login, request.approve)
-                        pendingAction = null
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            onRespondPending(request.login, false)
+                            pendingAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_reject))
                     }
-                ) {
-                    Text(
-                        stringResource(
-                            if (request.approve) R.string.steam_approve else R.string.steam_reject
-                        )
-                    )
+                    TextButton(
+                        onClick = {
+                            onRespondPending(request.login, true)
+                            pendingAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_approve))
+                    }
                 }
             },
             dismissButton = {
@@ -1398,8 +1415,8 @@ private fun SteamLoginApprovalSection(
                 pendingLogins.forEach { login ->
                     PendingLoginRow(
                         login = login,
-                        onRespond = { target, approve ->
-                            pendingAction = LoginActionRequest(target, approve)
+                        onOpenDetails = { target ->
+                            pendingAction = LoginActionRequest(target)
                         }
                     )
                 }
@@ -1443,8 +1460,9 @@ private fun LoginActionDetails(login: SteamPendingLogin) {
             stringResource(R.string.steam_device_label),
             login.deviceName.ifBlank { stringResource(R.string.steam_unknown_device) }
         )
-        DetailLine(stringResource(R.string.steam_ip_label), login.ip.ifBlank { "-" })
         DetailLine(stringResource(R.string.steam_location_label), login.location.ifBlank { "-" })
+        DetailLine(stringResource(R.string.steam_time_label), formatSteamLoginTime(login.detectedAtMillis))
+        DetailLine(stringResource(R.string.steam_ip_label), login.ip.ifBlank { "-" })
         DetailLine(stringResource(R.string.steam_client_label), login.clientId.toString())
     }
 }
@@ -1452,38 +1470,49 @@ private fun LoginActionDetails(login: SteamPendingLogin) {
 @Composable
 private fun PendingLoginRow(
     login: SteamPendingLogin,
-    onRespond: (SteamPendingLogin, Boolean) -> Unit
+    onOpenDetails: (SteamPendingLogin) -> Unit
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenDetails(login) },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = login.deviceName.ifBlank { stringResource(R.string.steam_login_fallback_title) },
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = listOf(login.ip, login.location)
+                    text = listOf(login.location.ifBlank { "-" }, formatSteamLoginTime(login.detectedAtMillis))
                         .filter { it.isNotBlank() }
                         .joinToString(" · ")
                         .ifBlank {
                             stringResource(R.string.steam_client_id_fallback, login.clientId)
                         },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = { onRespond(login, true) }) {
-                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.steam_approve))
-            }
-            IconButton(onClick = { onRespond(login, false) }) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steam_reject))
+            TextButton(onClick = { onOpenDetails(login) }) {
+                Text(stringResource(R.string.details))
             }
         }
     }
+}
+
+private fun formatSteamLoginTime(timestampMillis: Long): String {
+    return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(timestampMillis))
 }
 
 @Composable

@@ -285,7 +285,14 @@ class SteamViewModel(
             runCatching {
                 withContext(Dispatchers.IO) { loginApprovalService.pendingLogins(account) }
             }.onSuccess { pending ->
-                _uiState.value = _uiState.value.copy(pendingLogins = pending)
+                val previousSeenTimes = _uiState.value.pendingLogins.associate {
+                    it.clientId to it.detectedAtMillis
+                }
+                val now = System.currentTimeMillis()
+                val pendingWithSeenTimes = pending.map { login ->
+                    login.copy(detectedAtMillis = previousSeenTimes[login.clientId] ?: now)
+                }
+                _uiState.value = _uiState.value.copy(pendingLogins = pendingWithSeenTimes)
             }.onFailure { error ->
                 if (!silent) setMessage(
                     error.message ?: appContext.getString(R.string.steam_cannot_refresh_logins)
