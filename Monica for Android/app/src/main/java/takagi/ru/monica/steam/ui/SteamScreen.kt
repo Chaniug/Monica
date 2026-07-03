@@ -4,6 +4,8 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -25,10 +26,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -37,39 +41,55 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
+import takagi.ru.monica.R
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
+import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
+
+private enum class SteamSection(
+    @StringRes val labelRes: Int,
+    val icon: ImageVector
+) {
+    CODE(R.string.steam_section_code, Icons.Default.Key),
+    CONFIRMATIONS(R.string.steam_section_confirmations, Icons.Default.Check),
+    LOGIN_APPROVAL(R.string.steam_section_login_approval, Icons.Default.Login),
+    IMPORT(R.string.steam_section_import, Icons.Default.UploadFile)
+}
 
 private data class ConfirmationActionRequest(
     val confirmations: List<SteamConfirmation>,
@@ -81,7 +101,6 @@ private data class LoginActionRequest(
     val approve: Boolean
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SteamScreen(
     showStandaloneSettingsEntry: Boolean,
@@ -95,8 +114,25 @@ fun SteamScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedAccount = uiState.accounts.firstOrNull { it.id == uiState.selectedAccountId }
         ?: uiState.accounts.firstOrNull()
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedSection by rememberSaveable { mutableStateOf(SteamSection.IMPORT) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<SteamAccount?>(null) }
+
+    val effectiveSection = if (selectedAccount == null) {
+        SteamSection.IMPORT
+    } else {
+        selectedSection
+    }
+
+    LaunchedEffect(selectedAccount?.id) {
+        if (selectedAccount == null) {
+            selectedSection = SteamSection.IMPORT
+        } else if (selectedSection == SteamSection.IMPORT && uiState.accounts.size == 1) {
+            selectedSection = SteamSection.CODE
+        }
+    }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let { message ->
@@ -105,12 +141,11 @@ fun SteamScreen(
         }
     }
 
-    if (deleteTarget != null) {
-        val account = deleteTarget!!
+    deleteTarget?.let { account ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete Steam account") },
-            text = { Text(account.displayName) },
+            title = { Text(stringResource(R.string.steam_delete_account_title)) },
+            text = { Text(stringResource(R.string.steam_delete_account_message, account.displayName)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -118,149 +153,262 @@ fun SteamScreen(
                         deleteTarget = null
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        text = stringResource(R.string.delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteTarget = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SteamHeader(
-                accounts = uiState.accounts,
-                selectedAccount = selectedAccount,
-                showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                onOpenStandaloneSettings = onOpenStandaloneSettings,
-                onSelectAccount = viewModel::selectAccount,
-                onDeleteAccount = { deleteTarget = it }
-            )
-            if (uiState.loading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-            ScrollableTabRow(selectedTabIndex = selectedTab) {
-                listOf("Code", "Confirm", "Login", "Import").forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = { Text(title) }
-                    )
-                }
-            }
-            when (selectedTab) {
-                0 -> SteamCodeTab(
-                    account = selectedAccount,
-                    code = uiState.currentCode,
-                    secondsRemaining = uiState.secondsRemaining
-                )
-                1 -> SteamConfirmationsTab(
-                    account = selectedAccount,
-                    confirmations = uiState.confirmations,
-                    selectedIds = uiState.selectedConfirmationIds,
-                    onRefresh = { viewModel.refreshConfirmations() },
-                    onToggle = viewModel::toggleConfirmation,
-                    onRespond = viewModel::respondConfirmation,
-                    onRespondSelected = viewModel::respondSelectedConfirmations
-                )
-                2 -> SteamLoginApprovalTab(
-                    account = selectedAccount,
-                    pendingLogins = uiState.pendingLogins,
-                    onRefresh = { viewModel.refreshPendingLogins() },
-                    onRespondPending = viewModel::respondPendingLogin,
-                    onRespondQr = viewModel::respondQr
-                )
-                else -> SteamImportTab(
-                    pendingChallenge = uiState.pendingLoginChallenge,
-                    onImportMaFile = viewModel::importMaFile,
-                    onBeginLogin = viewModel::beginSteamLogin,
-                    onSubmitLoginCode = viewModel::submitSteamLoginCode
-                )
-            }
-        }
-
-        if (uiState.loading) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .align(Alignment.Center)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SteamHeader(
-    accounts: List<SteamAccount>,
-    selectedAccount: SteamAccount?,
-    showStandaloneSettingsEntry: Boolean,
-    onOpenStandaloneSettings: () -> Unit,
-    onSelectAccount: (Long) -> Unit,
-    onDeleteAccount: (SteamAccount) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Steam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(
-                    selectedAccount?.displayName ?: "No account",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (showStandaloneSettingsEntry) {
-                IconButton(onClick = onOpenStandaloneSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings")
-                }
-            }
-        }
-        if (accounts.isNotEmpty()) {
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                accounts.forEach { account ->
-                    AssistChip(
-                        onClick = { onSelectAccount(account.id) },
-                        label = {
-                            Text(
-                                account.displayName,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            ExpressiveTopBar(
+                title = selectedAccount?.displayName ?: stringResource(R.string.nav_steam),
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                isSearchExpanded = isSearchExpanded,
+                onSearchExpandedChange = { expanded ->
+                    isSearchExpanded = expanded
+                    if (!expanded) searchQuery = ""
+                },
+                searchHint = stringResource(R.string.nav_steam),
+                actions = {
+                    Box {
+                        IconButton(onClick = { showTopActionsMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.more_options),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        leadingIcon = if (account.id == selectedAccount?.id) {
-                            { Icon(Icons.Default.Check, contentDescription = null) }
-                        } else {
-                            null
+                        }
+                        SteamTopActionsMenu(
+                            expanded = showTopActionsMenu,
+                            onDismissRequest = { showTopActionsMenu = false },
+                            accounts = uiState.accounts,
+                            selectedAccount = selectedAccount,
+                            selectedSection = effectiveSection,
+                            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                            onSelectSection = { section ->
+                                selectedSection = section
+                                showTopActionsMenu = false
+                            },
+                            onRefresh = {
+                                when (effectiveSection) {
+                                    SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
+                                    SteamSection.LOGIN_APPROVAL -> viewModel.refreshPendingLogins()
+                                    else -> Unit
+                                }
+                                showTopActionsMenu = false
+                            },
+                            onSelectAccount = { account ->
+                                viewModel.selectAccount(account.id)
+                                selectedSection = SteamSection.CODE
+                                showTopActionsMenu = false
+                            },
+                            onDeleteAccount = { account ->
+                                deleteTarget = account
+                                showTopActionsMenu = false
+                            },
+                            onOpenStandaloneSettings = {
+                                showTopActionsMenu = false
+                                onOpenStandaloneSettings()
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    ) { contentPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(contentPadding)
+            ) {
+                if (uiState.loading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                if (uiState.accounts.size > 1) {
+                    SteamAccountSelector(
+                        accounts = uiState.accounts,
+                        selectedAccount = selectedAccount,
+                        onSelectAccount = { account ->
+                            viewModel.selectAccount(account.id)
+                            selectedSection = SteamSection.CODE
                         }
                     )
                 }
-                selectedAccount?.let { account ->
-                    IconButton(onClick = { onDeleteAccount(account) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                when (effectiveSection) {
+                    SteamSection.CODE -> selectedAccount?.let { account ->
+                        SteamCodeContent(
+                            account = account,
+                            code = uiState.currentCode,
+                            secondsRemaining = uiState.secondsRemaining
+                        )
                     }
+                    SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
+                        account = selectedAccount,
+                        confirmations = uiState.confirmations,
+                        selectedIds = uiState.selectedConfirmationIds,
+                        onRefresh = { viewModel.refreshConfirmations() },
+                        onToggle = viewModel::toggleConfirmation,
+                        onRespond = viewModel::respondConfirmation,
+                        onRespondSelected = viewModel::respondSelectedConfirmations
+                    )
+                    SteamSection.LOGIN_APPROVAL -> SteamLoginApprovalContent(
+                        account = selectedAccount,
+                        pendingLogins = uiState.pendingLogins,
+                        onRefresh = { viewModel.refreshPendingLogins() },
+                        onRespondPending = viewModel::respondPendingLogin,
+                        onRespondQr = viewModel::respondQr
+                    )
+                    SteamSection.IMPORT -> SteamImportContent(
+                        pendingChallenge = uiState.pendingLoginChallenge,
+                        onImportMaFile = viewModel::importMaFile,
+                        onBeginLogin = viewModel::beginSteamLogin,
+                        onSubmitLoginCode = viewModel::submitSteamLoginCode
+                    )
                 }
+            }
+
+            if (uiState.loading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }
     }
 }
 
 @Composable
-private fun SteamCodeTab(
-    account: SteamAccount?,
+private fun SteamTopActionsMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    accounts: List<SteamAccount>,
+    selectedAccount: SteamAccount?,
+    selectedSection: SteamSection,
+    showStandaloneSettingsEntry: Boolean,
+    onSelectSection: (SteamSection) -> Unit,
+    onRefresh: () -> Unit,
+    onSelectAccount: (SteamAccount) -> Unit,
+    onDeleteAccount: (SteamAccount) -> Unit,
+    onOpenStandaloneSettings: () -> Unit
+) {
+    PasswordTopActionsDropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest
+    ) {
+        if (selectedAccount != null) {
+            SteamSection.values().forEach { section ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(section.labelRes)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (section == selectedSection) Icons.Default.Check else section.icon,
+                            contentDescription = null
+                        )
+                    },
+                    onClick = { onSelectSection(section) }
+                )
+            }
+            if (selectedSection == SteamSection.CONFIRMATIONS ||
+                selectedSection == SteamSection.LOGIN_APPROVAL
+            ) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.refresh)) },
+                    leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                    onClick = onRefresh
+                )
+            }
+            HorizontalDivider()
+            accounts.forEach { account ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = account.displayName,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (account.id == selectedAccount.id) {
+                                Icons.Default.Check
+                            } else {
+                                Icons.Default.SportsEsports
+                            },
+                            contentDescription = null
+                        )
+                    },
+                    onClick = { onSelectAccount(account) }
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.steam_delete_account_menu)) },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                onClick = { onDeleteAccount(selectedAccount) }
+            )
+        } else {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.steam_section_import)) },
+                leadingIcon = { Icon(Icons.Default.UploadFile, contentDescription = null) },
+                onClick = { onSelectSection(SteamSection.IMPORT) }
+            )
+        }
+        if (showStandaloneSettingsEntry) {
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.nav_settings)) },
+                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                onClick = onOpenStandaloneSettings
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamAccountSelector(
+    accounts: List<SteamAccount>,
+    selectedAccount: SteamAccount?,
+    onSelectAccount: (SteamAccount) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        accounts.forEach { account ->
+            AssistChip(
+                onClick = { onSelectAccount(account) },
+                label = {
+                    Text(
+                        text = account.displayName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                leadingIcon = if (account.id == selectedAccount?.id) {
+                    { Icon(Icons.Default.Check, contentDescription = null) }
+                } else {
+                    null
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamCodeContent(
+    account: SteamAccount,
     code: String,
     secondsRemaining: Int
 ) {
@@ -271,7 +419,7 @@ private fun SteamCodeTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -280,12 +428,14 @@ private fun SteamCodeTab(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        account?.displayName ?: "Import a Steam account",
-                        style = MaterialTheme.typography.titleMedium
+                        text = account.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     SelectionContainer {
                         Text(
-                            code.ifBlank { "-----" },
+                            text = code.ifBlank { "-----" },
                             style = MaterialTheme.typography.displayMedium,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold
@@ -296,7 +446,7 @@ private fun SteamCodeTab(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("$secondsRemaining s")
+                        Text(stringResource(R.string.steam_seconds_remaining, secondsRemaining))
                         Spacer(modifier = Modifier.width(12.dp))
                         OutlinedButton(
                             onClick = {
@@ -308,16 +458,14 @@ private fun SteamCodeTab(
                         ) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Copy")
+                            Text(stringResource(R.string.copy))
                         }
                     }
                 }
             }
         }
-        if (account != null) {
-            item {
-                AccountDetails(account)
-            }
+        item {
+            AccountDetails(account)
         }
     }
 }
@@ -331,11 +479,25 @@ private fun AccountDetails(account: SteamAccount) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            DetailLine("Steam ID", account.steamId)
-            DetailLine("Account", account.accountName)
-            DetailLine("Device", account.deviceId.ifBlank { "-" })
-            DetailLine("Confirmations", if (account.canUseConfirmations) "Ready" else "Missing session")
-            DetailLine("Login approval", if (account.canApproveLogins) "Ready" else "Missing session")
+            DetailLine(stringResource(R.string.steam_id_label), account.steamId)
+            DetailLine(stringResource(R.string.steam_account_label), account.accountName)
+            DetailLine(stringResource(R.string.steam_device_label), account.deviceId.ifBlank { "-" })
+            DetailLine(
+                stringResource(R.string.steam_confirmations_label),
+                if (account.canUseConfirmations) {
+                    stringResource(R.string.steam_status_ready)
+                } else {
+                    stringResource(R.string.steam_status_missing_session)
+                }
+            )
+            DetailLine(
+                stringResource(R.string.steam_login_approval_label),
+                if (account.canApproveLogins) {
+                    stringResource(R.string.steam_status_ready)
+                } else {
+                    stringResource(R.string.steam_status_missing_session)
+                }
+            )
         }
     }
 }
@@ -343,13 +505,22 @@ private fun AccountDetails(account: SteamAccount) {
 @Composable
 private fun DetailLine(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth()) {
-        Text(label, modifier = Modifier.width(120.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            text = label,
+            modifier = Modifier.width(120.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
 @Composable
-private fun SteamConfirmationsTab(
+private fun SteamConfirmationsContent(
     account: SteamAccount?,
     confirmations: List<SteamConfirmation>,
     selectedIds: Set<String>,
@@ -365,14 +536,24 @@ private fun SteamConfirmationsTab(
         AlertDialog(
             onDismissRequest = { pendingAction = null },
             title = {
-                Text(if (request.accept) "Approve confirmation" else "Reject confirmation")
+                Text(
+                    stringResource(
+                        if (request.accept) {
+                            R.string.steam_approve_confirmation_title
+                        } else {
+                            R.string.steam_reject_confirmation_title
+                        }
+                    )
+                )
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${request.confirmations.size} item(s)")
+                    Text(stringResource(R.string.steam_confirmation_count, request.confirmations.size))
                     request.confirmations.take(8).forEach { confirmation ->
                         Text(
-                            confirmation.headline.ifBlank { confirmation.summary.ifBlank { confirmation.id } },
+                            text = confirmation.headline.ifBlank {
+                                confirmation.summary.ifBlank { confirmation.id }
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -380,7 +561,10 @@ private fun SteamConfirmationsTab(
                     }
                     if (request.confirmations.size > 8) {
                         Text(
-                            "+${request.confirmations.size - 8} more",
+                            text = stringResource(
+                                R.string.steam_more_items,
+                                request.confirmations.size - 8
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -397,12 +581,16 @@ private fun SteamConfirmationsTab(
                         pendingAction = null
                     }
                 ) {
-                    Text(if (request.accept) "Approve" else "Reject")
+                    Text(
+                        stringResource(
+                            if (request.accept) R.string.steam_approve else R.string.steam_reject
+                        )
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingAction = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -418,7 +606,7 @@ private fun SteamConfirmationsTab(
                 Button(onClick = onRefresh, enabled = account?.canUseConfirmations == true) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Refresh")
+                    Text(stringResource(R.string.refresh))
                 }
                 FilledTonalButton(
                     onClick = {
@@ -429,7 +617,7 @@ private fun SteamConfirmationsTab(
                     },
                     enabled = selectedConfirmations.isNotEmpty()
                 ) {
-                    Text("Approve")
+                    Text(stringResource(R.string.steam_approve))
                 }
                 OutlinedButton(
                     onClick = {
@@ -440,14 +628,14 @@ private fun SteamConfirmationsTab(
                     },
                     enabled = selectedConfirmations.isNotEmpty()
                 ) {
-                    Text("Reject")
+                    Text(stringResource(R.string.steam_reject))
                 }
             }
         }
         if (account == null || !account.canUseConfirmations) {
-            item { EmptyState("No confirmation session") }
+            item { EmptyState(stringResource(R.string.steam_no_confirmation_session)) }
         } else if (confirmations.isEmpty()) {
-            item { EmptyState("No confirmations") }
+            item { EmptyState(stringResource(R.string.steam_no_confirmations)) }
         } else {
             items(confirmations, key = { it.id }) { confirmation ->
                 ConfirmationRow(
@@ -482,26 +670,29 @@ private fun ConfirmationRow(
         ) {
             Checkbox(checked = selected, onCheckedChange = { onToggle() })
             Column(modifier = Modifier.weight(1f)) {
-                Text(confirmation.headline.ifBlank { confirmation.type }, fontWeight = FontWeight.SemiBold)
                 Text(
-                    confirmation.summary.ifBlank { confirmation.id },
+                    text = confirmation.headline.ifBlank { confirmation.type },
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = confirmation.summary.ifBlank { confirmation.id },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             IconButton(onClick = { onRespond(confirmation, true) }) {
-                Icon(Icons.Default.Check, contentDescription = "Approve")
+                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.steam_approve))
             }
             IconButton(onClick = { onRespond(confirmation, false) }) {
-                Icon(Icons.Default.Close, contentDescription = "Reject")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steam_reject))
             }
         }
     }
 }
 
 @Composable
-private fun SteamLoginApprovalTab(
+private fun SteamLoginApprovalContent(
     account: SteamAccount?,
     pendingLogins: List<SteamPendingLogin>,
     onRefresh: () -> Unit,
@@ -516,7 +707,15 @@ private fun SteamLoginApprovalTab(
         AlertDialog(
             onDismissRequest = { pendingAction = null },
             title = {
-                Text(if (request.approve) "Approve Steam login" else "Reject Steam login")
+                Text(
+                    stringResource(
+                        if (request.approve) {
+                            R.string.steam_approve_login_title
+                        } else {
+                            R.string.steam_reject_login_title
+                        }
+                    )
+                )
             },
             text = {
                 LoginActionDetails(request.login)
@@ -528,12 +727,16 @@ private fun SteamLoginApprovalTab(
                         pendingAction = null
                     }
                 ) {
-                    Text(if (request.approve) "Approve" else "Reject")
+                    Text(
+                        stringResource(
+                            if (request.approve) R.string.steam_approve else R.string.steam_reject
+                        )
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingAction = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -543,7 +746,15 @@ private fun SteamLoginApprovalTab(
         AlertDialog(
             onDismissRequest = { pendingQrAction = null },
             title = {
-                Text(if (approve) "Approve Steam QR login" else "Reject Steam QR login")
+                Text(
+                    stringResource(
+                        if (approve) {
+                            R.string.steam_approve_qr_login_title
+                        } else {
+                            R.string.steam_reject_qr_login_title
+                        }
+                    )
+                )
             },
             text = {
                 Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
@@ -555,12 +766,12 @@ private fun SteamLoginApprovalTab(
                         pendingQrAction = null
                     }
                 ) {
-                    Text(if (approve) "Approve" else "Reject")
+                    Text(stringResource(if (approve) R.string.steam_approve else R.string.steam_reject))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingQrAction = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -576,14 +787,14 @@ private fun SteamLoginApprovalTab(
                 Button(onClick = onRefresh, enabled = account?.canApproveLogins == true) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Refresh")
+                    Text(stringResource(R.string.refresh))
                 }
             }
         }
         if (account == null || !account.canApproveLogins) {
-            item { EmptyState("No login session") }
+            item { EmptyState(stringResource(R.string.steam_no_login_session)) }
         } else if (pendingLogins.isEmpty()) {
-            item { EmptyState("No pending logins") }
+            item { EmptyState(stringResource(R.string.steam_no_pending_logins)) }
         } else {
             items(pendingLogins, key = { it.clientId }) { login ->
                 PendingLoginRow(
@@ -606,7 +817,7 @@ private fun SteamLoginApprovalTab(
                         value = qrText,
                         onValueChange = { qrText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Steam QR link") },
+                        label = { Text(stringResource(R.string.steam_qr_link_label)) },
                         leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
                         singleLine = true
                     )
@@ -615,13 +826,13 @@ private fun SteamLoginApprovalTab(
                             onClick = { pendingQrAction = qrText to true },
                             enabled = account?.canApproveLogins == true && qrText.isNotBlank()
                         ) {
-                            Text("Approve")
+                            Text(stringResource(R.string.steam_approve))
                         }
                         OutlinedButton(
                             onClick = { pendingQrAction = qrText to false },
                             enabled = account?.canApproveLogins == true && qrText.isNotBlank()
                         ) {
-                            Text("Reject")
+                            Text(stringResource(R.string.steam_reject))
                         }
                     }
                 }
@@ -633,10 +844,13 @@ private fun SteamLoginApprovalTab(
 @Composable
 private fun LoginActionDetails(login: SteamPendingLogin) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        DetailLine("Device", login.deviceName.ifBlank { "Unknown device" })
-        DetailLine("IP", login.ip.ifBlank { "-" })
-        DetailLine("Location", login.location.ifBlank { "-" })
-        DetailLine("Client", login.clientId.toString())
+        DetailLine(
+            stringResource(R.string.steam_device_label),
+            login.deviceName.ifBlank { stringResource(R.string.steam_unknown_device) }
+        )
+        DetailLine(stringResource(R.string.steam_ip_label), login.ip.ifBlank { "-" })
+        DetailLine(stringResource(R.string.steam_location_label), login.location.ifBlank { "-" })
+        DetailLine(stringResource(R.string.steam_client_label), login.clientId.toString())
     }
 }
 
@@ -653,26 +867,32 @@ private fun PendingLoginRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(login.deviceName.ifBlank { "Steam login" }, fontWeight = FontWeight.SemiBold)
                 Text(
-                    listOf(login.ip, login.location).filter { it.isNotBlank() }.joinToString(" · ").ifBlank {
-                        "client ${login.clientId}"
-                    },
+                    text = login.deviceName.ifBlank { stringResource(R.string.steam_login_fallback_title) },
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = listOf(login.ip, login.location)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                        .ifBlank {
+                            stringResource(R.string.steam_client_id_fallback, login.clientId)
+                        },
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             IconButton(onClick = { onRespond(login, true) }) {
-                Icon(Icons.Default.Check, contentDescription = "Approve")
+                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.steam_approve))
             }
             IconButton(onClick = { onRespond(login, false) }) {
-                Icon(Icons.Default.Close, contentDescription = "Reject")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steam_reject))
             }
         }
     }
 }
 
 @Composable
-private fun SteamImportTab(
+private fun SteamImportContent(
     pendingChallenge: SteamLoginChallengeUi?,
     onImportMaFile: (Uri, Uri?, String, String) -> Unit,
     onBeginLogin: (String, String, String) -> Unit,
@@ -706,22 +926,30 @@ private fun SteamImportTab(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("maFile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = stringResource(R.string.steam_mafile_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { maFilePicker.launch("*/*") }) {
                             Icon(Icons.Default.UploadFile, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("maFile")
+                            Text(stringResource(R.string.steam_mafile_button))
                         }
                         OutlinedButton(onClick = { manifestPicker.launch("application/json") }) {
-                            Text("manifest.json")
+                            Text(stringResource(R.string.steam_manifest_button))
                         }
                     }
-                    Text(maFileUri?.lastPathSegment ?: "No maFile selected", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = maFileUri?.lastPathSegment ?: stringResource(R.string.steam_no_mafile_selected),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     OutlinedTextField(
                         value = maFilePassword,
                         onValueChange = { maFilePassword = it },
-                        label = { Text("Encrypted maFile password") },
+                        label = { Text(stringResource(R.string.steam_mafile_password_label)) },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -729,7 +957,7 @@ private fun SteamImportTab(
                     OutlinedTextField(
                         value = maFileDisplayName,
                         onValueChange = { maFileDisplayName = it },
-                        label = { Text("Display name") },
+                        label = { Text(stringResource(R.string.steam_display_name_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -741,7 +969,7 @@ private fun SteamImportTab(
                         },
                         enabled = maFileUri != null
                     ) {
-                        Text("Import")
+                        Text(stringResource(R.string.steam_import_button))
                     }
                 }
             }
@@ -754,18 +982,22 @@ private fun SteamImportTab(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("Steam login", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = stringResource(R.string.steam_login_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     OutlinedTextField(
                         value = loginName,
                         onValueChange = { loginName = it },
-                        label = { Text("Account") },
+                        label = { Text(stringResource(R.string.steam_login_account_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = loginPassword,
                         onValueChange = { loginPassword = it },
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.steam_login_password_label)) },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -773,7 +1005,7 @@ private fun SteamImportTab(
                     OutlinedTextField(
                         value = loginDisplayName,
                         onValueChange = { loginDisplayName = it },
-                        label = { Text("Display name") },
+                        label = { Text(stringResource(R.string.steam_display_name_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -783,14 +1015,17 @@ private fun SteamImportTab(
                     ) {
                         Icon(Icons.Default.Login, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Login")
+                        Text(stringResource(R.string.steam_login_button))
                     }
                     if (pendingChallenge != null) {
-                        Text(pendingChallenge.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = pendingChallenge.message,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         OutlinedTextField(
                             value = challengeCode,
                             onValueChange = { challengeCode = it },
-                            label = { Text("Code") },
+                            label = { Text(stringResource(R.string.steam_code_label)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
@@ -798,7 +1033,7 @@ private fun SteamImportTab(
                             onClick = { onSubmitLoginCode(challengeCode, loginDisplayName) },
                             enabled = challengeCode.isNotBlank()
                         ) {
-                            Text("Submit")
+                            Text(stringResource(R.string.steam_submit_code_button))
                         }
                     }
                 }
@@ -812,7 +1047,7 @@ private fun EmptyState(text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(160.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)

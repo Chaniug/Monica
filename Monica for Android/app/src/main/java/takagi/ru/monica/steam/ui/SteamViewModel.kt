@@ -2,6 +2,7 @@ package takagi.ru.monica.steam.ui
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.R
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.steam.core.SteamTotp
 import takagi.ru.monica.steam.data.SteamAccount
@@ -112,9 +114,9 @@ class SteamViewModel(
                 )
                 repository.upsertFromMaFile(payload)
             }.onSuccess {
-                setMessage("Steam account imported")
+                setMessage(R.string.steam_account_imported)
             }.onFailure { error ->
-                setMessage(error.message ?: "Steam import failed")
+                setMessage(error.message ?: appContext.getString(R.string.steam_import_failed))
             }
             setLoading(false)
         }
@@ -133,15 +135,15 @@ class SteamViewModel(
                             steamId = result.steamId,
                             confirmationType = result.challenges.firstOrNull()?.confirmationType ?: 0,
                             message = result.message ?: result.challenges.firstOrNull()?.associatedMessage
-                                ?: "Steam verification required"
+                                ?: appContext.getString(R.string.steam_verification_required)
                         ),
-                        message = result.message ?: "Steam verification required"
+                        message = result.message ?: appContext.getString(R.string.steam_verification_required)
                     )
                 }
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
                     saveLoginResult(result, displayName)
                     _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
-                    setMessage("Steam account imported")
+                    setMessage(R.string.steam_account_imported)
                 }
                 is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
             }
@@ -163,7 +165,7 @@ class SteamViewModel(
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
                     saveLoginResult(result, displayName)
                     _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
-                    setMessage("Steam account imported")
+                    setMessage(R.string.steam_account_imported)
                 }
                 is SteamLoginImportService.LoginResult.ChallengeRequired -> {
                     _uiState.value = _uiState.value.copy(
@@ -172,10 +174,10 @@ class SteamViewModel(
                             steamId = result.steamId,
                             confirmationType = result.challenges.firstOrNull()?.confirmationType
                                 ?: challenge.confirmationType,
-                            message = result.message ?: "Steam verification required"
+                            message = result.message ?: appContext.getString(R.string.steam_verification_required)
                         )
                     )
-                    setMessage(result.message ?: "Steam verification required")
+                    setMessage(result.message ?: appContext.getString(R.string.steam_verification_required))
                 }
                 is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
             }
@@ -206,7 +208,9 @@ class SteamViewModel(
                     selectedConfirmationIds = _uiState.value.selectedConfirmationIds.intersect(confirmations.map { it.id }.toSet())
                 )
             }.onFailure { error ->
-                if (!silent) setMessage(error.message ?: "Cannot refresh confirmations")
+                if (!silent) setMessage(
+                    error.message ?: appContext.getString(R.string.steam_cannot_refresh_confirmations)
+                )
             }
             if (!silent) setLoading(false)
         }
@@ -230,7 +234,7 @@ class SteamViewModel(
                     confirmationService.respondMultiple(account, confirmations, accept)
                 }
             }.getOrElse { SteamBatchResult(ok = 0, failed = confirmations.size) }
-            setMessage("Done: ${result.ok}, failed: ${result.failed}")
+            setMessage(R.string.steam_batch_done, result.ok, result.failed)
             _uiState.value = _uiState.value.copy(selectedConfirmationIds = emptySet())
             refreshConfirmations(silent = true)
             setLoading(false)
@@ -244,7 +248,7 @@ class SteamViewModel(
             val ok = runCatching {
                 withContext(Dispatchers.IO) { confirmationService.respond(account, confirmation, accept) }
             }.getOrDefault(false)
-            setMessage(if (ok) "Done" else "Steam confirmation failed")
+            setMessage(if (ok) R.string.steam_done else R.string.steam_confirmation_failed)
             refreshConfirmations(silent = true)
             setLoading(false)
         }
@@ -259,7 +263,9 @@ class SteamViewModel(
             }.onSuccess { pending ->
                 _uiState.value = _uiState.value.copy(pendingLogins = pending)
             }.onFailure { error ->
-                if (!silent) setMessage(error.message ?: "Cannot refresh Steam logins")
+                if (!silent) setMessage(
+                    error.message ?: appContext.getString(R.string.steam_cannot_refresh_logins)
+                )
             }
             if (!silent) setLoading(false)
         }
@@ -279,7 +285,7 @@ class SteamViewModel(
                     )
                 }
             }.getOrDefault(false)
-            setMessage(if (ok) "Done" else "Steam login response failed")
+            setMessage(if (ok) R.string.steam_done else R.string.steam_login_response_failed)
             refreshPendingLogins(silent = true)
             setLoading(false)
         }
@@ -289,7 +295,7 @@ class SteamViewModel(
         val account = selectedAccount() ?: return
         val challenge = SteamQrChallenge.parse(rawQr)
         if (challenge == null) {
-            setMessage("Invalid Steam QR link")
+            setMessage(R.string.steam_invalid_qr_link)
             return
         }
         viewModelScope.launch {
@@ -297,7 +303,7 @@ class SteamViewModel(
             val ok = runCatching {
                 withContext(Dispatchers.IO) { loginApprovalService.respondToQr(account, challenge, approve) }
             }.getOrDefault(false)
-            setMessage(if (ok) "Done" else "Steam QR response failed")
+            setMessage(if (ok) R.string.steam_done else R.string.steam_qr_response_failed)
             setLoading(false)
         }
     }
@@ -356,6 +362,10 @@ class SteamViewModel(
 
     private fun setMessage(message: String) {
         _uiState.value = _uiState.value.copy(message = message)
+    }
+
+    private fun setMessage(@StringRes resId: Int, vararg formatArgs: Any) {
+        _uiState.value = _uiState.value.copy(message = appContext.getString(resId, *formatArgs))
     }
 
     companion object {

@@ -61,6 +61,20 @@ class SteamBoundaryGuardTest {
         assertFalse(steamSources.contains("insertSteamGuardEntry"))
     }
 
+    @Test
+    fun steamPageUsesMonicaTopBarAndLocalizedMenuInsteadOfWideTabs() {
+        val source = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt").readText()
+
+        assertTrue(source.contains("ExpressiveTopBar"))
+        assertTrue(source.contains("PasswordTopActionsDropdownMenu"))
+        assertFalse(source.contains("ScrollableTabRow"))
+        assertFalse(source.contains("listOf(\"Code\", \"Confirm\", \"Login\", \"Import\")"))
+        assertFalse(source.contains("Text(\""))
+        assertTrue(source.contains("if (selectedAccount == null)"))
+        assertTrue(source.contains("SteamSection.IMPORT"))
+        assertTrue(source.contains("private fun SteamCodeContent(\n    account: SteamAccount,"))
+    }
+
     private fun projectFile(path: String): File {
         var dir = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         while (
