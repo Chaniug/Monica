@@ -191,6 +191,7 @@ class SteamBoundaryGuardTest {
         assertTrue(detailTopBar.contains("IconButton(onClick = onNavigateBack)"))
         assertTrue(detailTopBar.contains("Icons.Default.ArrowBack"))
         assertTrue(detailTopBar.contains("actions = {}"))
+        assertTrue(detailTopBar.contains("windowInsets = WindowInsets(0, 0, 0, 0)"))
         assertFalse(detailTopBar.contains("ExpressiveTopBar"))
         assertFalse(detailTopBar.contains("Icons.Default.MoreVert"))
 
