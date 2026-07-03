@@ -44,6 +44,8 @@ import kotlin.math.abs
  * @param onSwipeLeft 左滑回调（删除）
  * @param onSwipeRight 右滑回调（选择）
  * @param enabled 是否启用滑动
+ * @param allowSwipeLeft 是否允许左滑
+ * @param allowSwipeRight 是否允许右滑
  * @param content 内容
  */
 @Composable
@@ -53,6 +55,8 @@ fun SwipeActions(
     isSwiped: Boolean = false,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    allowSwipeLeft: Boolean = true,
+    allowSwipeRight: Boolean = true,
     content: @Composable () -> Unit
 ) {
     // 使用非动画状态记录实时拖动偏移，避免高频创建协程
@@ -66,9 +70,14 @@ fun SwipeActions(
     val currentOnSwipeRight by rememberUpdatedState(onSwipeRight)
     
     // 监听 isSwiped 状态变化 (主要用于取消删除后的复位)
-    LaunchedEffect(isSwiped) {
-        if (!isSwiped && (dragOffset != 0f || animatableOffset.value != 0f)) {
-            // 如果变为“未滑动”状态且当前有偏移，则复位
+    LaunchedEffect(isSwiped, enabled, allowSwipeLeft, allowSwipeRight) {
+        val total = dragOffset + animatableOffset.value
+        val shouldResetForDisabledDirection =
+            (!allowSwipeLeft && total < 0f) || (!allowSwipeRight && total > 0f)
+        if (
+            (!isSwiped || !enabled || shouldResetForDisabledDirection) &&
+            (dragOffset != 0f || animatableOffset.value != 0f)
+        ) {
             dragOffset = 0f
             animatableOffset.animateTo(0f, spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -127,7 +136,11 @@ fun SwipeActions(
     val iconScale = 0.8f + ((abs(totalOffset) / swipeThreshold).coerceIn(0f, 1.2f) * 0.4f)
     
     // 右滑遮罩透明度
-    val cardTintAlpha = if (totalOffset > 0) (totalOffset / swipeThreshold).coerceIn(0f, 0.6f) else 0f
+    val cardTintAlpha = if (allowSwipeRight && totalOffset > 0) {
+        (totalOffset / swipeThreshold).coerceIn(0f, 0.6f)
+    } else {
+        0f
+    }
     
     Box(
         modifier = modifier
@@ -135,7 +148,7 @@ fun SwipeActions(
             .clip(componentShape)
     ) {
         // 左侧背景
-        if (totalOffset > 0) {
+        if (allowSwipeRight && totalOffset > 0) {
             Surface(
                 modifier = Modifier.fillMaxWidth().matchParentSize(),
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = backgroundAlpha),
@@ -159,7 +172,7 @@ fun SwipeActions(
         }
         
         // 右侧背景
-        if (totalOffset < 0) {
+        if (allowSwipeLeft && totalOffset < 0) {
             Surface(
                 modifier = Modifier.fillMaxWidth().matchParentSize(),
                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = backgroundAlpha),
@@ -201,8 +214,8 @@ fun SwipeActions(
                         shape = componentShape
                         clip = true
                     }
-                    .pointerInput(enabled) {
-                        if (!enabled) return@pointerInput
+                    .pointerInput(enabled, allowSwipeLeft, allowSwipeRight) {
+                        if (!enabled || (!allowSwipeLeft && !allowSwipeRight)) return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val touchSlop = viewConfiguration.touchSlop
@@ -230,6 +243,9 @@ fun SwipeActions(
                                 }
 
                                 if (absX > horizontalTouchSlop && absX > absY * 1.5f) {
+                                    if ((drag.x < 0f && !allowSwipeLeft) || (drag.x > 0f && !allowSwipeRight)) {
+                                        return@awaitEachGesture
+                                    }
                                     horizontalLocked = true
                                     change.consume()
                                 }
@@ -263,11 +279,13 @@ fun SwipeActions(
                                         abs(current) > maxSwipeDistance * 0.8f -> 0.5f
                                         else -> 1f
                                     }
+                                    val minOffset = if (allowSwipeLeft) -maxSwipeDistance * 1.2f else 0f
+                                    val maxOffset = if (allowSwipeRight) maxSwipeDistance * 1.2f else 0f
                                     dragOffset = (current + dragAmount * resistance)
-                                        .coerceIn(-maxSwipeDistance * 1.2f, maxSwipeDistance * 1.2f)
+                                        .coerceIn(minOffset, maxOffset)
 
                                     val dynamicThreshold = cardWidth * 0.2f
-                                    if (dragOffset > dynamicThreshold && !hasVibratedRight) {
+                                    if (allowSwipeRight && dragOffset > dynamicThreshold && !hasVibratedRight) {
                                         hasVibratedRight = true
                                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                             vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
@@ -275,7 +293,7 @@ fun SwipeActions(
                                             @Suppress("DEPRECATION")
                                             vibrator?.vibrate(20)
                                         }
-                                    } else if (dragOffset < -dynamicThreshold && !hasVibratedLeft) {
+                                    } else if (allowSwipeLeft && dragOffset < -dynamicThreshold && !hasVibratedLeft) {
                                         hasVibratedLeft = true
                                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                             vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
@@ -306,13 +324,13 @@ fun SwipeActions(
                                     hasVibratedRight = false
 
                                     val dynamicThreshold = cardWidth * 0.2f
-                                    if (animatableOffset.value < -dynamicThreshold) {
+                                    if (allowSwipeLeft && animatableOffset.value < -dynamicThreshold) {
                                         currentOnSwipeLeft()
                                         animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
                                         if (!currentIsSwiped) {
                                             animatableOffset.animateTo(0f, springSpec)
                                         }
-                                    } else if (animatableOffset.value > dynamicThreshold) {
+                                    } else if (allowSwipeRight && animatableOffset.value > dynamicThreshold) {
                                         animatableOffset.animateTo(0f, springSpec)
                                         currentOnSwipeRight()
                                     } else {

@@ -989,7 +989,7 @@ fun TotpListContent(
                             Modifier
                         }
                         
-                        // 用 SwipeActions 包裹 TOTP 卡片（多选模式或拖动时禁用滑动）
+                        // Keep right-swipe selection available in selection mode; only disable delete swipe there.
                         takagi.ru.monica.ui.gestures.SwipeActions(
                             onSwipeLeft = {
                                 // 左滑删除
@@ -1010,7 +1010,9 @@ fun TotpListContent(
                                 }
                             },
                             isSwiped = itemToDelete?.id == item.id,
-                            enabled = !isDragging && !isSelectionMode // 多选模式下禁用滑动，让拖动手势生效
+                            enabled = !isDragging,
+                            allowSwipeLeft = !isSelectionMode,
+                            allowSwipeRight = true
                         ) {
                             // 包装卡片以支持拖动
                             Box(
