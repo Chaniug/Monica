@@ -153,6 +153,10 @@ class SteamBoundaryGuardTest {
         assertTrue(source.contains("readSteamAvatarCache"))
         assertTrue(source.contains("freshAvatar ?: cachedAvatar"))
         assertTrue(source.contains("floatingActionButton = {"))
+        assertTrue(source.contains("AnimatedContent("))
+        assertTrue(source.contains("targetState = detailAccount?.id"))
+        assertTrue(source.contains("easyNotesScreenEnter().togetherWith(easyNotesScreenExit())"))
+        assertTrue(source.contains("label = \"SteamDetailNavigation\""))
         assertTrue(source.contains("val topBarTitleEndPadding = when {"))
         assertTrue(source.contains("detailAccount != null && showStandaloneSettingsEntry -> 64.dp"))
         assertTrue(source.contains("detailAccount != null -> 0.dp"))
@@ -248,7 +252,7 @@ class SteamBoundaryGuardTest {
         assertTrue(detailContent.contains("authorizedDevices: List<SteamAuthorizedDevice>"))
         assertTrue(detailContent.contains("SteamAuthorizedDevicesSection("))
         assertTrue(source.contains("uiState.authorizedDevices"))
-        assertTrue(source.contains("viewModel.refreshAuthorizedDevices(detailAccount.id)"))
+        assertTrue(source.contains("viewModel.refreshAuthorizedDevices(animatedDetailAccount.id)"))
 
         val authorizedDevicesContent = source
             .substringAfter("private fun SteamAuthorizedDevicesSection(")
@@ -298,6 +302,13 @@ class SteamBoundaryGuardTest {
         assertTrue(mainActivitySource.contains("steam_qr_account_id"))
         assertTrue(mainActivitySource.contains("Screen.SteamQrScan.createRoute(accountId)"))
         assertTrue(mainActivitySource.contains("SteamQrScannerScreen("))
+        val steamQrRoute = mainActivitySource
+            .substringAfter("route = Screen.SteamQrScan.route")
+            .substringBefore("SteamQrScannerScreen(")
+        assertTrue(steamQrRoute.contains("enterTransition = { easyNotesScreenEnter() }"))
+        assertTrue(steamQrRoute.contains("exitTransition = { easyNotesScreenExit() }"))
+        assertTrue(steamQrRoute.contains("popEnterTransition = { easyNotesScreenEnter() }"))
+        assertTrue(steamQrRoute.contains("popExitTransition = { easyNotesScreenExit() }"))
         assertTrue(screenSource.contains("pendingSteamQrResult"))
         assertTrue(screenSource.contains("pendingSteamQrAccountId"))
         assertTrue(screenSource.contains("onScanSteamQrCode"))

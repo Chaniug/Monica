@@ -2295,7 +2295,11 @@ fun MonicaContent(
                     type = NavType.LongType
                     defaultValue = -1L
                 }
-            )
+            ),
+            enterTransition = { easyNotesScreenEnter() },
+            exitTransition = { easyNotesScreenExit() },
+            popEnterTransition = { easyNotesScreenEnter() },
+            popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
             val initialSteamAccountId = backStackEntry.arguments
                 ?.getLong(Screen.SteamQrScan.ARG_ACCOUNT_ID)

@@ -8,12 +8,14 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -128,6 +130,8 @@ import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.TotpCodeCard
 import takagi.ru.monica.ui.components.UnifiedProgressBar
 import takagi.ru.monica.ui.gestures.SwipeActions
+import takagi.ru.monica.ui.navigation.easyNotesScreenEnter
+import takagi.ru.monica.ui.navigation.easyNotesScreenExit
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.rememberTotpTickerMillis
 import takagi.ru.monica.utils.SettingsManager
@@ -575,74 +579,84 @@ fun SteamScreen(
         }
     ) { contentPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            Column(
+            AnimatedContent(
+                targetState = detailAccount?.id,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(contentPadding)
-            ) {
-                if (detailAccount != null) {
-                    SteamAccountDetailContent(
-                        account = detailAccount,
-                        pendingLogins = uiState.pendingLogins,
-                        authorizedDevices = uiState.authorizedDevices,
-                        pendingScannedQr = scannedQrPayload,
-                        onScannedQrHandled = { scannedQrPayload = null },
-                        onRefreshLogins = { viewModel.refreshPendingLogins() },
-                        onRefreshAuthorizedDevices = { viewModel.refreshAuthorizedDevices(detailAccount.id) },
-                        onRespondPending = viewModel::respondPendingLogin,
-                        onRespondQr = viewModel::respondQr
-                    )
-                } else if (selectedAccount == null) {
-                    SteamEmptyAccountContent(
-                        onAddAccount = { showAddAccountDialog = true }
-                    )
-                } else {
-                    when (selectedSection) {
-                        SteamSection.CODE -> SteamCodeContent(
-                            accounts = uiState.accounts,
-                            selectedAccountIds = selectedTokenAccountIds,
-                            appSettings = appSettings,
-                            onToggleSelection = { account ->
-                                selectedTokenAccountIds = if (account.id in selectedTokenAccountIds) {
-                                    selectedTokenAccountIds - account.id
-                                } else {
-                                    selectedTokenAccountIds + account.id
-                                }
-                            },
-                            onClearSelection = {
-                                selectedTokenAccountIds = emptyList()
-                            },
-                            onSelectAll = {
-                                selectedTokenAccountIds = if (selectedTokenAccountIds.size == uiState.accounts.size) {
-                                    emptyList()
-                                } else {
-                                    uiState.accounts.map { it.id }
-                                }
-                            },
-                            onDeleteSelected = {
-                                val targets = uiState.accounts.filter { it.id in selectedTokenAccountIds }
-                                if (targets.isNotEmpty()) {
-                                    deleteRequest = SteamDeleteAccountsRequest(targets)
-                                }
-                            },
-                            onOpenDetail = { account ->
-                                selectedTokenAccountIds = emptyList()
-                                viewModel.selectAccount(account.id)
-                                detailAccountId = account.id
-                            }
+                    .padding(contentPadding),
+                transitionSpec = {
+                    easyNotesScreenEnter().togetherWith(easyNotesScreenExit())
+                },
+                label = "SteamDetailNavigation"
+            ) { animatedDetailAccountId ->
+                val animatedDetailAccount = uiState.accounts.firstOrNull { it.id == animatedDetailAccountId }
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (animatedDetailAccount != null) {
+                        SteamAccountDetailContent(
+                            account = animatedDetailAccount,
+                            pendingLogins = uiState.pendingLogins,
+                            authorizedDevices = uiState.authorizedDevices,
+                            pendingScannedQr = scannedQrPayload,
+                            onScannedQrHandled = { scannedQrPayload = null },
+                            onRefreshLogins = { viewModel.refreshPendingLogins() },
+                            onRefreshAuthorizedDevices = { viewModel.refreshAuthorizedDevices(animatedDetailAccount.id) },
+                            onRespondPending = viewModel::respondPendingLogin,
+                            onRespondQr = viewModel::respondQr
                         )
-                        SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
-                            account = selectedAccount,
-                            accounts = uiState.accounts,
-                            confirmations = uiState.confirmations,
-                            selectedIds = uiState.selectedConfirmationIds,
-                            onSelectAccount = viewModel::selectAccount,
-                            onToggle = viewModel::toggleConfirmation,
-                            onSelectAll = viewModel::selectAllConfirmations,
-                            onClearSelection = viewModel::clearSelectedConfirmations,
-                            onRespond = viewModel::respondConfirmation,
-                            onRespondSelected = viewModel::respondSelectedConfirmations
+                    } else if (selectedAccount == null) {
+                        SteamEmptyAccountContent(
+                            onAddAccount = { showAddAccountDialog = true }
                         )
+                    } else {
+                        when (selectedSection) {
+                            SteamSection.CODE -> SteamCodeContent(
+                                accounts = uiState.accounts,
+                                selectedAccountIds = selectedTokenAccountIds,
+                                appSettings = appSettings,
+                                onToggleSelection = { account ->
+                                    selectedTokenAccountIds = if (account.id in selectedTokenAccountIds) {
+                                        selectedTokenAccountIds - account.id
+                                    } else {
+                                        selectedTokenAccountIds + account.id
+                                    }
+                                },
+                                onClearSelection = {
+                                    selectedTokenAccountIds = emptyList()
+                                },
+                                onSelectAll = {
+                                    selectedTokenAccountIds = if (selectedTokenAccountIds.size == uiState.accounts.size) {
+                                        emptyList()
+                                    } else {
+                                        uiState.accounts.map { it.id }
+                                    }
+                                },
+                                onDeleteSelected = {
+                                    val targets = uiState.accounts.filter { it.id in selectedTokenAccountIds }
+                                    if (targets.isNotEmpty()) {
+                                        deleteRequest = SteamDeleteAccountsRequest(targets)
+                                    }
+                                },
+                                onOpenDetail = { account ->
+                                    selectedTokenAccountIds = emptyList()
+                                    viewModel.selectAccount(account.id)
+                                    detailAccountId = account.id
+                                }
+                            )
+                            SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
+                                account = selectedAccount,
+                                accounts = uiState.accounts,
+                                confirmations = uiState.confirmations,
+                                selectedIds = uiState.selectedConfirmationIds,
+                                onSelectAccount = viewModel::selectAccount,
+                                onToggle = viewModel::toggleConfirmation,
+                                onSelectAll = viewModel::selectAllConfirmations,
+                                onClearSelection = viewModel::clearSelectedConfirmations,
+                                onRespond = viewModel::respondConfirmation,
+                                onRespondSelected = viewModel::respondSelectedConfirmations
+                            )
+                        }
                     }
                 }
             }
