@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import java.io.BufferedReader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,7 +48,9 @@ data class SteamLoginChallengeUi(
     val pendingSessionId: String,
     val steamId: String,
     val confirmationType: Int,
-    val message: String
+    val message: String,
+    val requiresCode: Boolean,
+    val canPoll: Boolean
 )
 
 class SteamViewModel(
@@ -60,6 +63,7 @@ class SteamViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SteamUiState())
     val uiState: StateFlow<SteamUiState> = _uiState.asStateFlow()
+    private var pendingLoginPollJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -124,23 +128,23 @@ class SteamViewModel(
 
     fun beginSteamLogin(userName: String, password: String, displayName: String) {
         viewModelScope.launch {
+            pendingLoginPollJob?.cancel()
             setLoading(true)
             when (val result = withContext(Dispatchers.IO) {
                 loginImportService.beginLogin(userName, password)
             }) {
                 is SteamLoginImportService.LoginResult.ChallengeRequired -> {
+                    val challenge = result.toChallengeUi()
                     _uiState.value = _uiState.value.copy(
-                        pendingLoginChallenge = SteamLoginChallengeUi(
-                            pendingSessionId = result.pendingSessionId,
-                            steamId = result.steamId,
-                            confirmationType = result.challenges.firstOrNull()?.confirmationType ?: 0,
-                            message = result.message ?: result.challenges.firstOrNull()?.associatedMessage
-                                ?: appContext.getString(R.string.steam_verification_required)
-                        ),
-                        message = result.message ?: appContext.getString(R.string.steam_verification_required)
+                        pendingLoginChallenge = challenge,
+                        message = challenge.message
                     )
+                    if (challenge.canPoll) {
+                        startPendingLoginPolling(challenge.pendingSessionId, displayName)
+                    }
                 }
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                    pendingLoginPollJob?.cancel()
                     saveLoginResult(result, displayName)
                     _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
                     setMessage(R.string.steam_account_imported)
@@ -153,7 +157,9 @@ class SteamViewModel(
 
     fun submitSteamLoginCode(code: String, displayName: String) {
         val challenge = _uiState.value.pendingLoginChallenge ?: return
+        if (!challenge.requiresCode) return
         viewModelScope.launch {
+            pendingLoginPollJob?.cancel()
             setLoading(true)
             when (val result = withContext(Dispatchers.IO) {
                 loginImportService.submitSteamGuardCode(
@@ -163,26 +169,32 @@ class SteamViewModel(
                 )
             }) {
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                    pendingLoginPollJob?.cancel()
                     saveLoginResult(result, displayName)
                     _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
                     setMessage(R.string.steam_account_imported)
                 }
                 is SteamLoginImportService.LoginResult.ChallengeRequired -> {
-                    _uiState.value = _uiState.value.copy(
-                        pendingLoginChallenge = SteamLoginChallengeUi(
-                            pendingSessionId = result.pendingSessionId,
-                            steamId = result.steamId,
-                            confirmationType = result.challenges.firstOrNull()?.confirmationType
-                                ?: challenge.confirmationType,
-                            message = result.message ?: appContext.getString(R.string.steam_verification_required)
-                        )
-                    )
-                    setMessage(result.message ?: appContext.getString(R.string.steam_verification_required))
+                    val challengeUi = result.toChallengeUi(fallbackType = challenge.confirmationType)
+                    _uiState.value = _uiState.value.copy(pendingLoginChallenge = challengeUi)
+                    setMessage(challengeUi.message)
+                    if (challengeUi.canPoll) {
+                        startPendingLoginPolling(challengeUi.pendingSessionId, displayName)
+                    }
                 }
                 is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
             }
             setLoading(false)
         }
+    }
+
+    fun cancelSteamLoginChallenge() {
+        pendingLoginPollJob?.cancel()
+        pendingLoginPollJob = null
+        _uiState.value.pendingLoginChallenge?.pendingSessionId?.let { sessionId ->
+            loginImportService.clearPendingSession(sessionId)
+        }
+        _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
     }
 
     fun deleteAccount(id: Long) {
@@ -329,6 +341,79 @@ class SteamViewModel(
         appContext.contentResolver.openInputStream(uri)?.use { stream ->
             stream.bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
         }.orEmpty()
+    }
+
+    private fun SteamLoginImportService.LoginResult.ChallengeRequired.toChallengeUi(
+        fallbackType: Int = 0
+    ): SteamLoginChallengeUi {
+        val codeChallenge = challenges.firstOrNull {
+            SteamLoginImportService.isCodeChallengeType(it.confirmationType)
+        }
+        val pollingChallenge = challenges.firstOrNull {
+            SteamLoginImportService.isPollingChallengeType(it.confirmationType)
+        }
+        val selectedChallenge = codeChallenge ?: pollingChallenge ?: challenges.firstOrNull()
+        val confirmationType = selectedChallenge?.confirmationType ?: fallbackType
+        val requiresCode = codeChallenge != null ||
+            SteamLoginImportService.isCodeChallengeType(confirmationType)
+        val canPoll = pollingChallenge != null ||
+            SteamLoginImportService.isPollingChallengeType(confirmationType)
+        val challengeMessage = message
+            ?: selectedChallenge?.associatedMessage?.takeIf { it.isNotBlank() }
+            ?: appContext.getString(
+                when {
+                    SteamLoginImportService.isAddAuthenticatorEmailActivationType(confirmationType) ->
+                        R.string.steam_activation_email_message
+                    SteamLoginImportService.isAddAuthenticatorActivationType(confirmationType) ->
+                        R.string.steam_activation_sms_message
+                    requiresCode && canPoll -> R.string.steam_login_code_or_approve_message
+                    canPoll -> R.string.steam_login_waiting_approval
+                    else -> R.string.steam_verification_required
+                }
+            )
+        return SteamLoginChallengeUi(
+            pendingSessionId = pendingSessionId,
+            steamId = steamId,
+            confirmationType = confirmationType,
+            message = challengeMessage,
+            requiresCode = requiresCode,
+            canPoll = canPoll
+        )
+    }
+
+    private fun startPendingLoginPolling(pendingSessionId: String, displayName: String) {
+        pendingLoginPollJob?.cancel()
+        pendingLoginPollJob = viewModelScope.launch {
+            repeat(40) {
+                delay(3_000L)
+                val result = withContext(Dispatchers.IO) {
+                    loginImportService.pollPendingSession(pendingSessionId)
+                }
+                when (result) {
+                    is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                        setLoading(true)
+                        saveLoginResult(result, displayName)
+                        _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+                        setMessage(R.string.steam_account_imported)
+                        setLoading(false)
+                        pendingLoginPollJob = null
+                        return@launch
+                    }
+                    is SteamLoginImportService.LoginResult.ChallengeRequired -> {
+                        _uiState.value = _uiState.value.copy(
+                            pendingLoginChallenge = result.toChallengeUi()
+                        )
+                    }
+                    is SteamLoginImportService.LoginResult.Failure -> {
+                        setMessage(result.message)
+                        pendingLoginPollJob = null
+                        return@launch
+                    }
+                }
+            }
+            setMessage(R.string.steam_login_approval_timeout)
+            pendingLoginPollJob = null
+        }
     }
 
     private fun selectedAccount(): SteamAccount? {

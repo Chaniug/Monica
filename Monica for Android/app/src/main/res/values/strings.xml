@@ -914,6 +914,11 @@
     <string name="steam_login_account_label">Account</string>
     <string name="steam_login_password_label">Password</string>
     <string name="steam_login_button">Login</string>
+    <string name="steam_login_waiting_approval">Waiting for approval in Steam</string>
+    <string name="steam_login_code_or_approve_message">Enter a Steam Guard code, or approve this login in the Steam mobile app.</string>
+    <string name="steam_login_approval_timeout">Steam login approval timed out. Try again after approving faster.</string>
+    <string name="steam_activation_email_message">Steam sent an activation code by email. Enter it to finish binding Steam Guard.</string>
+    <string name="steam_activation_sms_message">Steam sent an SMS activation code. Enter it to finish binding Steam Guard.</string>
     <string name="steam_code_label">Code</string>
     <string name="steam_submit_code_button">Submit</string>
     <string name="steam_account_imported">Steam account imported</string>

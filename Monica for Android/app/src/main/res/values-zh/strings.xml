@@ -907,6 +907,11 @@
     <string name="steam_login_account_label">账号</string>
     <string name="steam_login_password_label">密码</string>
     <string name="steam_login_button">登录</string>
+    <string name="steam_login_waiting_approval">正在等待 Steam 手机端批准</string>
+    <string name="steam_login_code_or_approve_message">你可以输入 Steam 令牌验证码，也可以在 Steam 手机 App 中批准本次登录。</string>
+    <string name="steam_login_approval_timeout">等待 Steam 登录批准超时，请重新登录并更快批准。</string>
+    <string name="steam_activation_email_message">Steam 已发送邮箱激活码，请输入该激活码完成 Steam Guard 绑定。</string>
+    <string name="steam_activation_sms_message">Steam 已发送短信激活码，请输入该激活码完成 Steam Guard 绑定。</string>
     <string name="steam_code_label">验证码</string>
     <string name="steam_submit_code_button">提交</string>
     <string name="steam_account_imported">已导入 Steam 账号</string>

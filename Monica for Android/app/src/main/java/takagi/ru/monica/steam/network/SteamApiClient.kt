@@ -50,7 +50,7 @@ class SteamApiClient(
             if (!response.isSuccessful || eResult != 1) {
                 val message = response.header("x-error_message")
                     ?: "Steam API failed: $iface/$method (${response.code}, eresult=$eResult)"
-                throw SteamApiException(message)
+                throw SteamApiException(message, eResult)
             }
             return response.body?.bytes() ?: ByteArray(0)
         }
@@ -117,4 +117,7 @@ class SteamApiClient(
     }
 }
 
-class SteamApiException(message: String) : Exception(message)
+class SteamApiException(
+    message: String,
+    val eResult: Int? = null
+) : Exception(message)

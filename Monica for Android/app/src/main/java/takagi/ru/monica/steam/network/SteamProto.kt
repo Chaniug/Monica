@@ -13,14 +13,26 @@ class SteamProtoWriter {
         writeVarintRaw(value)
     }
 
+    fun writeUint64(field: Int, value: Long) {
+        writeVarint(field, value)
+    }
+
     fun writeBool(field: Int, value: Boolean) {
         writeVarint(field, if (value) 1L else 0L)
+    }
+
+    fun writeString(field: Int, value: String) {
+        writeBytes(field, value.toByteArray(Charsets.UTF_8))
     }
 
     fun writeBytes(field: Int, bytes: ByteArray) {
         writeTag(field, 2)
         writeVarintRaw(bytes.size.toLong())
         out.write(bytes)
+    }
+
+    fun writeMessage(field: Int, message: SteamProtoWriter) {
+        writeBytes(field, message.toByteArray())
     }
 
     fun writeFixed64(field: Int, value: Long) {
@@ -69,6 +81,36 @@ data class SteamProtoField(
 
     val asBool: Boolean
         get() = (varint ?: 0L) != 0L
+
+    val asFixed64: Long
+        get() {
+            val value = fixed64BigInteger()
+            return if (value > SIGNED_LONG_MAX) {
+                value.subtract(UNSIGNED_LONG_BASE).longValueExact()
+            } else {
+                value.longValueExact()
+            }
+        }
+
+    val asFixed64UnsignedString: String
+        get() = fixed64BigInteger().toString()
+
+    private fun fixed64BigInteger(): BigInteger {
+        val fixed = bytes ?: return BigInteger.ZERO
+        if (fixed.size < 8) return BigInteger.ZERO
+        var value = BigInteger.ZERO
+        for (index in 7 downTo 0) {
+            value = value.shiftLeft(8).or(
+                BigInteger.valueOf((fixed[index].toInt() and 0xff).toLong())
+            )
+        }
+        return value
+    }
+
+    companion object {
+        private val SIGNED_LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE)
+        private val UNSIGNED_LONG_BASE = BigInteger.ONE.shiftLeft(64)
+    }
 }
 
 class SteamProtoReader(private val data: ByteArray) {

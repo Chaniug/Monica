@@ -180,7 +180,10 @@ fun SteamScreen(
         )
         SteamAddAccountMethod.LOGIN -> SteamLoginImportDialog(
             pendingChallenge = uiState.pendingLoginChallenge,
-            onDismissRequest = { addAccountMethod = null },
+            onDismissRequest = {
+                viewModel.cancelSteamLoginChallenge()
+                addAccountMethod = null
+            },
             onBeginLogin = viewModel::beginSteamLogin,
             onSubmitLoginCode = viewModel::submitSteamLoginCode
         )
@@ -1127,6 +1130,7 @@ private fun SteamLoginImportDialog(
     var loginDisplayName by remember { mutableStateOf("") }
     var challengeCode by remember { mutableStateOf("") }
     val waitingForCode = pendingChallenge != null
+    val requiresCode = pendingChallenge?.requiresCode == true
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -1149,67 +1153,89 @@ private fun SteamLoginImportDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(
-                    value = loginName,
-                    onValueChange = { loginName = it },
-                    label = { Text(stringResource(R.string.steam_login_account_label)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = loginPassword,
-                    onValueChange = { loginPassword = it },
-                    label = { Text(stringResource(R.string.steam_login_password_label)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = loginDisplayName,
-                    onValueChange = { loginDisplayName = it },
-                    label = { Text(stringResource(R.string.steam_display_name_label)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                if (pendingChallenge != null) {
+                if (pendingChallenge == null) {
+                    OutlinedTextField(
+                        value = loginName,
+                        onValueChange = { loginName = it },
+                        label = { Text(stringResource(R.string.steam_login_account_label)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = loginPassword,
+                        onValueChange = { loginPassword = it },
+                        label = { Text(stringResource(R.string.steam_login_password_label)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = loginDisplayName,
+                        onValueChange = { loginDisplayName = it },
+                        label = { Text(stringResource(R.string.steam_display_name_label)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                } else {
+                    if (pendingChallenge.canPoll) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .width(20.dp)
+                                    .height(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = stringResource(R.string.steam_login_waiting_approval),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     Text(
                         text = pendingChallenge.message,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedTextField(
-                        value = challengeCode,
-                        onValueChange = { challengeCode = it },
-                        label = { Text(stringResource(R.string.steam_code_label)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
+                    if (requiresCode) {
+                        OutlinedTextField(
+                            value = challengeCode,
+                            onValueChange = { challengeCode = it },
+                            label = { Text(stringResource(R.string.steam_code_label)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    if (waitingForCode) {
-                        onSubmitLoginCode(challengeCode, loginDisplayName)
-                    } else {
-                        onBeginLogin(loginName, loginPassword, loginDisplayName)
-                    }
-                },
-                enabled = if (waitingForCode) {
-                    challengeCode.isNotBlank()
-                } else {
-                    loginName.isNotBlank() && loginPassword.isNotBlank()
-                }
-            ) {
-                Text(
-                    stringResource(
+            if (!waitingForCode || requiresCode) {
+                TextButton(
+                    onClick = {
                         if (waitingForCode) {
-                            R.string.steam_submit_code_button
+                            onSubmitLoginCode(challengeCode, loginDisplayName)
                         } else {
-                            R.string.steam_login_button
+                            onBeginLogin(loginName, loginPassword, loginDisplayName)
                         }
+                    },
+                    enabled = if (waitingForCode) {
+                        challengeCode.isNotBlank()
+                    } else {
+                        loginName.isNotBlank() && loginPassword.isNotBlank()
+                    }
+                ) {
+                    Text(
+                        stringResource(
+                            if (waitingForCode) {
+                                R.string.steam_submit_code_button
+                            } else {
+                                R.string.steam_login_button
+                            }
+                        )
                     )
-                )
+                }
             }
         },
         dismissButton = {

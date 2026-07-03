@@ -63,7 +63,9 @@ class SteamBoundaryGuardTest {
 
     @Test
     fun steamPageUsesMonicaTopBarAndLocalizedMenuInsteadOfWideTabs() {
-        val source = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt").readText()
+        val source = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
 
         assertTrue(source.contains("ExpressiveTopBar"))
         assertTrue(source.contains("PasswordTopActionsDropdownMenu"))
