@@ -162,6 +162,9 @@ Monica's design, compatibility work, and several feature directions have been in
 - [Bitwarden](https://bitwarden.com/) - an important reference for the open-source password management ecosystem, vault model, and sync capabilities.
 - [KeePass](https://keepass.info/) - a foundational influence for the local vault philosophy and `.kdbx` ecosystem compatibility.
 - [Stratum Auth](https://github.com/stratumauth/app) - reference for authenticator experience, icon resources, and related compatibility support.
+- [Steam Desktop Authenticator](https://github.com/Jessecar96/SteamDesktopAuthenticator) - reference for Steam maFile format, Steam Guard, and trade confirmation compatibility.
+- [steamguard-cli](https://github.com/dyc3/steamguard-cli) - reference for Steam Guard login, authenticator transfer, and confirmation protocol implementation.
+- [AnotherVaporAuth](https://github.com/freefrank/AnotherVaporAuth) - reference for Steam mobile authenticator, login approval, and confirmation UX.
 
 ---
 

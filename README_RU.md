@@ -162,6 +162,9 @@ Android:
 - [Bitwarden](https://bitwarden.com/) — важный ориентир по open-source экосистеме управления паролями, модели vault и синхронизации.
 - [KeePass](https://keepass.info/) — основа философии локального хранилища и совместимости с `.kdbx`.
 - [Stratum Auth](https://github.com/stratumauth/app) — референс по опыту аутентификатора, иконкам и связанным аспектам совместимости.
+- [Steam Desktop Authenticator](https://github.com/Jessecar96/SteamDesktopAuthenticator) — референс по формату Steam maFile, Steam Guard и совместимости подтверждений обмена.
+- [steamguard-cli](https://github.com/dyc3/steamguard-cli) — референс по Steam Guard login, переносу аутентификатора и реализации протокола подтверждений.
+- [AnotherVaporAuth](https://github.com/freefrank/AnotherVaporAuth) — референс по мобильному Steam-аутентификатору, подтверждению входа и UX подтверждений.
 
 ---
 

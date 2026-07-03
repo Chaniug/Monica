@@ -162,6 +162,9 @@ Thiet ke, kha nang tuong thich va mot so dinh huong tinh nang cua Monica da nhan
 - [Bitwarden](https://bitwarden.com/) - nguon tham khao quan trong cho he sinh thai quan ly mat khau ma nguon mo, mo hinh vault va kha nang dong bo.
 - [KeePass](https://keepass.info/) - nen tang cho triet ly local vault va kha nang tuong thich voi he sinh thai `.kdbx`.
 - [Stratum Auth](https://github.com/stratumauth/app) - tham khao ve trai nghiem authenticator, tai nguyen icon va cac ho tro tuong thich lien quan.
+- [Steam Desktop Authenticator](https://github.com/Jessecar96/SteamDesktopAuthenticator) - tham khao ve dinh dang Steam maFile, Steam Guard va kha nang tuong thich xac nhan giao dich.
+- [steamguard-cli](https://github.com/dyc3/steamguard-cli) - tham khao ve dang nhap Steam Guard, chuyen authenticator va trien khai giao thuc xac nhan.
+- [AnotherVaporAuth](https://github.com/freefrank/AnotherVaporAuth) - tham khao ve Steam mobile authenticator, phe duyet dang nhap va trai nghiem xac nhan.
 
 ---
 
