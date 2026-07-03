@@ -77,6 +77,9 @@ class SteamLoginImportService(
         private const val AUTH_CODE_TYPE_EMAIL_CONFIRMATION = 5
         private const val LEGACY_OAUTH_CLIENT_ID = "DE45CD61"
         private const val LEGACY_OAUTH_SCOPE = "read_profile write_profile read_client write_client"
+        private val UNSIGNED_LONG_MAX = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE)
+        private val SIGNED_LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE)
+        private val UNSIGNED_LONG_BASE = BigInteger.ONE.shiftLeft(64)
 
         private const val LEGACY_CODE_TYPE_TWO_FACTOR = 1001
         private const val LEGACY_CODE_TYPE_EMAIL = 1002
@@ -328,26 +331,13 @@ class SteamLoginImportService(
                 return@runCatching replaceResult
             }
 
-            val updateResponse = postForm(
-                URL_UPDATE_AUTH,
-                mapOf(
-                    "client_id" to session.clientId,
-                    "steamid" to session.steamId,
-                    "code" to code.trim(),
-                    "code_type" to confirmationType.toString()
-                )
-            ) ?: return@runCatching LoginResult.Failure("提交 Steam 验证码失败")
-
-            val updatePayload = updateResponse.responseObject()
-            val updateSuccess = updateResponse.successBoolean() ?: (updatePayload != null)
-            val updateEResult = updateResponse.eResultInt()
-            val codeAlreadyAccepted = updateEResult == 29
-            if (!codeAlreadyAccepted && (!updateSuccess || (updateEResult != null && updateEResult != 1))) {
-                val message = updatePayload?.messageString()
-                    ?: updateResponse.messageString()
-                    ?: mapEresultToMessage(updateEResult)
-                    ?: "Steam 验证失败"
-                return@runCatching LoginResult.Failure(message)
+            when (val updateResult = submitSteamGuardCodeWithProtobuf(session, code.trim(), confirmationType)) {
+                SteamGuardSubmitResult.Accepted -> Unit
+                is SteamGuardSubmitResult.Failure -> return@runCatching LoginResult.Failure(updateResult.message)
+                SteamGuardSubmitResult.UnsupportedSession -> {
+                    val fallbackResult = submitSteamGuardCodeWithForm(session, code.trim(), confirmationType)
+                    if (fallbackResult != null) return@runCatching fallbackResult
+                }
             }
 
             val pollResult = pollForToken(session.clientId, session.requestId, session.steamId)
@@ -359,6 +349,86 @@ class SteamLoginImportService(
             android.util.Log.e(TAG, "submitSteamGuardCode failed: ${error.message}", error)
             LoginResult.Failure(error.message ?: "Steam 验证失败")
         }
+    }
+
+    private sealed class SteamGuardSubmitResult {
+        object Accepted : SteamGuardSubmitResult()
+        object UnsupportedSession : SteamGuardSubmitResult()
+        data class Failure(val message: String) : SteamGuardSubmitResult()
+    }
+
+    private data class AuthApiSessionIds(
+        val clientId: Long,
+        val requestId: ByteArray,
+        val steamId: Long
+    )
+
+    private fun submitSteamGuardCodeWithProtobuf(
+        session: PendingAuthSession,
+        code: String,
+        confirmationType: Int
+    ): SteamGuardSubmitResult {
+        val clientIdLong = parseUnsigned64AsSignedLong(session.clientId)
+            ?: return SteamGuardSubmitResult.UnsupportedSession
+        val steamIdLong = session.steamId.toLongOrNull()
+            ?: return SteamGuardSubmitResult.UnsupportedSession
+        val request = SteamProtoWriter().apply {
+            writeUint64(1, clientIdLong)
+            writeFixed64(2, steamIdLong)
+            writeString(3, code.trim())
+            writeVarint(4, confirmationType.toLong())
+        }
+
+        return try {
+            steamApi.callProtobuf(
+                iface = "IAuthenticationService",
+                method = "UpdateAuthSessionWithSteamGuardCode",
+                request = request
+            )
+            SteamGuardSubmitResult.Accepted
+        } catch (error: SteamApiException) {
+            if (error.eResult == 29) {
+                SteamGuardSubmitResult.Accepted
+            } else {
+                SteamGuardSubmitResult.Failure(
+                    mapEresultToMessage(error.eResult)
+                        ?: error.message
+                        ?: "Steam 验证失败"
+                )
+            }
+        } catch (error: Exception) {
+            android.util.Log.e(TAG, "submitSteamGuardCodeWithProtobuf failed: ${error.message}", error)
+            SteamGuardSubmitResult.Failure(error.message ?: "提交 Steam 验证码失败")
+        }
+    }
+
+    private fun submitSteamGuardCodeWithForm(
+        session: PendingAuthSession,
+        code: String,
+        confirmationType: Int
+    ): LoginResult? {
+        val updateResponse = postForm(
+            URL_UPDATE_AUTH,
+            mapOf(
+                "client_id" to session.clientId,
+                "steamid" to session.steamId,
+                "code" to code.trim(),
+                "code_type" to confirmationType.toString()
+            )
+        ) ?: return LoginResult.Failure("提交 Steam 验证码失败")
+
+        val updatePayload = updateResponse.responseObject()
+        val updateSuccess = updateResponse.successBoolean() ?: (updatePayload != null)
+        val updateEResult = updateResponse.eResultInt()
+        val codeAlreadyAccepted = updateEResult == 29
+        if (!codeAlreadyAccepted && (!updateSuccess || (updateEResult != null && updateEResult != 1))) {
+            val message = updatePayload?.messageString()
+                ?: updateResponse.messageString()
+                ?: mapEresultToMessage(updateEResult)
+                ?: "Steam 验证失败"
+            return LoginResult.Failure(message)
+        }
+        return null
     }
 
     fun clearPendingSession(sessionId: String) {
@@ -401,6 +471,75 @@ class SteamLoginImportService(
         maxAttempts: Int = MAX_POLL_ATTEMPTS,
         pendingResult: LoginResult? = null
     ): LoginResult {
+        val authIds = buildAuthApiSessionIds(clientId, requestId, steamId)
+        if (authIds != null) {
+            return pollForTokenWithProtobuf(authIds, steamId, maxAttempts, pendingResult)
+        }
+        return pollForTokenWithForm(clientId, requestId, steamId, maxAttempts, pendingResult)
+    }
+
+    private suspend fun pollForTokenWithProtobuf(
+        authIds: AuthApiSessionIds,
+        steamId: String,
+        maxAttempts: Int,
+        pendingResult: LoginResult?
+    ): LoginResult {
+        var clientId = authIds.clientId
+        repeat(maxAttempts) { attempt ->
+            val request = SteamProtoWriter().apply {
+                writeUint64(1, clientId)
+                writeBytes(2, authIds.requestId)
+            }
+            val fields = try {
+                SteamProtoReader(
+                    steamApi.callProtobuf(
+                        iface = "IAuthenticationService",
+                        method = "PollAuthSessionStatus",
+                        request = request
+                    )
+                ).parse()
+            } catch (error: SteamApiException) {
+                return LoginResult.Failure(
+                    mapEresultToMessage(error.eResult)
+                        ?: error.message
+                        ?: "Steam 登录轮询失败"
+                )
+            } catch (error: Exception) {
+                android.util.Log.e(TAG, "pollForTokenWithProtobuf failed: ${error.message}", error)
+                return LoginResult.Failure(error.message ?: "Steam 登录轮询失败")
+            }
+
+            fields[1]?.asLong?.takeIf { it != 0L }?.let { clientId = it }
+            val accessToken = fields[4]?.asString
+            val refreshToken = fields[3]?.asString
+            if (!accessToken.isNullOrBlank()) {
+                val accountName = fields[6]?.asString?.takeIf { it.isNotBlank() } ?: steamId
+                return resolveGuardPayloadAfterLogin(
+                    steamId = steamId,
+                    userName = accountName,
+                    accessToken = accessToken,
+                    refreshToken = refreshToken
+                )
+            }
+            if (!refreshToken.isNullOrBlank()) {
+                return LoginResult.Failure("Steam 登录成功但未返回 access token，无法继续导入")
+            }
+
+            if (attempt < maxAttempts - 1) {
+                delay(POLL_INTERVAL_MS)
+            }
+        }
+
+        return pendingResult ?: LoginResult.Failure("Steam 登录等待超时，请稍后重试")
+    }
+
+    private suspend fun pollForTokenWithForm(
+        clientId: String,
+        requestId: String,
+        steamId: String,
+        maxAttempts: Int,
+        pendingResult: LoginResult?
+    ): LoginResult {
         repeat(maxAttempts) { attempt ->
             val pollResponse = postForm(
                 URL_POLL_AUTH,
@@ -437,6 +576,55 @@ class SteamLoginImportService(
         }
 
         return pendingResult ?: LoginResult.Failure("Steam 登录等待超时，请稍后重试")
+    }
+
+    private fun buildAuthApiSessionIds(
+        clientId: String,
+        requestId: String,
+        steamId: String
+    ): AuthApiSessionIds? {
+        return AuthApiSessionIds(
+            clientId = parseUnsigned64AsSignedLong(clientId) ?: return null,
+            requestId = decodeAuthApiRequestIdBytes(requestId) ?: return null,
+            steamId = steamId.toLongOrNull() ?: return null
+        )
+    }
+
+    private fun parseUnsigned64AsSignedLong(value: String): Long? {
+        val big = runCatching { BigInteger(value.trim()) }.getOrNull() ?: return null
+        if (big < BigInteger.ZERO || big > UNSIGNED_LONG_MAX) return null
+        return if (big > SIGNED_LONG_MAX) {
+            big.subtract(UNSIGNED_LONG_BASE).longValueExact()
+        } else {
+            big.longValueExact()
+        }
+    }
+
+    private fun decodeAuthApiRequestIdBytes(value: String): ByteArray? {
+        val trimmed = value.trim()
+        if (trimmed.isBlank()) return null
+        val decoded = listOf(
+            Base64.NO_WRAP,
+            Base64.DEFAULT,
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+            Base64.URL_SAFE or Base64.DEFAULT
+        ).firstNotNullOfOrNull { flags ->
+            runCatching { Base64.decode(trimmed, flags) }
+                .getOrNull()
+                ?.takeIf { it.isNotEmpty() }
+        }
+        if (decoded != null) return decoded
+        return decodeHexBytes(trimmed) ?: trimmed.toByteArray(Charsets.UTF_8)
+    }
+
+    private fun decodeHexBytes(value: String): ByteArray? {
+        if (value.length % 2 != 0 || value.any { !it.isDigit() && it.lowercaseChar() !in 'a'..'f' }) {
+            return null
+        }
+        return value.chunked(2)
+            .map { it.toInt(16).toByte() }
+            .toByteArray()
+            .takeIf { it.isNotEmpty() }
     }
 
     private sealed class AddAuthenticatorStartResult {

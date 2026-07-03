@@ -88,6 +88,28 @@ class SteamLoginImportServiceGuardTest {
         assertEquals(steamId.toString(), fields[1]?.asFixed64UnsignedString)
     }
 
+    @Test
+    fun steamLoginGuardCodeAndPollingUseAuthApiProtobufShape() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
+        ).readText()
+
+        assertTrue(source.contains("submitSteamGuardCodeWithProtobuf"))
+        assertTrue(source.contains("method = \"UpdateAuthSessionWithSteamGuardCode\""))
+        assertTrue(source.contains("writeUint64(1, clientIdLong)"))
+        assertTrue(source.contains("writeFixed64(2, steamIdLong)"))
+        assertTrue(source.contains("writeString(3, code.trim())"))
+        assertTrue(source.contains("writeVarint(4, confirmationType.toLong())"))
+
+        assertTrue(source.contains("pollForTokenWithProtobuf"))
+        assertTrue(source.contains("method = \"PollAuthSessionStatus\""))
+        assertTrue(source.contains("writeUint64(1, clientId)"))
+        assertTrue(source.contains("writeBytes(2, authIds.requestId)"))
+        assertTrue(source.contains("decodeAuthApiRequestIdBytes"))
+        assertTrue(source.contains("parseUnsigned64AsSignedLong"))
+        assertTrue(source.contains("pollForTokenWithForm"))
+    }
+
     private fun projectFile(path: String): File {
         var dir = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         while (
