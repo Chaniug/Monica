@@ -3,6 +3,7 @@ package takagi.ru.monica.steam
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import takagi.ru.monica.steam.network.SteamProtoReader
@@ -21,6 +22,11 @@ class SteamLoginImportServiceGuardTest {
         assertFalse(SteamLoginImportService.isPollingChallengeType(3))
         assertTrue(SteamLoginImportService.isPollingChallengeType(4))
         assertTrue(SteamLoginImportService.isPollingChallengeType(5))
+
+        assertEquals(3, SteamLoginImportService.manualCodeTypeForPollingChallenge(4))
+        assertEquals(2, SteamLoginImportService.manualCodeTypeForPollingChallenge(5))
+        assertNull(SteamLoginImportService.manualCodeTypeForPollingChallenge(2))
+        assertNull(SteamLoginImportService.manualCodeTypeForPollingChallenge(3))
     }
 
     @Test
@@ -43,6 +49,30 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(viewModelSource.contains("startPendingLoginPolling"))
         assertTrue(viewModelSource.contains("SteamLoginImportService.isPollingChallengeType"))
         assertTrue(viewModelSource.contains("SteamLoginImportService.isAddAuthenticatorActivationType"))
+    }
+
+    @Test
+    fun steamLoginImportAllowsCodeOrApprovalAndUsesSteamAccountName() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt"
+        ).readText()
+        val screenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt"
+        ).readText()
+        val loginDialogSource = screenSource.substringAfter("private fun SteamLoginImportDialog")
+            .substringBefore("private fun badgeCountText")
+
+        assertTrue(viewModelSource.contains("SteamLoginImportService.manualCodeTypeForPollingChallenge"))
+        assertTrue(viewModelSource.contains("displayNameOverride = null"))
+        assertTrue(viewModelSource.contains("requiresCode && canPoll"))
+        assertFalse(viewModelSource.contains("fun beginSteamLogin(userName: String, password: String, displayName"))
+        assertFalse(viewModelSource.contains("fun submitSteamLoginCode(code: String, displayName"))
+
+        assertTrue(loginDialogSource.contains("onBeginLogin: (String, String) -> Unit"))
+        assertTrue(loginDialogSource.contains("onSubmitLoginCode: (String) -> Unit"))
+        assertTrue(loginDialogSource.contains("pendingChallenge.canPoll"))
+        assertFalse(loginDialogSource.contains("loginDisplayName"))
+        assertFalse(loginDialogSource.contains("steam_display_name_label"))
     }
 
     @Test

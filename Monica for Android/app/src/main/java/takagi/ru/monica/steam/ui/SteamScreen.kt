@@ -1122,12 +1122,11 @@ private fun SteamMaFileImportDialog(
 private fun SteamLoginImportDialog(
     pendingChallenge: SteamLoginChallengeUi?,
     onDismissRequest: () -> Unit,
-    onBeginLogin: (String, String, String) -> Unit,
-    onSubmitLoginCode: (String, String) -> Unit
+    onBeginLogin: (String, String) -> Unit,
+    onSubmitLoginCode: (String) -> Unit
 ) {
     var loginName by remember { mutableStateOf("") }
     var loginPassword by remember { mutableStateOf("") }
-    var loginDisplayName by remember { mutableStateOf("") }
     var challengeCode by remember { mutableStateOf("") }
     val waitingForCode = pendingChallenge != null
     val requiresCode = pendingChallenge?.requiresCode == true
@@ -1166,13 +1165,6 @@ private fun SteamLoginImportDialog(
                         onValueChange = { loginPassword = it },
                         label = { Text(stringResource(R.string.steam_login_password_label)) },
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = loginDisplayName,
-                        onValueChange = { loginDisplayName = it },
-                        label = { Text(stringResource(R.string.steam_display_name_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -1215,9 +1207,9 @@ private fun SteamLoginImportDialog(
                 TextButton(
                     onClick = {
                         if (waitingForCode) {
-                            onSubmitLoginCode(challengeCode, loginDisplayName)
+                            onSubmitLoginCode(challengeCode)
                         } else {
-                            onBeginLogin(loginName, loginPassword, loginDisplayName)
+                            onBeginLogin(loginName, loginPassword)
                         }
                     },
                     enabled = if (waitingForCode) {

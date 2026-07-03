@@ -98,6 +98,14 @@ class SteamLoginImportService(
                 confirmationType == AUTH_CODE_TYPE_EMAIL_CONFIRMATION
         }
 
+        fun manualCodeTypeForPollingChallenge(confirmationType: Int): Int? {
+            return when (confirmationType) {
+                AUTH_CODE_TYPE_DEVICE_CONFIRMATION -> AUTH_CODE_TYPE_DEVICE
+                AUTH_CODE_TYPE_EMAIL_CONFIRMATION -> AUTH_CODE_TYPE_EMAIL
+                else -> null
+            }
+        }
+
         fun isAddAuthenticatorActivationType(confirmationType: Int): Boolean {
             return confirmationType == ADD_AUTHENTICATOR_SMS_ACTIVATION_CODE ||
                 confirmationType == ADD_AUTHENTICATOR_EMAIL_ACTIVATION_CODE
@@ -471,6 +479,7 @@ class SteamLoginImportService(
             token = accessToken,
             result = beginAddAuthenticator(
                 steamId = steamId,
+                accountName = userName,
                 accessToken = accessToken
             )
         )
@@ -483,6 +492,7 @@ class SteamLoginImportService(
                 token = refreshToken,
                 result = beginAddAuthenticator(
                     steamId = steamId,
+                    accountName = userName,
                     accessToken = refreshToken
                 )
             )
@@ -591,6 +601,7 @@ class SteamLoginImportService(
 
     private fun beginAddAuthenticator(
         steamId: String,
+        accountName: String,
         accessToken: String
     ): AddAuthenticatorStartResult {
         val steamIdLong = steamId.toLongOrNull()
@@ -654,6 +665,9 @@ class SteamLoginImportService(
 
         val confirmType = fields[12]?.asInt ?: 0
         val phoneHint = fields[11]?.asString.orEmpty()
+        val resolvedAccountName = fields[6]?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: accountName.takeIf { it.isNotBlank() && it != steamId }
         val canonicalPayload = buildJsonObject {
             put("steamid", JsonPrimitive(steamId))
             put("shared_secret", JsonPrimitive(sharedSecret))
@@ -663,8 +677,7 @@ class SteamLoginImportService(
             fields[4]?.asString?.takeIf { it.isNotBlank() }
                 ?.let { put("uri", JsonPrimitive(it)) }
             put("server_time", JsonPrimitive((fields[5]?.asLong ?: authTime).toString()))
-            fields[6]?.asString?.takeIf { it.isNotBlank() }
-                ?.let { put("account_name", JsonPrimitive(it)) }
+            resolvedAccountName?.let { put("account_name", JsonPrimitive(it)) }
             fields[7]?.asString?.takeIf { it.isNotBlank() }
                 ?.let { put("token_gid", JsonPrimitive(it)) }
             fields[8]?.bytes?.takeIf { it.isNotEmpty() }
