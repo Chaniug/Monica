@@ -867,6 +867,13 @@
     <string name="steam_delete_account_title">Delete Steam account</string>
     <string name="steam_delete_account_message">Delete \"%1$s\"?</string>
     <string name="steam_delete_account_menu">Delete account</string>
+    <string name="steam_add_account_title">Add Steam account</string>
+    <string name="steam_add_account_button">Add account</string>
+    <string name="steam_add_method_mafile">Import maFile</string>
+    <string name="steam_add_method_login">Sign in with Steam</string>
+    <string name="steam_more_options_with_confirmations">More options, %1$d pending confirmation(s)</string>
+    <string name="steam_empty_title">No Steam account</string>
+    <string name="steam_empty_message">Add a local Steam account to view codes and confirmations.</string>
     <string name="steam_seconds_remaining">%1$d s</string>
     <string name="steam_id_label">Steam ID</string>
     <string name="steam_account_label">Account</string>

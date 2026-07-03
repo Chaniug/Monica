@@ -860,6 +860,13 @@
     <string name="steam_delete_account_title">删除 Steam 账号</string>
     <string name="steam_delete_account_message">删除“%1$s”？</string>
     <string name="steam_delete_account_menu">删除账号</string>
+    <string name="steam_add_account_title">添加 Steam 账号</string>
+    <string name="steam_add_account_button">添加账号</string>
+    <string name="steam_add_method_mafile">导入 maFile</string>
+    <string name="steam_add_method_login">登录 Steam</string>
+    <string name="steam_more_options_with_confirmations">更多，%1$d 项待确认交易</string>
+    <string name="steam_empty_title">还没有 Steam 账号</string>
+    <string name="steam_empty_message">添加一个本地 Steam 账号后再查看令牌和交易确认。</string>
     <string name="steam_seconds_remaining">%1$d 秒</string>
     <string name="steam_id_label">Steam ID</string>
     <string name="steam_account_label">账号</string>

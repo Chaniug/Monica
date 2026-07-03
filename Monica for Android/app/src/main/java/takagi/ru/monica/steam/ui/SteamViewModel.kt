@@ -340,11 +340,15 @@ class SteamViewModel(
     private fun updateForAccounts(accounts: List<SteamAccount>, nowSeconds: Long) {
         val selected = accounts.firstOrNull { it.selected } ?: accounts.firstOrNull()
         val previous = _uiState.value
+        val selectedChanged = previous.selectedAccountId != selected?.id
         _uiState.value = previous.copy(
             accounts = accounts,
             selectedAccountId = selected?.id,
             currentCode = selected?.let { SteamTotp.generateAuthCode(it.sharedSecret, nowSeconds) }.orEmpty(),
-            secondsRemaining = SteamTotp.secondsRemaining(nowSeconds)
+            secondsRemaining = SteamTotp.secondsRemaining(nowSeconds),
+            confirmations = if (selectedChanged) emptyList() else previous.confirmations,
+            pendingLogins = if (selectedChanged) emptyList() else previous.pendingLogins,
+            selectedConfirmationIds = if (selectedChanged) emptySet() else previous.selectedConfirmationIds
         )
     }
 

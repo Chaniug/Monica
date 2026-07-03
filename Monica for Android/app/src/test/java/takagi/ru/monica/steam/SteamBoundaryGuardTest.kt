@@ -70,8 +70,16 @@ class SteamBoundaryGuardTest {
         assertFalse(source.contains("ScrollableTabRow"))
         assertFalse(source.contains("listOf(\"Code\", \"Confirm\", \"Login\", \"Import\")"))
         assertFalse(source.contains("Text(\""))
+        assertFalse(source.contains("var searchQuery"))
+        assertFalse(source.contains("var isSearchExpanded"))
+        assertFalse(source.contains("SteamSection.IMPORT"))
+        assertFalse(source.contains("SteamAccountSelector("))
+        assertFalse(source.contains("SteamImportContent("))
         assertTrue(source.contains("if (selectedAccount == null)"))
-        assertTrue(source.contains("SteamSection.IMPORT"))
+        assertTrue(source.contains("BadgedBox"))
+        assertTrue(source.contains("pendingConfirmationCount"))
+        assertTrue(source.contains("SteamAddMethodDialog"))
+        assertTrue(source.contains("SteamEmptyAccountContent"))
         assertTrue(source.contains("private fun SteamCodeContent(\n    account: SteamAccount,"))
     }
 
