@@ -198,6 +198,8 @@ fun SteamScreen(
     var lastSteamQrAccountId by remember { mutableStateOf(readLastSteamQrAccountId(context)) }
     var deleteRequest by remember { mutableStateOf<SteamDeleteAccountsRequest?>(null) }
     var scannedQrPayload by remember { mutableStateOf<String?>(null) }
+    var pendingLoginAction by remember { mutableStateOf<LoginActionRequest?>(null) }
+    var autoPromptedLoginClientIds by remember(selectedAccount?.id) { mutableStateOf<Set<Long>>(emptySet()) }
     val pendingConfirmationCount = if (selectedAccount?.canUseConfirmations == true) {
         uiState.confirmations.size
     } else {
@@ -258,6 +260,21 @@ fun SteamScreen(
         }
     }
 
+    LaunchedEffect(
+        selectedAccount?.id,
+        selectedAccount?.canApproveLogins,
+        selectedSection,
+        detailAccountId
+    ) {
+        if (
+            selectedAccount?.canApproveLogins == true &&
+            detailAccountId == null &&
+            selectedSection == SteamSection.CODE
+        ) {
+            viewModel.refreshPendingLogins(silent = true)
+        }
+    }
+
     LaunchedEffect(detailAccount?.id, detailAccount?.canApproveLogins) {
         if (detailAccount?.canApproveLogins == true) {
             viewModel.refreshPendingLogins(silent = true)
@@ -306,6 +323,59 @@ fun SteamScreen(
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             viewModel.clearMessage()
         }
+    }
+
+    LaunchedEffect(selectedAccount?.id, selectedAccount?.canApproveLogins, uiState.pendingLogins) {
+        val activeIds = uiState.pendingLogins.map { it.clientId }.toSet()
+        val promptedActiveIds = autoPromptedLoginClientIds.intersect(activeIds)
+        if (promptedActiveIds != autoPromptedLoginClientIds) {
+            autoPromptedLoginClientIds = promptedActiveIds
+        }
+        if (selectedAccount?.canApproveLogins == true && pendingLoginAction == null) {
+            val login = uiState.pendingLogins.firstOrNull { it.clientId !in promptedActiveIds }
+            if (login != null) {
+                autoPromptedLoginClientIds = promptedActiveIds + login.clientId
+                SteamLoginNotificationHelper.show(context, login)
+                pendingLoginAction = LoginActionRequest(login)
+            }
+        }
+    }
+
+    pendingLoginAction?.let { request ->
+        AlertDialog(
+            onDismissRequest = { pendingLoginAction = null },
+            title = {
+                Text(stringResource(R.string.steam_login_request_title))
+            },
+            text = {
+                LoginActionDetails(request.login)
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            viewModel.respondPendingLogin(request.login, false)
+                            pendingLoginAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_reject))
+                    }
+                    TextButton(
+                        onClick = {
+                            viewModel.respondPendingLogin(request.login, true)
+                            pendingLoginAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_approve))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLoginAction = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     if (showAddAccountDialog) {
@@ -1871,7 +1941,6 @@ private fun SteamLoginApprovalSection(
     var pendingAction by remember { mutableStateOf<LoginActionRequest?>(null) }
     var pendingQrAction by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var scannedQrAction by remember { mutableStateOf<String?>(null) }
-    var autoPromptedClientIds by remember(account.id) { mutableStateOf<Set<Long>>(emptySet()) }
 
     LaunchedEffect(pendingScannedQr) {
         val qr = pendingScannedQr?.trim().orEmpty()
@@ -1879,21 +1948,6 @@ private fun SteamLoginApprovalSection(
             qrText = qr
             scannedQrAction = qr
             onScannedQrHandled()
-        }
-    }
-
-    LaunchedEffect(account.id, account.canApproveLogins, pendingLogins) {
-        val activeIds = pendingLogins.map { it.clientId }.toSet()
-        val promptedActiveIds = autoPromptedClientIds.intersect(activeIds)
-        if (promptedActiveIds != autoPromptedClientIds) {
-            autoPromptedClientIds = promptedActiveIds
-        }
-        if (account.canApproveLogins && pendingAction == null) {
-            val login = pendingLogins.firstOrNull { it.clientId !in promptedActiveIds }
-            if (login != null) {
-                autoPromptedClientIds = promptedActiveIds + login.clientId
-                pendingAction = LoginActionRequest(login)
-            }
         }
     }
 
