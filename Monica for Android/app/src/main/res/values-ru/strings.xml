@@ -3518,4 +3518,12 @@
     <string name="steam_remove_authenticator_remote_action">Удалить из Steam</string>
     <string name="steam_remove_authenticator_local_action">Удалить локальную копию</string>
     <string name="steam_remove_authenticator_local_done">Локальный Steam-аутентификатор удален</string>
+    <string name="steam_add_method_qr_login">Войти в Steam по QR-коду</string>
+    <string name="steam_qr_login_import_title">Вход Steam по QR</string>
+    <string name="steam_qr_login_import_message">Отсканируйте QR-код Monica в мобильном приложении Steam или другом Steam-аутентификаторе. После подтверждения Monica войдет и импортирует аккаунт.</string>
+    <string name="steam_qr_login_import_waiting">Ожидание подтверждения QR</string>
+    <string name="steam_qr_login_import_starting">Создание QR-кода</string>
+    <string name="steam_qr_login_import_refresh">Создать QR заново</string>
+    <string name="steam_qr_login_import_image_description">QR-код входа Steam</string>
+    <string name="steam_qr_login_import_failed">Не удалось создать QR-код</string>
 </resources>

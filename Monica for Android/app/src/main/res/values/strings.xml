@@ -905,6 +905,7 @@
     <string name="steam_qr_album_select">Album</string>
     <string name="steam_add_method_mafile">Import maFile</string>
     <string name="steam_add_method_login">Sign in with Steam</string>
+    <string name="steam_add_method_qr_login">Sign in with QR code</string>
     <string name="steam_more_options_with_confirmations">More options, %1$d pending confirmation(s)</string>
     <string name="steam_empty_title">No Steam account</string>
     <string name="steam_empty_message">Add a local Steam account to view codes and confirmations.</string>
@@ -966,6 +967,13 @@
     <string name="steam_display_name_label">Display name</string>
     <string name="steam_import_button">Import</string>
     <string name="steam_login_title">Steam login</string>
+    <string name="steam_qr_login_import_title">Steam QR login</string>
+    <string name="steam_qr_login_import_message">Scan this QR code with the Steam mobile app or another Steam authenticator to approve Monica login.</string>
+    <string name="steam_qr_login_import_waiting">Waiting for QR approval</string>
+    <string name="steam_qr_login_import_starting">Generating QR code</string>
+    <string name="steam_qr_login_import_refresh">Regenerate QR</string>
+    <string name="steam_qr_login_import_image_description">Steam login QR code</string>
+    <string name="steam_qr_login_import_failed">Could not generate QR code</string>
     <string name="steam_login_account_label">Account</string>
     <string name="steam_login_password_label">Password</string>
     <string name="steam_login_button">Login</string>

@@ -1,6 +1,7 @@
 package takagi.ru.monica.steam.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
@@ -107,6 +108,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.fragment.app.FragmentActivity
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -164,7 +167,8 @@ private enum class SteamSection(
 
 private enum class SteamAddAccountMethod {
     MAFILE,
-    LOGIN
+    LOGIN,
+    QR_LOGIN
 }
 
 private data class ConfirmationActionRequest(
@@ -447,6 +451,11 @@ fun SteamScreen(
             onSelectLogin = {
                 showAddAccountDialog = false
                 addAccountMethod = SteamAddAccountMethod.LOGIN
+            },
+            onSelectQrLogin = {
+                showAddAccountDialog = false
+                addAccountMethod = SteamAddAccountMethod.QR_LOGIN
+                viewModel.beginSteamQrLogin()
             }
         )
     }
@@ -463,6 +472,17 @@ fun SteamScreen(
                 addAccountMethod = null
             },
             onBeginLogin = viewModel::beginSteamLogin,
+            onSubmitLoginCode = viewModel::submitSteamLoginCode
+        )
+        SteamAddAccountMethod.QR_LOGIN -> SteamQrLoginImportDialog(
+            pendingQrChallenge = uiState.pendingQrLoginChallenge,
+            pendingChallenge = uiState.pendingLoginChallenge,
+            loading = uiState.loading,
+            onDismissRequest = {
+                viewModel.cancelSteamLoginChallenge()
+                addAccountMethod = null
+            },
+            onRestart = viewModel::beginSteamQrLogin,
             onSubmitLoginCode = viewModel::submitSteamLoginCode
         )
         null -> Unit
@@ -2554,7 +2574,8 @@ private fun SteamEmptyAccountContent(
 private fun SteamAddMethodDialog(
     onDismissRequest: () -> Unit,
     onSelectMaFile: () -> Unit,
-    onSelectLogin: () -> Unit
+    onSelectLogin: () -> Unit,
+    onSelectQrLogin: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -2576,6 +2597,14 @@ private fun SteamAddMethodDialog(
                     Icon(Icons.Default.Login, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.steam_add_method_login))
+                }
+                OutlinedButton(
+                    onClick = onSelectQrLogin,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.steam_add_method_qr_login))
                 }
             }
         },
@@ -2668,6 +2697,184 @@ private fun SteamMaFileImportDialog(
             }
         }
     )
+}
+
+@Composable
+private fun SteamQrLoginImportDialog(
+    pendingQrChallenge: SteamQrLoginChallengeUi?,
+    pendingChallenge: SteamLoginChallengeUi?,
+    loading: Boolean,
+    onDismissRequest: () -> Unit,
+    onRestart: () -> Unit,
+    onSubmitLoginCode: (String) -> Unit
+) {
+    var challengeCode by remember { mutableStateOf("") }
+    val waitingForCode = pendingChallenge != null
+    val requiresCode = pendingChallenge?.requiresCode == true
+
+    LaunchedEffect(pendingChallenge?.pendingSessionId, pendingChallenge?.confirmationType) {
+        challengeCode = ""
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Text(
+                stringResource(
+                    if (waitingForCode) {
+                        R.string.steam_verification_required
+                    } else {
+                        R.string.steam_qr_login_import_title
+                    }
+                )
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (pendingChallenge != null) {
+                    if (pendingChallenge.canPoll) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = stringResource(R.string.steam_login_waiting_approval),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Text(
+                        text = pendingChallenge.message,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (requiresCode) {
+                        OutlinedTextField(
+                            value = challengeCode,
+                            onValueChange = { challengeCode = it },
+                            label = { Text(stringResource(R.string.steam_code_label)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                } else {
+                    Text(
+                        text = stringResource(R.string.steam_qr_login_import_message),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (pendingQrChallenge != null) {
+                        SteamQrLoginCodeImage(
+                            challengeUrl = pendingQrChallenge.challengeUrl,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text(
+                            text = stringResource(R.string.steam_qr_login_import_waiting),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                        Text(
+                            text = stringResource(R.string.steam_qr_login_import_starting),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (waitingForCode && requiresCode) {
+                TextButton(
+                    onClick = { onSubmitLoginCode(challengeCode) },
+                    enabled = challengeCode.isNotBlank()
+                ) {
+                    Text(stringResource(R.string.steam_submit_code_button))
+                }
+            } else {
+                TextButton(
+                    onClick = onRestart,
+                    enabled = !loading
+                ) {
+                    Text(stringResource(R.string.steam_qr_login_import_refresh))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SteamQrLoginCodeImage(
+    challengeUrl: String,
+    modifier: Modifier = Modifier
+) {
+    val qrBitmap = remember(challengeUrl) {
+        createSteamQrLoginBitmap(challengeUrl)
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = androidx.compose.ui.graphics.Color.White,
+        contentColor = androidx.compose.ui.graphics.Color.Black,
+        tonalElevation = 0.dp
+    ) {
+        if (qrBitmap != null) {
+            Image(
+                bitmap = qrBitmap,
+                contentDescription = stringResource(R.string.steam_qr_login_import_image_description),
+                modifier = Modifier
+                    .size(220.dp)
+                    .padding(14.dp),
+                contentScale = ContentScale.Fit
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(220.dp)
+                    .padding(18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.steam_qr_login_import_failed),
+                    color = androidx.compose.ui.graphics.Color.Black
+                )
+            }
+        }
+    }
+}
+
+private fun createSteamQrLoginBitmap(content: String, size: Int = 768): ImageBitmap? {
+    if (content.isBlank()) return null
+    return runCatching {
+        val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                bitmap.setPixel(
+                    x,
+                    y,
+                    if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                )
+            }
+        }
+        bitmap.asImageBitmap()
+    }.getOrNull()
 }
 
 @Composable

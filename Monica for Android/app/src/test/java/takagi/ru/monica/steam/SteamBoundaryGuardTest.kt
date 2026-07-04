@@ -214,6 +214,17 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun importDataPageDoesNotExposeLegacySteamGuardImportEntry() {
+        val importOptionsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/ImportTypeOptions.kt"
+        ).readText()
+
+        assertFalse(importOptionsSource.contains("key = \"steam\""))
+        assertFalse(importOptionsSource.contains("R.string.import_type_steam_title"))
+        assertFalse(importOptionsSource.contains("Icons.Default.SportsEsports"))
+    }
+
+    @Test
     fun steamPageUsesMonicaTopBarAndLocalizedMenuInsteadOfWideTabs() {
         val source = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
             .readText()

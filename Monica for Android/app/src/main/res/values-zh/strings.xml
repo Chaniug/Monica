@@ -898,6 +898,7 @@
     <string name="steam_qr_album_select">相册选择</string>
     <string name="steam_add_method_mafile">导入 maFile</string>
     <string name="steam_add_method_login">登录 Steam</string>
+    <string name="steam_add_method_qr_login">二维码登录 Steam</string>
     <string name="steam_more_options_with_confirmations">更多，%1$d 项待确认交易</string>
     <string name="steam_empty_title">还没有 Steam 账号</string>
     <string name="steam_empty_message">添加一个本地 Steam 账号后再查看令牌和交易确认。</string>
@@ -959,6 +960,13 @@
     <string name="steam_display_name_label">显示名称</string>
     <string name="steam_import_button">导入</string>
     <string name="steam_login_title">Steam 登录</string>
+    <string name="steam_qr_login_import_title">Steam 二维码登录</string>
+    <string name="steam_qr_login_import_message">用 Steam 手机 App 或其他 Steam 验证器扫描 Monica 上的二维码，批准后 Monica 会继续登录并导入账号。</string>
+    <string name="steam_qr_login_import_waiting">正在等待二维码批准</string>
+    <string name="steam_qr_login_import_starting">正在生成二维码</string>
+    <string name="steam_qr_login_import_refresh">重新生成二维码</string>
+    <string name="steam_qr_login_import_image_description">Steam 登录二维码</string>
+    <string name="steam_qr_login_import_failed">无法生成二维码</string>
     <string name="steam_login_account_label">账号</string>
     <string name="steam_login_password_label">密码</string>
     <string name="steam_login_button">登录</string>

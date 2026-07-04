@@ -3422,4 +3422,12 @@
     <string name="steam_remove_authenticator_remote_action">Steam から削除</string>
     <string name="steam_remove_authenticator_local_action">ローカルコピーを削除</string>
     <string name="steam_remove_authenticator_local_done">ローカル Steam 認証子を削除しました</string>
+    <string name="steam_add_method_qr_login">QR コードで Steam にログイン</string>
+    <string name="steam_qr_login_import_title">Steam QR ログイン</string>
+    <string name="steam_qr_login_import_message">Steam モバイルアプリまたは別の Steam 認証アプリで Monica の QR コードをスキャンし、承認すると Monica がログインしてアカウントをインポートします。</string>
+    <string name="steam_qr_login_import_waiting">QR 承認を待っています</string>
+    <string name="steam_qr_login_import_starting">QR コードを生成しています</string>
+    <string name="steam_qr_login_import_refresh">QR を再生成</string>
+    <string name="steam_qr_login_import_image_description">Steam ログイン QR コード</string>
+    <string name="steam_qr_login_import_failed">QR コードを生成できません</string>
 </resources>

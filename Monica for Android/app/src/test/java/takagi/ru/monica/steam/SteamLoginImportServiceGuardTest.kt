@@ -102,6 +102,19 @@ class SteamLoginImportServiceGuardTest {
     }
 
     @Test
+    fun steamLoginImportDecodesSteamIdFromQrLoginJwt() {
+        val payload = """{"sub":"76561198000000000"}"""
+        val encodedPayload = java.util.Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(payload.toByteArray(Charsets.UTF_8))
+        val token = "header.$encodedPayload.signature"
+
+        assertEquals("76561198000000000", SteamLoginImportService.steamIdFromJwt(token))
+        assertNull(SteamLoginImportService.steamIdFromJwt("not-a-jwt"))
+        assertNull(SteamLoginImportService.steamIdFromJwt("header.e30.signature"))
+    }
+
+    @Test
     fun steamLoginGuardCodeAndPollingUseAuthApiProtobufShape() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
@@ -142,6 +155,47 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(source.contains("decodeAuthApiRequestIdBytes"))
         assertTrue(source.contains("parseUnsigned64AsSignedLong"))
         assertTrue(source.contains("pollForTokenWithForm"))
+    }
+
+    @Test
+    fun steamLoginImportSupportsMonicaGeneratedQrLogin() {
+        val serviceSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
+        ).readText()
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt"
+        ).readText()
+        val screenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt"
+        ).readText()
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+
+        assertTrue(serviceSource.contains("fun beginQrLogin(): QrLoginResult"))
+        assertTrue(serviceSource.contains("method = \"BeginAuthSessionViaQR\""))
+        assertTrue(serviceSource.contains("writeString(1, DEVICE_FRIENDLY_NAME)"))
+        assertTrue(serviceSource.contains("writeVarint(2, 3L)"))
+        assertTrue(serviceSource.contains("writeMessage(3, buildAuthApiDeviceDetails())"))
+        assertTrue(serviceSource.contains("writeString(4, STEAM_WEBSITE_ID)"))
+        assertTrue(serviceSource.contains("pollQrLoginSession"))
+        assertTrue(serviceSource.contains("steamIdFromJwt(refreshToken)"))
+        assertTrue(serviceSource.contains("steamIdFromJwt(accessToken)"))
+        assertTrue(serviceSource.contains("QrLoginResult.LoginChallengeRequired"))
+
+        assertTrue(viewModelSource.contains("pendingQrLoginChallenge"))
+        assertTrue(viewModelSource.contains("fun beginSteamQrLogin()"))
+        assertTrue(viewModelSource.contains("startPendingQrLoginPolling"))
+        assertTrue(viewModelSource.contains("loginImportService.pollQrLoginSession"))
+        assertTrue(viewModelSource.contains("handleLoginChallenge(result.challenge)"))
+
+        assertTrue(screenSource.contains("SteamAddAccountMethod.QR_LOGIN"))
+        assertTrue(screenSource.contains("viewModel.beginSteamQrLogin()"))
+        assertTrue(screenSource.contains("SteamQrLoginImportDialog("))
+        assertTrue(screenSource.contains("QRCodeWriter().encode(content, BarcodeFormat.QR_CODE"))
+        assertTrue(screenSource.contains("R.string.steam_add_method_qr_login"))
+        assertTrue(screenSource.contains("R.string.steam_qr_login_import_message"))
+        assertTrue(defaultStrings.contains("<string name=\"steam_add_method_qr_login\">"))
+        assertTrue(zhStrings.contains("<string name=\"steam_add_method_qr_login\">二维码登录 Steam</string>"))
     }
 
     @Test

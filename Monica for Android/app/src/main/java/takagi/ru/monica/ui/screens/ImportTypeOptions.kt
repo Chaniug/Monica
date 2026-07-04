@@ -8,7 +8,6 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.runtime.Composable
@@ -52,13 +51,6 @@ fun importTypeOptions(): List<ImportTypeInfo> {
             title = stringResource(R.string.import_type_stratum_title),
             description = stringResource(R.string.import_type_stratum_desc),
             fileHint = stringResource(R.string.import_type_stratum_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "steam",
-            icon = Icons.Default.SportsEsports,
-            title = stringResource(R.string.import_type_steam_title),
-            description = stringResource(R.string.import_type_steam_desc),
-            fileHint = stringResource(R.string.import_type_steam_file_hint)
         )
     )
 }

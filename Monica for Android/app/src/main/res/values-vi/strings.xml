@@ -3435,4 +3435,12 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="steam_remove_authenticator_remote_action">Xóa khỏi Steam</string>
     <string name="steam_remove_authenticator_local_action">Xóa bản sao cục bộ</string>
     <string name="steam_remove_authenticator_local_done">Đã xóa trình xác thực Steam cục bộ</string>
+    <string name="steam_add_method_qr_login">Đăng nhập Steam bằng QR</string>
+    <string name="steam_qr_login_import_title">Đăng nhập Steam bằng QR</string>
+    <string name="steam_qr_login_import_message">Quét mã QR trên Monica bằng ứng dụng Steam di động hoặc trình xác thực Steam khác. Sau khi phê duyệt, Monica sẽ đăng nhập và nhập tài khoản.</string>
+    <string name="steam_qr_login_import_waiting">Đang chờ phê duyệt QR</string>
+    <string name="steam_qr_login_import_starting">Đang tạo mã QR</string>
+    <string name="steam_qr_login_import_refresh">Tạo lại QR</string>
+    <string name="steam_qr_login_import_image_description">Mã QR đăng nhập Steam</string>
+    <string name="steam_qr_login_import_failed">Không thể tạo mã QR</string>
 </resources>

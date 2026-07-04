@@ -46,6 +46,7 @@ data class SteamUiState(
     val authorizedDevices: List<SteamAuthorizedDevice> = emptyList(),
     val selectedConfirmationIds: Set<String> = emptySet(),
     val pendingLoginChallenge: SteamLoginChallengeUi? = null,
+    val pendingQrLoginChallenge: SteamQrLoginChallengeUi? = null,
     val loading: Boolean = false,
     val message: String? = null
 )
@@ -57,6 +58,11 @@ data class SteamLoginChallengeUi(
     val message: String,
     val requiresCode: Boolean,
     val canPoll: Boolean
+)
+
+data class SteamQrLoginChallengeUi(
+    val pendingSessionId: String,
+    val challengeUrl: String
 )
 
 class SteamViewModel(
@@ -145,6 +151,7 @@ class SteamViewModel(
         viewModelScope.launch {
             pendingLoginPollJob?.cancel()
             setLoading(true)
+            _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
             when (val result = withContext(Dispatchers.IO) {
                 loginImportService.beginLogin(userName, password)
             }) {
@@ -170,6 +177,43 @@ class SteamViewModel(
         }
     }
 
+    fun beginSteamQrLogin() {
+        viewModelScope.launch {
+            pendingLoginPollJob?.cancel()
+            setLoading(true)
+            _uiState.value = _uiState.value.copy(
+                pendingLoginChallenge = null,
+                pendingQrLoginChallenge = null
+            )
+            when (val result = withContext(Dispatchers.IO) {
+                loginImportService.beginQrLogin()
+            }) {
+                is SteamLoginImportService.QrLoginResult.ChallengeRequired -> {
+                    _uiState.value = _uiState.value.copy(
+                        pendingQrLoginChallenge = SteamQrLoginChallengeUi(
+                            pendingSessionId = result.pendingSessionId,
+                            challengeUrl = result.challengeUrl
+                        )
+                    )
+                    startPendingQrLoginPolling(result.pendingSessionId)
+                }
+                is SteamLoginImportService.QrLoginResult.LoginChallengeRequired -> {
+                    handleLoginChallenge(result.challenge)
+                }
+                is SteamLoginImportService.QrLoginResult.ReadyForImport -> {
+                    saveLoginResult(result.result)
+                    _uiState.value = _uiState.value.copy(
+                        pendingLoginChallenge = null,
+                        pendingQrLoginChallenge = null
+                    )
+                    setMessage(R.string.steam_account_imported)
+                }
+                is SteamLoginImportService.QrLoginResult.Failure -> setMessage(result.message)
+            }
+            setLoading(false)
+        }
+    }
+
     fun submitSteamLoginCode(code: String) {
         val challenge = _uiState.value.pendingLoginChallenge ?: return
         if (!challenge.requiresCode) return
@@ -186,16 +230,14 @@ class SteamViewModel(
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
                     pendingLoginPollJob?.cancel()
                     saveLoginResult(result)
-                    _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+                    _uiState.value = _uiState.value.copy(
+                        pendingLoginChallenge = null,
+                        pendingQrLoginChallenge = null
+                    )
                     setMessage(R.string.steam_account_imported)
                 }
                 is SteamLoginImportService.LoginResult.ChallengeRequired -> {
-                    val challengeUi = result.toChallengeUi(fallbackType = challenge.confirmationType)
-                    _uiState.value = _uiState.value.copy(pendingLoginChallenge = challengeUi)
-                    setMessage(challengeUi.message)
-                    if (challengeUi.canPoll) {
-                        startPendingLoginPolling(challengeUi.pendingSessionId)
-                    }
+                    handleLoginChallenge(result, fallbackType = challenge.confirmationType)
                 }
                 is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
             }
@@ -209,7 +251,13 @@ class SteamViewModel(
         _uiState.value.pendingLoginChallenge?.pendingSessionId?.let { sessionId ->
             loginImportService.clearPendingSession(sessionId)
         }
-        _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+        _uiState.value.pendingQrLoginChallenge?.pendingSessionId?.let { sessionId ->
+            loginImportService.clearPendingSession(sessionId)
+        }
+        _uiState.value = _uiState.value.copy(
+            pendingLoginChallenge = null,
+            pendingQrLoginChallenge = null
+        )
     }
 
     fun deleteAccount(id: Long) {
@@ -515,6 +563,22 @@ class SteamViewModel(
         )
     }
 
+    private fun handleLoginChallenge(
+        challenge: SteamLoginImportService.LoginResult.ChallengeRequired,
+        fallbackType: Int = 0,
+        startPolling: Boolean = true
+    ) {
+        val challengeUi = challenge.toChallengeUi(fallbackType = fallbackType)
+        _uiState.value = _uiState.value.copy(
+            pendingLoginChallenge = challengeUi,
+            pendingQrLoginChallenge = null
+        )
+        setMessage(challengeUi.message)
+        if (startPolling && challengeUi.canPoll) {
+            startPendingLoginPolling(challengeUi.pendingSessionId)
+        }
+    }
+
     private fun startPendingLoginPolling(pendingSessionId: String) {
         pendingLoginPollJob?.cancel()
         pendingLoginPollJob = viewModelScope.launch {
@@ -527,16 +591,17 @@ class SteamViewModel(
                     is SteamLoginImportService.LoginResult.ReadyForImport -> {
                         setLoading(true)
                         saveLoginResult(result)
-                        _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+                        _uiState.value = _uiState.value.copy(
+                            pendingLoginChallenge = null,
+                            pendingQrLoginChallenge = null
+                        )
                         setMessage(R.string.steam_account_imported)
                         setLoading(false)
                         pendingLoginPollJob = null
                         return@launch
                     }
                     is SteamLoginImportService.LoginResult.ChallengeRequired -> {
-                        _uiState.value = _uiState.value.copy(
-                            pendingLoginChallenge = result.toChallengeUi()
-                        )
+                        handleLoginChallenge(result, startPolling = false)
                     }
                     is SteamLoginImportService.LoginResult.Failure -> {
                         setMessage(result.message)
@@ -545,6 +610,53 @@ class SteamViewModel(
                     }
                 }
             }
+            setMessage(R.string.steam_login_approval_timeout)
+            pendingLoginPollJob = null
+        }
+    }
+
+    private fun startPendingQrLoginPolling(pendingSessionId: String) {
+        pendingLoginPollJob?.cancel()
+        pendingLoginPollJob = viewModelScope.launch {
+            repeat(60) {
+                delay(2_000L)
+                when (val result = withContext(Dispatchers.IO) {
+                    loginImportService.pollQrLoginSession(pendingSessionId)
+                }) {
+                    is SteamLoginImportService.QrLoginResult.ChallengeRequired -> {
+                        _uiState.value = _uiState.value.copy(
+                            pendingQrLoginChallenge = SteamQrLoginChallengeUi(
+                                pendingSessionId = result.pendingSessionId,
+                                challengeUrl = result.challengeUrl
+                            )
+                        )
+                    }
+                    is SteamLoginImportService.QrLoginResult.LoginChallengeRequired -> {
+                        handleLoginChallenge(result.challenge)
+                        pendingLoginPollJob = null
+                        return@launch
+                    }
+                    is SteamLoginImportService.QrLoginResult.ReadyForImport -> {
+                        setLoading(true)
+                        saveLoginResult(result.result)
+                        _uiState.value = _uiState.value.copy(
+                            pendingLoginChallenge = null,
+                            pendingQrLoginChallenge = null
+                        )
+                        setMessage(R.string.steam_account_imported)
+                        setLoading(false)
+                        pendingLoginPollJob = null
+                        return@launch
+                    }
+                    is SteamLoginImportService.QrLoginResult.Failure -> {
+                        _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
+                        setMessage(result.message)
+                        pendingLoginPollJob = null
+                        return@launch
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
             setMessage(R.string.steam_login_approval_timeout)
             pendingLoginPollJob = null
         }
