@@ -1232,7 +1232,7 @@ private fun SteamDetailInfoRow(
 }
 
 @Composable
-private fun SteamAvatarImage(
+internal fun SteamAvatarImage(
     account: SteamAccount,
     size: Dp,
     modifier: Modifier = Modifier

@@ -136,10 +136,18 @@ private fun SteamQrScannerBottomContent(
                 .height(72.dp),
             shape = RoundedCornerShape(18.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.AccountCircle,
-                contentDescription = null
-            )
+            if (selectedAccount != null) {
+                SteamAvatarImage(
+                    account = selectedAccount,
+                    size = 36.dp
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Column(
                 modifier = Modifier.weight(1f),
@@ -180,22 +188,24 @@ private fun SteamQrScannerBottomContent(
                     indication = null,
                     onClick = onPickFromGallery
                 )
+                .padding(8.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Image,
-                    contentDescription = stringResource(R.string.steam_qr_album_select)
-                )
-                Text(
-                    text = stringResource(R.string.steam_qr_album_select),
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Image,
+                contentDescription = stringResource(R.string.steam_qr_album_select),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(24.dp)
+            )
+            Text(
+                text = stringResource(R.string.steam_qr_album_select),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }
@@ -309,27 +319,10 @@ private fun SteamQrAccountOptionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(13.dp),
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHighest
-                },
-                contentColor = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(7.dp)
-                        .size(21.dp)
-                )
-            }
+            SteamAvatarImage(
+                account = account,
+                size = 35.dp
+            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
