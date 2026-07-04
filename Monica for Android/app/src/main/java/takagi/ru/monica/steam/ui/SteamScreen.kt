@@ -180,6 +180,11 @@ private data class SteamDeleteAccountsRequest(
     val accounts: List<SteamAccount>
 )
 
+private enum class SteamAuthenticatorRemovalMode {
+    REMOTE,
+    LOCAL_ONLY
+}
+
 @Composable
 fun SteamScreen(
     showStandaloneSettingsEntry: Boolean,
@@ -213,6 +218,7 @@ fun SteamScreen(
     var deleteRequest by remember { mutableStateOf<SteamDeleteAccountsRequest?>(null) }
     var removeAuthenticatorRequest by remember { mutableStateOf<SteamAccount?>(null) }
     var removeAuthenticatorVerifyAccount by remember { mutableStateOf<SteamAccount?>(null) }
+    var removeAuthenticatorVerifyMode by remember { mutableStateOf(SteamAuthenticatorRemovalMode.REMOTE) }
     var removeAuthenticatorPasswordInput by remember { mutableStateOf("") }
     var removeAuthenticatorPasswordError by remember { mutableStateOf(false) }
     var scannedQrPayload by remember { mutableStateOf<String?>(null) }
@@ -251,8 +257,37 @@ fun SteamScreen(
 
     fun dismissRemoveAuthenticatorVerify() {
         removeAuthenticatorVerifyAccount = null
+        removeAuthenticatorVerifyMode = SteamAuthenticatorRemovalMode.REMOTE
         removeAuthenticatorPasswordInput = ""
         removeAuthenticatorPasswordError = false
+    }
+
+    fun requestRemoveAuthenticatorVerification(
+        account: SteamAccount,
+        mode: SteamAuthenticatorRemovalMode
+    ) {
+        removeAuthenticatorRequest = null
+        removeAuthenticatorVerifyAccount = account
+        removeAuthenticatorVerifyMode = mode
+        removeAuthenticatorPasswordInput = ""
+        removeAuthenticatorPasswordError = false
+    }
+
+    fun confirmRemoveAuthenticator(
+        account: SteamAccount,
+        mode: SteamAuthenticatorRemovalMode
+    ) {
+        dismissRemoveAuthenticatorVerify()
+        when (mode) {
+            SteamAuthenticatorRemovalMode.REMOTE -> viewModel.removeAuthenticator(account.id)
+            SteamAuthenticatorRemovalMode.LOCAL_ONLY -> {
+                if (detailAccountId == account.id) {
+                    detailAccountId = null
+                    scannedQrPayload = null
+                }
+                viewModel.deleteLocalAuthenticator(account.id)
+            }
+        }
     }
 
     LaunchedEffect(selectedAccount?.id) {
@@ -507,26 +542,45 @@ fun SteamScreen(
             onDismissRequest = { removeAuthenticatorRequest = null },
             title = { Text(stringResource(R.string.steam_remove_authenticator_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.steam_remove_authenticator_message,
-                        account.displayName.ifBlank { account.accountName.ifBlank { account.steamId } }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.steam_remove_authenticator_message,
+                            account.displayName.ifBlank { account.accountName.ifBlank { account.steamId } }
+                        )
                     )
-                )
+                    Text(
+                        text = stringResource(R.string.steam_remove_authenticator_local_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        removeAuthenticatorRequest = null
-                        removeAuthenticatorVerifyAccount = account
-                        removeAuthenticatorPasswordInput = ""
-                        removeAuthenticatorPasswordError = false
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(
+                        onClick = {
+                            requestRemoveAuthenticatorVerification(
+                                account,
+                                SteamAuthenticatorRemovalMode.LOCAL_ONLY
+                            )
+                        }
+                    ) {
+                        Text(stringResource(R.string.steam_remove_authenticator_local_action))
                     }
-                ) {
-                    Text(
-                        text = stringResource(R.string.steam_remove_authenticator_action),
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    TextButton(
+                        onClick = {
+                            requestRemoveAuthenticatorVerification(
+                                account,
+                                SteamAuthenticatorRemovalMode.REMOTE
+                            )
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.steam_remove_authenticator_remote_action),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             },
             dismissButton = {
@@ -539,6 +593,7 @@ fun SteamScreen(
 
     removeAuthenticatorVerifyAccount?.let { account ->
         val accountLabel = account.displayName.ifBlank { account.accountName.ifBlank { account.steamId } }
+        val removalMode = removeAuthenticatorVerifyMode
         val biometricAction = if (
             activity != null &&
             appSettings.biometricEnabled &&
@@ -548,11 +603,15 @@ fun SteamScreen(
                 biometricHelper.authenticate(
                     activity = activity,
                     title = context.getString(R.string.verify_identity),
-                    subtitle = context.getString(R.string.steam_remove_authenticator_action),
+                    subtitle = context.getString(
+                        when (removalMode) {
+                            SteamAuthenticatorRemovalMode.REMOTE -> R.string.steam_remove_authenticator_remote_action
+                            SteamAuthenticatorRemovalMode.LOCAL_ONLY -> R.string.steam_remove_authenticator_local_action
+                        }
+                    ),
                     description = context.getString(R.string.biometric_login_description),
                     onSuccess = {
-                        dismissRemoveAuthenticatorVerify()
-                        viewModel.removeAuthenticator(account.id)
+                        confirmRemoveAuthenticator(account, removalMode)
                     },
                     onError = { error ->
                         Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
@@ -566,7 +625,13 @@ fun SteamScreen(
 
         M3IdentityVerifyDialog(
             title = stringResource(R.string.verify_identity),
-            message = stringResource(R.string.steam_remove_authenticator_verify_message, accountLabel),
+            message = stringResource(
+                when (removalMode) {
+                    SteamAuthenticatorRemovalMode.REMOTE -> R.string.steam_remove_authenticator_verify_message
+                    SteamAuthenticatorRemovalMode.LOCAL_ONLY -> R.string.steam_remove_authenticator_local_verify_message
+                },
+                accountLabel
+            ),
             passwordValue = removeAuthenticatorPasswordInput,
             onPasswordChange = {
                 removeAuthenticatorPasswordInput = it
@@ -575,13 +640,17 @@ fun SteamScreen(
             onDismiss = { dismissRemoveAuthenticatorVerify() },
             onConfirm = {
                 if (securityManager.verifyMasterPassword(removeAuthenticatorPasswordInput)) {
-                    dismissRemoveAuthenticatorVerify()
-                    viewModel.removeAuthenticator(account.id)
+                    confirmRemoveAuthenticator(account, removalMode)
                 } else {
                     removeAuthenticatorPasswordError = true
                 }
             },
-            confirmText = stringResource(R.string.steam_remove_authenticator_action),
+            confirmText = stringResource(
+                when (removalMode) {
+                    SteamAuthenticatorRemovalMode.REMOTE -> R.string.steam_remove_authenticator_remote_action
+                    SteamAuthenticatorRemovalMode.LOCAL_ONLY -> R.string.steam_remove_authenticator_local_action
+                }
+            ),
             destructiveConfirm = true,
             isPasswordError = removeAuthenticatorPasswordError,
             passwordErrorText = stringResource(R.string.current_password_incorrect),

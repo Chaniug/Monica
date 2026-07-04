@@ -879,9 +879,14 @@
     <string name="steam_delete_account_menu">删除账号</string>
     <string name="steam_remove_authenticator_title">移除 Steam 验证器</string>
     <string name="steam_remove_authenticator_message">移除“%1$s”的 Steam Guard 验证器？这会从 Steam 账号上移除验证器，并删除本地令牌。移除后 Steam 可能会施加账号或交易限制。</string>
+    <string name="steam_remove_authenticator_local_hint">如果这个验证器已经转回官方 Steam App 或其他客户端，请选择仅本地删除。这只会删除 Monica 里的本地副本，不会修改 Steam 账号。</string>
     <string name="steam_remove_authenticator_verify_message">请验证身份以移除“%1$s”的 Steam 验证器。</string>
+    <string name="steam_remove_authenticator_local_verify_message">请验证身份以删除 Monica 中“%1$s”的本地 Steam 验证器记录。</string>
     <string name="steam_remove_authenticator_action">移除验证器</string>
+    <string name="steam_remove_authenticator_remote_action">从 Steam 移除</string>
+    <string name="steam_remove_authenticator_local_action">仅本地删除</string>
     <string name="steam_remove_authenticator_done">已移除 Steam 验证器</string>
+    <string name="steam_remove_authenticator_local_done">已删除本地 Steam 验证器</string>
     <string name="steam_remove_authenticator_failed">移除 Steam 验证器失败</string>
     <string name="steam_remove_authenticator_failed_attempts">移除 Steam 验证器失败，还剩 %1$d 次尝试。</string>
     <string name="steam_remove_authenticator_missing_access_token">这个 Steam 账号没有可用登录会话，请重新登录后再移除验证器。</string>

@@ -224,6 +224,19 @@ class SteamViewModel(
         }
     }
 
+    fun deleteLocalAuthenticator(accountId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.delete(accountId)
+            _uiState.value = _uiState.value.copy(
+                confirmations = emptyList(),
+                pendingLogins = emptyList(),
+                authorizedDevices = emptyList(),
+                selectedConfirmationIds = emptySet()
+            )
+            setMessage(R.string.steam_remove_authenticator_local_done)
+        }
+    }
+
     fun removeAuthenticator(accountId: Long) {
         viewModelScope.launch {
             val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch

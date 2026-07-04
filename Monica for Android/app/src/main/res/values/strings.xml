@@ -886,9 +886,14 @@
     <string name="steam_delete_account_menu">Delete account</string>
     <string name="steam_remove_authenticator_title">Remove Steam authenticator</string>
     <string name="steam_remove_authenticator_message">Remove the Steam Guard authenticator for \"%1$s\"? This removes it from Steam and deletes the local token. Steam may apply account or trade restrictions after removal.</string>
+    <string name="steam_remove_authenticator_local_hint">If this authenticator has already been moved back to the official Steam app or another client, choose local delete. It only removes the local Monica copy and does not change your Steam account.</string>
     <string name="steam_remove_authenticator_verify_message">Verify your identity to remove the Steam authenticator for \"%1$s\".</string>
+    <string name="steam_remove_authenticator_local_verify_message">Verify your identity to delete the local Monica Steam authenticator record for \"%1$s\".</string>
     <string name="steam_remove_authenticator_action">Remove authenticator</string>
+    <string name="steam_remove_authenticator_remote_action">Remove from Steam</string>
+    <string name="steam_remove_authenticator_local_action">Delete local copy</string>
     <string name="steam_remove_authenticator_done">Steam authenticator removed</string>
+    <string name="steam_remove_authenticator_local_done">Local Steam authenticator deleted</string>
     <string name="steam_remove_authenticator_failed">Failed to remove Steam authenticator</string>
     <string name="steam_remove_authenticator_failed_attempts">Failed to remove Steam authenticator. %1$d attempt(s) remaining.</string>
     <string name="steam_remove_authenticator_missing_access_token">This Steam account has no login session. Sign in again before removing the authenticator.</string>

@@ -3430,4 +3430,9 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="autofill_service_label">Tự động điền Monica</string>
     <string name="settings_search_hint">Cài đặt tìm kiếm…</string>
     <string name="settings_search_empty_hint">Hãy thử từ khóa khác</string>
+    <string name="steam_remove_authenticator_local_hint">Nếu trình xác thực này đã được chuyển về ứng dụng Steam chính thức hoặc ứng dụng khác, hãy chọn xóa cục bộ. Thao tác này chỉ xóa bản sao trong Monica và không thay đổi tài khoản Steam.</string>
+    <string name="steam_remove_authenticator_local_verify_message">Xác minh danh tính để xóa bản ghi trình xác thực Steam cục bộ của \"%1$s\" khỏi Monica.</string>
+    <string name="steam_remove_authenticator_remote_action">Xóa khỏi Steam</string>
+    <string name="steam_remove_authenticator_local_action">Xóa bản sao cục bộ</string>
+    <string name="steam_remove_authenticator_local_done">Đã xóa trình xác thực Steam cục bộ</string>
 </resources>

@@ -3513,4 +3513,9 @@
     <string name="qs_open_monica_plus">Открыть Monica Plus</string>
     <string name="qs_yes">Да</string>
     <string name="qs_no">Нет</string>
+    <string name="steam_remove_authenticator_local_hint">Если этот аутентификатор уже перенесен обратно в официальное приложение Steam или другой клиент, выберите локальное удаление. Это удалит только локальную копию Monica и не изменит аккаунт Steam.</string>
+    <string name="steam_remove_authenticator_local_verify_message">Подтвердите личность, чтобы удалить локальную запись Steam-аутентификатора для \"%1$s\" из Monica.</string>
+    <string name="steam_remove_authenticator_remote_action">Удалить из Steam</string>
+    <string name="steam_remove_authenticator_local_action">Удалить локальную копию</string>
+    <string name="steam_remove_authenticator_local_done">Локальный Steam-аутентификатор удален</string>
 </resources>

@@ -606,11 +606,17 @@ class SteamBoundaryGuardTest {
 
         assertTrue(source.contains("removeAuthenticatorRequest"))
         assertTrue(source.contains("removeAuthenticatorVerifyAccount"))
+        assertTrue(source.contains("removeAuthenticatorVerifyMode"))
+        assertTrue(source.contains("SteamAuthenticatorRemovalMode.LOCAL_ONLY"))
         assertTrue(source.contains("SteamDetailTopBar("))
         assertTrue(source.contains("onRemoveAuthenticator = animatedDetailAccount?.let"))
         assertTrue(source.contains("M3IdentityVerifyDialog("))
         assertTrue(source.contains("securityManager.verifyMasterPassword(removeAuthenticatorPasswordInput)"))
         assertTrue(source.contains("viewModel.removeAuthenticator(account.id)"))
+        assertTrue(source.contains("viewModel.deleteLocalAuthenticator(account.id)"))
+        assertTrue(source.contains("R.string.steam_remove_authenticator_remote_action"))
+        assertTrue(source.contains("R.string.steam_remove_authenticator_local_action"))
+        assertTrue(source.contains("R.string.steam_remove_authenticator_local_hint"))
         assertTrue(source.contains("R.string.steam_remove_authenticator_action"))
 
         val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
@@ -618,6 +624,13 @@ class SteamBoundaryGuardTest {
         assertTrue(viewModelSource.contains("fun removeAuthenticator(accountId: Long)"))
         assertTrue(viewModelSource.contains("authenticatorService.remove(account)"))
         assertTrue(viewModelSource.contains("repository.delete(accountId)"))
+        assertTrue(viewModelSource.contains("fun deleteLocalAuthenticator(accountId: Long)"))
+        assertTrue(viewModelSource.contains("R.string.steam_remove_authenticator_local_done"))
+        val localDeleteBlock = viewModelSource
+            .substringAfter("fun deleteLocalAuthenticator(accountId: Long)")
+            .substringBefore("fun removeAuthenticator(accountId: Long)")
+        assertTrue(localDeleteBlock.contains("repository.delete(accountId)"))
+        assertFalse(localDeleteBlock.contains("authenticatorService.remove"))
 
         val authenticatorServiceSource = projectFile(
             "app/src/main/java/takagi/ru/monica/steam/network/SteamAuthenticatorService.kt"

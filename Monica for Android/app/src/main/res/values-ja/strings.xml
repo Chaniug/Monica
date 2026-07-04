@@ -3417,4 +3417,9 @@
     <string name="autofill_service_label">Monica 自動入力</string>
     <string name="settings_search_hint">検索設定…</string>
     <string name="settings_search_empty_hint">別のキーワードを試してください</string>
+    <string name="steam_remove_authenticator_local_hint">この認証子を公式 Steam アプリまたは別のクライアントへ移行済みの場合は、ローカル削除を選んでください。Monica のローカルコピーだけを削除し、Steam アカウントは変更しません。</string>
+    <string name="steam_remove_authenticator_local_verify_message">Monica の「%1$s」のローカル Steam 認証子レコードを削除するため、本人確認してください。</string>
+    <string name="steam_remove_authenticator_remote_action">Steam から削除</string>
+    <string name="steam_remove_authenticator_local_action">ローカルコピーを削除</string>
+    <string name="steam_remove_authenticator_local_done">ローカル Steam 認証子を削除しました</string>
 </resources>
