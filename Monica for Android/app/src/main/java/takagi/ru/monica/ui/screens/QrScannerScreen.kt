@@ -2,12 +2,16 @@ package takagi.ru.monica.ui.screens
 
 import android.Manifest
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.net.Uri
-import android.view.View
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -34,25 +38,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
 import com.google.zxing.BarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.DecodeHintType
-import com.google.zxing.InvertedLuminanceSource
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.ResultPoint
-import com.google.zxing.common.GlobalHistogramBinarizer
-import com.google.zxing.common.HybridBinarizer
-import com.google.zxing.RGBLuminanceSource
-import com.journeyapps.barcodescanner.BarcodeCallback
-import com.journeyapps.barcodescanner.BarcodeResult
-import com.journeyapps.barcodescanner.DecoratedBarcodeView
-import com.journeyapps.barcodescanner.DefaultDecoderFactory
-import com.journeyapps.barcodescanner.camera.CameraSettings
 import takagi.ru.monica.R
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val DEFAULT_SCANNER_FORMATS = listOf(
@@ -84,6 +85,7 @@ fun QrScannerScreen(
     title: String? = null,
     subtitle: String? = null,
     allowedFormats: Collection<BarcodeFormat> = DEFAULT_SCANNER_FORMATS,
+    resultValidator: (String) -> Boolean = { true },
     bottomContent: @Composable (launchGallery: () -> Unit) -> Unit = { launchGallery ->
         DefaultQrScannerBottomContent(launchGallery = launchGallery)
     }
@@ -108,6 +110,7 @@ fun QrScannerScreen(
                     title = title ?: stringResource(R.string.scan_qr_code_title),
                     subtitle = subtitle ?: stringResource(R.string.qr_align_hint),
                     allowedFormats = allowedFormats,
+                    resultValidator = resultValidator,
                     bottomContent = bottomContent
                 )
             }
@@ -166,9 +169,6 @@ private fun CameraPermissionRequest(
     }
 }
 
-/**
- * QR码扫描器组件 - 使用 ZXing
- */
 @Composable
 private fun QrCodeScanner(
     onQrCodeScanned: (String) -> Unit,
@@ -176,31 +176,121 @@ private fun QrCodeScanner(
     title: String,
     subtitle: String,
     allowedFormats: Collection<BarcodeFormat>,
+    resultValidator: (String) -> Boolean,
     bottomContent: @Composable (launchGallery: () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
-    var barcodeView by remember { mutableStateOf<DecoratedBarcodeView?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mlKitFormats = remember(allowedFormats) { allowedFormats.toMlKitFormatList() }
+    val scanner = remember(mlKitFormats) { createMlKitBarcodeScanner(mlKitFormats) }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    val previewView = remember(context) {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
     val scanConsumed = remember { AtomicBoolean(false) }
+    val processingFrame = remember { AtomicBoolean(false) }
     var showOverlay by remember { mutableStateOf(false) }
-    
+
+    fun acceptResult(raw: String?) {
+        val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return
+        if (resultValidator(value) && scanConsumed.compareAndSet(false, true)) {
+            onQrCodeScanned(value)
+        }
+    }
+
     // 图片选择器 - 使用 GetContent 以兼容所有设备
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val result = processImage(context, uri, allowedFormats)
-            if (result != null && scanConsumed.compareAndSet(false, true)) {
-                onQrCodeScanned(result)
-            } else if (result == null) {
-                Toast.makeText(context, context.getString(R.string.qr_not_found), Toast.LENGTH_SHORT).show()
-            }
+            processImageWithMlKit(
+                context = context,
+                uri = uri,
+                scanner = scanner,
+                resultValidator = resultValidator,
+                onResult = { acceptResult(it) },
+                onNotFound = {
+                    Toast.makeText(context, context.getString(R.string.qr_not_found), Toast.LENGTH_SHORT).show()
+                }
+            )
         }
     }
 
-    DisposableEffect(barcodeView) {
-        runCatching { barcodeView?.resume() }
+    DisposableEffect(previewView, lifecycleOwner, scanner, mlKitFormats) {
+        var boundPreview: Preview? = null
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        val analysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also { imageAnalysis ->
+                imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
+                    analyzeFrameWithMlKit(
+                        imageProxy = imageProxy,
+                        scanner = scanner,
+                        processingFrame = processingFrame,
+                        resultValidator = resultValidator,
+                        onResult = { acceptResult(it) }
+                    )
+                }
+            }
+
+        val mainExecutor = ContextCompat.getMainExecutor(context)
+        cameraProviderFuture.addListener(
+            {
+                val cameraProvider = runCatching { cameraProviderFuture.get() }.getOrNull()
+                    ?: return@addListener
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+                boundPreview = preview
+                runCatching {
+                    cameraProvider.unbind(preview, analysis)
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        analysis
+                    )
+                }
+            },
+            mainExecutor
+        )
+
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && cameraProviderFuture.isDone) {
+                runCatching {
+                    val preview = boundPreview ?: return@runCatching
+                    val cameraProvider = cameraProviderFuture.get()
+                    cameraProvider.unbind(preview, analysis)
+                    cameraProviderFuture.get().bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        analysis
+                    )
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+
         onDispose {
-            runCatching { barcodeView?.pause() }
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            analysis.clearAnalyzer()
+            runCatching {
+                if (cameraProviderFuture.isDone) {
+                    val cameraProvider = cameraProviderFuture.get()
+                    if (boundPreview != null) {
+                        cameraProvider.unbind(boundPreview, analysis)
+                    } else {
+                        cameraProvider.unbind(analysis)
+                    }
+                }
+            }
+            runCatching { scanner.close() }
+            analysisExecutor.shutdown()
         }
     }
 
@@ -210,71 +300,7 @@ private fun QrCodeScanner(
     
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
-            factory = { ctx ->
-                DecoratedBarcodeView(ctx).also { scannerView ->
-                    // Hide ZXing default finder overlay (mask + laser) and keep only the custom M3 frame.
-                    runCatching { scannerView.viewFinder.visibility = View.GONE }
-                    val viewFinderId = listOf(
-                        ctx.resources.getIdentifier("zxing_viewfinder_view", "id", ctx.packageName),
-                        ctx.resources.getIdentifier("zxing_viewfinder_view", "id", "com.journeyapps.barcodescanner")
-                    ).firstOrNull { it != 0 }
-                    if (viewFinderId != null) {
-                        scannerView.findViewById<View>(viewFinderId)?.visibility = View.GONE
-                    }
-                    val statusViewId = listOf(
-                        ctx.resources.getIdentifier("zxing_status_view", "id", ctx.packageName),
-                        ctx.resources.getIdentifier("zxing_status_view", "id", "com.journeyapps.barcodescanner")
-                    ).firstOrNull { it != 0 }
-                    if (statusViewId != null) {
-                        scannerView.findViewById<View>(statusViewId)?.visibility = View.GONE
-                    }
-
-                    val decodeHints = mapOf(
-                        DecodeHintType.TRY_HARDER to true,
-                        DecodeHintType.CHARACTER_SET to "UTF-8"
-                    )
-
-                    // Use mixed scan type (normal + inverted) to improve low-contrast/complex QR detection.
-                    scannerView.barcodeView.decoderFactory = DefaultDecoderFactory(
-                        allowedFormats.toList(),
-                        decodeHints,
-                        "UTF-8",
-                        2
-                    )
-
-                    val cameraSettings = CameraSettings().apply {
-                        isAutoFocusEnabled = true
-                        isContinuousFocusEnabled = true
-                        isMeteringEnabled = true
-                        isBarcodeSceneModeEnabled = true
-                    }
-                    scannerView.cameraSettings = cameraSettings
-
-                    scannerView.decodeContinuous(object : BarcodeCallback {
-                        override fun barcodeResult(result: BarcodeResult?) {
-                            val value = result?.text?.trim()
-                            if (
-                                !value.isNullOrBlank() &&
-                                result.barcodeFormat in allowedFormats &&
-                                scanConsumed.compareAndSet(false, true)
-                            ) {
-                                onQrCodeScanned(value)
-                            }
-                        }
-
-                        override fun possibleResultPoints(resultPoints: MutableList<ResultPoint>?) = Unit
-                    })
-                    barcodeView = scannerView
-                }
-            },
-            update = { view ->
-                if (view !== barcodeView) {
-                    barcodeView = view
-                }
-            },
-            onRelease = { view ->
-                runCatching { view.pause() }
-            },
+            factory = { previewView },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -509,119 +535,109 @@ private fun ScannerCorner(
     }
 }
 
-private fun processImage(
+private fun Collection<BarcodeFormat>.toMlKitFormatList(): List<Int> {
+    val mapped = mapNotNull { format ->
+        when (format) {
+            BarcodeFormat.QR_CODE -> Barcode.FORMAT_QR_CODE
+            BarcodeFormat.CODE_128 -> Barcode.FORMAT_CODE_128
+            BarcodeFormat.CODE_39 -> Barcode.FORMAT_CODE_39
+            BarcodeFormat.CODE_93 -> Barcode.FORMAT_CODE_93
+            BarcodeFormat.EAN_13 -> Barcode.FORMAT_EAN_13
+            BarcodeFormat.EAN_8 -> Barcode.FORMAT_EAN_8
+            BarcodeFormat.UPC_A -> Barcode.FORMAT_UPC_A
+            BarcodeFormat.UPC_E -> Barcode.FORMAT_UPC_E
+            BarcodeFormat.ITF -> Barcode.FORMAT_ITF
+            BarcodeFormat.CODABAR -> Barcode.FORMAT_CODABAR
+            BarcodeFormat.DATA_MATRIX -> Barcode.FORMAT_DATA_MATRIX
+            BarcodeFormat.AZTEC -> Barcode.FORMAT_AZTEC
+            BarcodeFormat.PDF_417 -> Barcode.FORMAT_PDF417
+            else -> null
+        }
+    }.distinct()
+    return mapped.ifEmpty { listOf(Barcode.FORMAT_ALL_FORMATS) }
+}
+
+private fun createMlKitBarcodeScanner(formats: List<Int>): BarcodeScanner {
+    val builder = BarcodeScannerOptions.Builder()
+    if (formats.size == 1) {
+        builder.setBarcodeFormats(formats.first())
+    } else {
+        builder.setBarcodeFormats(formats.first(), *formats.drop(1).toIntArray())
+    }
+    return BarcodeScanning.getClient(builder.build())
+}
+
+private fun analyzeFrameWithMlKit(
+    imageProxy: ImageProxy,
+    scanner: BarcodeScanner,
+    processingFrame: AtomicBoolean,
+    resultValidator: (String) -> Boolean,
+    onResult: (String) -> Unit
+) {
+    if (!processingFrame.compareAndSet(false, true)) {
+        imageProxy.close()
+        return
+    }
+
+    val mediaImage = imageProxy.image
+    if (mediaImage == null) {
+        processingFrame.set(false)
+        imageProxy.close()
+        return
+    }
+
+    val proxyClosed = AtomicBoolean(false)
+    fun finishFrame() {
+        processingFrame.set(false)
+        if (proxyClosed.compareAndSet(false, true)) {
+            runCatching { imageProxy.close() }
+        }
+    }
+
+    val timeout = Runnable { finishFrame() }
+    val handler = Handler(Looper.getMainLooper())
+    handler.postDelayed(timeout, ML_KIT_FRAME_TIMEOUT_MS)
+
+    val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+    scanner.process(inputImage)
+        .addOnSuccessListener { barcodes ->
+            barcodes.asSequence()
+                .mapNotNull { it.rawValue?.trim()?.takeIf(String::isNotBlank) }
+                .firstOrNull(resultValidator)
+                ?.let(onResult)
+        }
+        .addOnCompleteListener {
+            handler.removeCallbacks(timeout)
+            finishFrame()
+        }
+}
+
+private fun processImageWithMlKit(
     context: Context,
     uri: Uri,
-    allowedFormats: Collection<BarcodeFormat>
-): String? {
-    val imageBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-    if (imageBytes.isEmpty()) return null
+    scanner: BarcodeScanner,
+    resultValidator: (String) -> Boolean,
+    onResult: (String) -> Unit,
+    onNotFound: () -> Unit
+) {
+    val image = runCatching { InputImage.fromFilePath(context, uri) }
+        .getOrElse {
+            onNotFound()
+            return
+        }
 
-    val sampleSizes = computeSampleSizes(imageBytes, maxEdge = 3072)
-
-    for (sampleSize in sampleSizes) {
-        val baseBitmap = decodeBitmapFromBytes(imageBytes, sampleSize) ?: continue
-        try {
-            val decoded = decodeQrFromBitmap(baseBitmap, allowedFormats)
-                ?: decodeWithRotation(baseBitmap, 90f, allowedFormats)
-                ?: decodeWithRotation(baseBitmap, 180f, allowedFormats)
-                ?: decodeWithRotation(baseBitmap, 270f, allowedFormats)
-
-            if (decoded != null) {
-                return decoded
+    scanner.process(image)
+        .addOnSuccessListener { barcodes ->
+            val value = barcodes.asSequence()
+                .mapNotNull { it.rawValue?.trim()?.takeIf(String::isNotBlank) }
+                .firstOrNull(resultValidator)
+            if (value != null) {
+                onResult(value)
+            } else {
+                onNotFound()
             }
-        } finally {
-            if (!baseBitmap.isRecycled) baseBitmap.recycle()
         }
-    }
-
-    return null
+        .addOnFailureListener { onNotFound() }
 }
 
-private fun computeSampleSizes(imageBytes: ByteArray, maxEdge: Int): List<Int> {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, bounds)
-
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return listOf(1)
-
-    var sampleSize = 1
-    while (bounds.outWidth / sampleSize > maxEdge || bounds.outHeight / sampleSize > maxEdge) {
-        sampleSize *= 2
-    }
-
-    val sizes = linkedSetOf(sampleSize)
-    while (sampleSize > 1) {
-        sampleSize /= 2
-        sizes += sampleSize
-    }
-    sizes += 1
-    return sizes.toList()
-}
-
-private fun decodeBitmapFromBytes(imageBytes: ByteArray, sampleSize: Int): Bitmap? {
-    val decodeOptions = BitmapFactory.Options().apply {
-        inSampleSize = sampleSize
-        inPreferredConfig = Bitmap.Config.ARGB_8888
-    }
-    return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, decodeOptions)
-}
-
-private fun rotateBitmap(source: Bitmap, angle: Float): Bitmap {
-    val matrix = Matrix().apply { postRotate(angle) }
-    return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
-}
-
-private fun decodeWithRotation(
-    baseBitmap: Bitmap,
-    angle: Float,
-    allowedFormats: Collection<BarcodeFormat>
-): String? {
-    val rotated = runCatching { rotateBitmap(baseBitmap, angle) }.getOrNull() ?: return null
-    return try {
-        decodeQrFromBitmap(rotated, allowedFormats)
-    } finally {
-        if (!rotated.isRecycled) rotated.recycle()
-    }
-}
-
-private fun decodeQrFromBitmap(
-    bitmap: Bitmap,
-    allowedFormats: Collection<BarcodeFormat>
-): String? {
-    if (bitmap.width <= 0 || bitmap.height <= 0) return null
-
-    val pixels = IntArray(bitmap.width * bitmap.height)
-    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-
-    val baseSource = RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
-    val hints = mapOf(
-        DecodeHintType.POSSIBLE_FORMATS to allowedFormats.toList(),
-        DecodeHintType.TRY_HARDER to true,
-        DecodeHintType.CHARACTER_SET to "UTF-8"
-    )
-
-    val luminanceSources = listOf(
-        baseSource,
-        InvertedLuminanceSource(baseSource)
-    )
-
-    luminanceSources.forEach { source ->
-        val bitmaps = listOf(
-            BinaryBitmap(HybridBinarizer(source)),
-            BinaryBitmap(GlobalHistogramBinarizer(source))
-        )
-
-        bitmaps.forEach { binaryBitmap ->
-            val decoded = runCatching {
-                MultiFormatReader()
-                    .decode(binaryBitmap, hints)
-                    .text
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-            }.getOrNull()
-            if (decoded != null) return decoded
-        }
-    }
-
-    return null
-}
+private const val ML_KIT_FRAME_TIMEOUT_MS = 1500L

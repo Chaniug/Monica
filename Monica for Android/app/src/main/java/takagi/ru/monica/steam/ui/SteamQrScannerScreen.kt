@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.zxing.BarcodeFormat
 import takagi.ru.monica.R
 import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.steam.network.SteamQrChallenge
 import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.screens.QrScannerScreen
 
@@ -97,26 +98,35 @@ fun SteamQrScannerScreen(
         )
     }
 
+    val handleValidQr: (String) -> Unit = { qrData ->
+        val accountId = selectedAccount?.id ?: selectedAccountId
+        saveLastSteamQrAccountId(context, accountId)
+        onQrCodeScanned(qrData, accountId)
+    }
+    val bottomContent: @Composable (launchGallery: () -> Unit) -> Unit = { launchGallery ->
+        SteamQrScannerBottomContent(
+            selectedAccount = selectedAccount,
+            onSelectAccount = { showAccountPicker = true },
+            onPickFromGallery = launchGallery
+        )
+    }
+
     QrScannerScreen(
-        onQrCodeScanned = { qrData ->
-            val accountId = selectedAccount?.id ?: selectedAccountId
-            saveLastSteamQrAccountId(context, accountId)
-            onQrCodeScanned(qrData, accountId)
-        },
+        onQrCodeScanned = handleValidQr,
         onNavigateBack = onNavigateBack,
         modifier = modifier,
         title = stringResource(R.string.scan_qr_code_title),
         subtitle = stringResource(R.string.qr_align_hint),
         allowedFormats = listOf(BarcodeFormat.QR_CODE),
-        bottomContent = { launchGallery ->
-            SteamQrScannerBottomContent(
-                selectedAccount = selectedAccount,
-                onSelectAccount = { showAccountPicker = true },
-                onPickFromGallery = launchGallery
-            )
-        }
+        resultValidator = ::isValidSteamQrPayload,
+        bottomContent = bottomContent
     )
 }
+
+private fun isValidSteamQrPayload(raw: String): Boolean {
+    return SteamQrChallenge.parse(raw) != null
+}
+
 
 @Composable
 private fun SteamQrScannerBottomContent(

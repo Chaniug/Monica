@@ -157,14 +157,17 @@ jobs:
             exit 1
           fi
 
-          first_apk="$(printf '%s\n' "$apk_list" | sed '/^$/d' | head -n 1)"
+          apk_markdown="$(printf '%s\n' "$apk_list" | sed '/^$/d' | sed 's/^/> *   `/; s/$/`/')"
 
           echo "Detected release APKs:"
           printf '%s\n' "$apk_list" | sed '/^$/d' | sed 's/^/ - /'
-          echo "PREVIEW_APK_NAME=${first_apk}" >> "$GITHUB_ENV"
           echo "PREVIEW_APK_COUNT=${apk_count}" >> "$GITHUB_ENV"
-          echo "preview_apk_name=${first_apk}" >> "$GITHUB_OUTPUT"
           echo "preview_apk_count=${apk_count}" >> "$GITHUB_OUTPUT"
+          {
+            echo "preview_apk_list<<EOF"
+            printf '%s\n' "$apk_markdown"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Move preview tag to current commit
         if: github.event_name != 'pull_request'
@@ -192,6 +195,30 @@ jobs:
             gh api -X DELETE repos/${{ github.repository }}/releases/${release_id}
           done <<< "$draft_ids"
 
+      - name: Cleanup previous preview release assets
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          release_id="$(gh api repos/${{ github.repository }}/releases/tags/preview --jq '.id' 2>/dev/null || true)"
+          if [ -z "$release_id" ]; then
+            echo "No existing preview release assets to clean"
+            exit 0
+          fi
+
+          asset_ids="$(gh api repos/${{ github.repository }}/releases/${release_id}/assets --paginate --jq '.[].id')"
+          if [ -z "$asset_ids" ]; then
+            echo "Preview release has no existing assets"
+            exit 0
+          fi
+
+          while IFS= read -r asset_id; do
+            [ -z "$asset_id" ] && continue
+            echo "Deleting previous preview asset id=${asset_id}"
+            gh api -X DELETE repos/${{ github.repository }}/releases/assets/${asset_id}
+          done <<< "$asset_ids"
+
       - name: Publish Preview to Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
@@ -209,7 +236,9 @@ jobs:
             > ---
             > **构建信息：**
             > *   **Build Suffix**: `${{ steps.preview_meta.outputs.preview_version_suffix }}`
-            > *   **Generated APK**: `${{ steps.preview_apk_meta.outputs.preview_apk_name }}`
+            > *   **Generated APK Count**: `${{ steps.preview_apk_meta.outputs.preview_apk_count }}`
+            > **Generated APKs:**
+            ${{ steps.preview_apk_meta.outputs.preview_apk_list }}
             > *   **Commit SHA**: `${{ github.sha }}`
             > *   **Ref**: `${{ github.ref }}`
           files: |

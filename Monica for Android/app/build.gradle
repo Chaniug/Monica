@@ -140,9 +140,15 @@ android {
         buildConfigField 'String', 'CF_LICENSE_BASE_URL', "\"${escapeForBuildConfig(cfLicenseBaseUrl)}\""
         buildConfigField 'long', 'CF_LICENSE_VERIFY_INTERVAL_SECONDS', "${cfLicenseVerifyIntervalSeconds}L"
         
-        // NDK 架构优化 - 只保留常用架构
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a'
+    }
+
+    splits {
+        abi {
+            // 仅输出 ARM 32/64 位两个 APK，不生成 universal 包。
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
         }
     }
 
@@ -366,6 +372,7 @@ dependencies {
     // TOTP and QR Code
     implementation libs.zxing.core
     implementation libs.zxing.android.embedded
+    implementation 'com.google.mlkit:barcode-scanning:17.3.0'
     
     // Camera
     implementation libs.androidx.camera.core
