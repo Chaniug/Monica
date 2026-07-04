@@ -53,8 +53,8 @@ data class SteamAccount(
     val updatedAt: Long
 ) {
     val canUseConfirmations: Boolean
-        get() = !identitySecret.isNullOrBlank() && !accessToken.isNullOrBlank()
+        get() = !identitySecret.isNullOrBlank() && (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank())
 
     val canApproveLogins: Boolean
-        get() = sharedSecret.isNotBlank() && !accessToken.isNullOrBlank()
+        get() = sharedSecret.isNotBlank() && (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank())
 }

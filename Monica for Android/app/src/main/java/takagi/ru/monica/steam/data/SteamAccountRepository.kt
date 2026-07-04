@@ -83,6 +83,23 @@ class SteamAccountRepository(
         dao.updateSortOrders(items)
     }
 
+    suspend fun updateSessionTokens(
+        id: Long,
+        accessToken: String,
+        refreshToken: String?,
+        steamLoginSecure: String?
+    ) {
+        val existing = dao.getById(id) ?: return
+        dao.update(
+            existing.copy(
+                accessToken = encrypt(accessToken),
+                refreshToken = refreshToken?.let(::encrypt) ?: existing.refreshToken,
+                steamLoginSecure = steamLoginSecure?.let(::encrypt) ?: existing.steamLoginSecure,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
     private fun encrypt(value: String): String {
         return securityManager.encryptDataLegacyCompat(value)
     }

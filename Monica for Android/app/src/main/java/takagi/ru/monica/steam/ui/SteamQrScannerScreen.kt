@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.zxing.BarcodeFormat
 import takagi.ru.monica.R
 import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.steam.network.SteamQrChallenge
 import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.screens.QrScannerScreen
 
@@ -108,6 +109,8 @@ fun SteamQrScannerScreen(
         title = stringResource(R.string.scan_qr_code_title),
         subtitle = stringResource(R.string.qr_align_hint),
         allowedFormats = listOf(BarcodeFormat.QR_CODE),
+        isQrCodeAccepted = { SteamQrChallenge.parse(it) != null },
+        rejectedQrMessage = stringResource(R.string.steam_invalid_qr_link),
         bottomContent = { launchGallery ->
             SteamQrScannerBottomContent(
                 selectedAccount = selectedAccount,

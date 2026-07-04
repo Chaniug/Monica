@@ -1,5 +1,7 @@
 package takagi.ru.monica.steam.importer
 
+import java.net.URLDecoder
+import java.util.Base64
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -34,6 +36,12 @@ data class SteamMaFileManifestEntry(
 class SteamMaFileParser(
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
+    private enum class SharedSecretSource {
+        StandardField,
+        OtpAuthUri,
+        SteamUri
+    }
+
     fun parseSteamGuardJson(
         steamId: String,
         deviceId: String,
@@ -46,12 +54,16 @@ class SteamMaFileParser(
         val accountName = root.stringAny("account_name", "accountName", "AccountName") ?: steamId
         val sharedSecret = root.stringAny("shared_secret", "sharedSecret")
             ?: error("Steam Guard payload missing shared_secret")
+        val normalizedSharedSecret = normalizeSteamSharedSecret(
+            sharedSecret = sharedSecret,
+            source = SharedSecretSource.StandardField
+        )
         return SteamMaFilePayload(
             steamId = steamId,
             accountName = accountName,
             displayName = displayNameOverride?.trim()?.takeIf { it.isNotBlank() } ?: accountName,
             deviceId = deviceId.ifBlank { root.stringAny("device_id", "deviceId").orEmpty() },
-            sharedSecret = sharedSecret,
+            sharedSecret = normalizedSharedSecret,
             identitySecret = root.stringAny("identity_secret", "identitySecret"),
             revocationCode = root.stringAny("revocation_code", "revocationCode"),
             tokenGid = root.stringAny("token_gid", "tokenGid"),
@@ -78,14 +90,16 @@ class SteamMaFileParser(
 
         val root = json.parseToJsonElement(plainJson).jsonObject
         val session = root.objectAny("Session", "session")
-        val steamId = root.stringAny("steamid", "steam_id", "SteamID")
-            ?: session?.stringAny("SteamID", "steamid", "steam_id")
+        val steamId = root.steamIdAny()
+            ?: session?.steamIdAny()
+            ?: fileName?.steamIdFromFileName()
             ?: error("maFile missing steamid")
         val accountName = root.stringAny("account_name", "accountName", "AccountName")
             ?: session?.stringAny("AccountName", "account_name")
             ?: steamId
-        val sharedSecret = root.stringAny("shared_secret", "sharedSecret")
+        val (rawSharedSecret, sharedSecretSource) = root.preferredSharedSecret()
             ?: error("maFile missing shared_secret")
+        val sharedSecret = normalizeSteamSharedSecret(rawSharedSecret, sharedSecretSource)
         val deviceId = root.stringAny("device_id", "deviceId")
             ?: session?.stringAny("DeviceID", "device_id", "deviceId")
             ?: ""
@@ -165,5 +179,153 @@ class SteamMaFileParser(
 
     private fun JsonElement?.stringOrNull(): String? {
         return (this as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+    }
+
+    private fun JsonObject.steamIdAny(): String? {
+        return stringAny(
+            "steamid",
+            "steam_id",
+            "SteamID",
+            "steam64",
+            "steam_id64",
+            "steamID64",
+            "SteamID64",
+            "sbeamid"
+        )?.takeIf { it.isSteamId64() }
+    }
+
+    private fun JsonObject.preferredSharedSecret(): Pair<String, SharedSecretSource>? {
+        stringAny(
+            "uri",
+            "Uri",
+            "otp_uri",
+            "otpUri",
+            "otpauth_uri",
+            "otpauthUri",
+            "steam_uri",
+            "steamUri",
+            "url",
+            "URL"
+        )?.extractSharedSecretFromUri()?.let { return it }
+
+        val sharedSecret = stringAny("shared_secret", "sharedSecret") ?: return null
+        return sharedSecret.extractSharedSecretFromUri()
+            ?: (sharedSecret to SharedSecretSource.StandardField)
+    }
+
+    private fun String.extractSharedSecretFromUri(): Pair<String, SharedSecretSource>? {
+        val normalized = trim()
+        if (normalized.startsWith("steam://", ignoreCase = true)) {
+            val secret = normalized
+                .substringAfter("://", "")
+                .substringBefore("?")
+                .substringBefore("#")
+                .trim('/')
+                .trim()
+                .decodeUriComponent()
+                .takeIf { it.isNotBlank() }
+            return secret?.let { it to SharedSecretSource.SteamUri }
+        }
+        if (normalized.startsWith("otpauth://", ignoreCase = true)) {
+            val secret = normalized.queryParameter("secret")
+                ?.decodeUriComponent()
+                ?.takeIf { it.isNotBlank() }
+            return secret?.let { it to SharedSecretSource.OtpAuthUri }
+        }
+        return null
+    }
+
+    private fun normalizeSteamSharedSecret(
+        sharedSecret: String,
+        source: SharedSecretSource
+    ): String {
+        val compact = sharedSecret.filterNot { it.isWhitespace() }
+        val base64Bytes = decodeBase64OrNull(compact)
+        val base32Bytes = decodeBase32OrNull(compact)
+        val selected = when (source) {
+            SharedSecretSource.OtpAuthUri -> base32Bytes ?: base64Bytes
+            SharedSecretSource.SteamUri -> base64Bytes ?: base32Bytes
+            SharedSecretSource.StandardField -> {
+                when {
+                    base64Bytes?.size == STEAM_SECRET_BYTES -> base64Bytes
+                    base32Bytes?.size == STEAM_SECRET_BYTES -> base32Bytes
+                    base64Bytes != null -> base64Bytes
+                    else -> base32Bytes
+                }
+            }
+        } ?: error("maFile shared_secret is not valid base64 or base32")
+        return Base64.getEncoder().encodeToString(selected)
+    }
+
+    private fun decodeBase64OrNull(value: String): ByteArray? {
+        if (value.isBlank()) return null
+        return runCatching {
+            Base64.getDecoder().decode(value.withBase64Padding())
+        }.getOrNull()
+            ?: runCatching {
+                Base64.getUrlDecoder().decode(value.withBase64Padding())
+            }.getOrNull()
+    }
+
+    private fun decodeBase32OrNull(value: String): ByteArray? {
+        val normalized = value
+            .uppercase()
+            .replace("=", "")
+            .filterNot { it == ' ' || it == '-' }
+        if (normalized.isBlank() || normalized.any { it !in BASE32_ALPHABET }) return null
+
+        val output = mutableListOf<Byte>()
+        var buffer = 0
+        var bitsLeft = 0
+        normalized.forEach { char ->
+            buffer = (buffer shl 5) or BASE32_ALPHABET.indexOf(char)
+            bitsLeft += 5
+            while (bitsLeft >= 8) {
+                output += ((buffer shr (bitsLeft - 8)) and 0xff).toByte()
+                bitsLeft -= 8
+            }
+        }
+        return output.toByteArray().takeIf { it.isNotEmpty() }
+    }
+
+    private fun String.withBase64Padding(): String {
+        val remainder = length % 4
+        return if (remainder == 0) this else this + "=".repeat(4 - remainder)
+    }
+
+    private fun String.decodeUriComponent(): String {
+        return runCatching {
+            URLDecoder.decode(replace("+", "%2B"), Charsets.UTF_8.name())
+        }.getOrDefault(this)
+    }
+
+    private fun String.queryParameter(name: String): String? {
+        val query = substringAfter("?", missingDelimiterValue = "")
+            .substringBefore("#")
+            .takeIf { it.isNotBlank() }
+            ?: return null
+        return query.split('&')
+            .asSequence()
+            .mapNotNull { part ->
+                val key = part.substringBefore("=", "")
+                val value = part.substringAfter("=", "")
+                if (key.equals(name, ignoreCase = true)) value else null
+            }
+            .firstOrNull()
+    }
+
+    private fun String.steamIdFromFileName(): String? {
+        return Regex("""(?<!\d)(7656119\d{10})(?!\d)""")
+            .find(substringAfterLast('/').substringAfterLast('\\'))
+            ?.value
+    }
+
+    private fun String.isSteamId64(): Boolean {
+        return matches(Regex("""7656119\d{10}"""))
+    }
+
+    private companion object {
+        private const val STEAM_SECRET_BYTES = 20
+        private const val BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     }
 }

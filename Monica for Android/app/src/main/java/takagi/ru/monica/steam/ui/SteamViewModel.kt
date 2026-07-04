@@ -33,6 +33,7 @@ import takagi.ru.monica.steam.network.SteamConfirmationService
 import takagi.ru.monica.steam.network.SteamLoginApprovalService
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.steam.network.SteamQrChallenge
+import takagi.ru.monica.steam.network.SteamSessionRefreshService
 import takagi.ru.monica.steam.service.SteamLoginImportService
 
 data class SteamUiState(
@@ -73,6 +74,7 @@ class SteamViewModel(
     private val authenticatorService: SteamAuthenticatorService = SteamAuthenticatorService(),
     private val authorizedDeviceService: SteamAuthorizedDeviceService = SteamAuthorizedDeviceService(),
     private val loginApprovalService: SteamLoginApprovalService = SteamLoginApprovalService(),
+    private val sessionRefreshService: SteamSessionRefreshService = SteamSessionRefreshService(),
     private val loginImportService: SteamLoginImportService = SteamLoginImportService()
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SteamUiState())
@@ -287,8 +289,9 @@ class SteamViewModel(
 
     fun removeAuthenticator(accountId: Long) {
         viewModelScope.launch {
-            val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
-            if (account.accessToken.isNullOrBlank()) {
+            val storedAccount = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val account = ensureSteamSession(storedAccount)
+            if (account == null || account.accessToken.isNullOrBlank()) {
                 setMessage(R.string.steam_remove_authenticator_missing_access_token)
                 return@launch
             }
@@ -329,7 +332,9 @@ class SteamViewModel(
         viewModelScope.launch {
             if (!silent) setLoading(true)
             runCatching {
-                withContext(Dispatchers.IO) { confirmationService.fetch(account) }
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_no_confirmation_session))
+                withContext(Dispatchers.IO) { confirmationService.fetch(freshAccount) }
             }.onSuccess { confirmations ->
                 _uiState.value = _uiState.value.copy(
                     confirmations = confirmations,
@@ -369,8 +374,10 @@ class SteamViewModel(
         viewModelScope.launch {
             setLoading(true)
             val result = runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_no_confirmation_session))
                 withContext(Dispatchers.IO) {
-                    confirmationService.respondMultiple(account, confirmations, accept)
+                    confirmationService.respondMultiple(freshAccount, confirmations, accept)
                 }
             }.getOrElse { SteamBatchResult(ok = 0, failed = confirmations.size) }
             setMessage(R.string.steam_batch_done, result.ok, result.failed)
@@ -385,7 +392,8 @@ class SteamViewModel(
         viewModelScope.launch {
             setLoading(true)
             val ok = runCatching {
-                withContext(Dispatchers.IO) { confirmationService.respond(account, confirmation, accept) }
+                val freshAccount = ensureSteamSession(account) ?: return@runCatching false
+                withContext(Dispatchers.IO) { confirmationService.respond(freshAccount, confirmation, accept) }
             }.getOrDefault(false)
             setMessage(if (ok) R.string.steam_done else R.string.steam_confirmation_failed)
             refreshConfirmations(silent = true)
@@ -398,7 +406,9 @@ class SteamViewModel(
         viewModelScope.launch {
             if (!silent) setLoading(true)
             runCatching {
-                withContext(Dispatchers.IO) { loginApprovalService.pendingLogins(account) }
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_refresh_logins))
+                withContext(Dispatchers.IO) { loginApprovalService.pendingLogins(freshAccount) }
             }.onSuccess { pending ->
                 val previousSeenTimes = _uiState.value.pendingLogins.associate {
                     it.clientId to it.detectedAtMillis
@@ -419,8 +429,9 @@ class SteamViewModel(
 
     fun refreshAuthorizedDevices(accountId: Long, silent: Boolean = false) {
         viewModelScope.launch {
-            val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
-            if (account.accessToken.isNullOrBlank()) {
+            val storedAccount = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val account = ensureSteamSession(storedAccount)
+            if (account == null || account.accessToken.isNullOrBlank()) {
                 _uiState.value = _uiState.value.copy(authorizedDevices = emptyList())
                 return@launch
             }
@@ -443,7 +454,8 @@ class SteamViewModel(
 
     fun revokeAuthorizedDevice(accountId: Long, device: SteamAuthorizedDevice) {
         viewModelScope.launch {
-            val account = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val storedAccount = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val account = ensureSteamSession(storedAccount) ?: return@launch
             setLoading(true)
             val ok = runCatching {
                 withContext(Dispatchers.IO) { authorizedDeviceService.revoke(account, device) }
@@ -459,9 +471,10 @@ class SteamViewModel(
         viewModelScope.launch {
             setLoading(true)
             val ok = runCatching {
+                val freshAccount = ensureSteamSession(account) ?: return@runCatching false
                 withContext(Dispatchers.IO) {
                     loginApprovalService.respondToSession(
-                        account = account,
+                        account = freshAccount,
                         clientId = login.clientId,
                         version = login.version,
                         approve = approve
@@ -484,7 +497,8 @@ class SteamViewModel(
         viewModelScope.launch {
             setLoading(true)
             val ok = runCatching {
-                withContext(Dispatchers.IO) { loginApprovalService.respondToQr(account, challenge, approve) }
+                val freshAccount = ensureSteamSession(account) ?: return@runCatching false
+                withContext(Dispatchers.IO) { loginApprovalService.respondToQr(freshAccount, challenge, approve) }
             }.getOrDefault(false)
             setMessage(if (ok) R.string.steam_done else R.string.steam_qr_response_failed)
             setLoading(false)
@@ -666,6 +680,40 @@ class SteamViewModel(
         val state = _uiState.value
         return state.accounts.firstOrNull { it.id == state.selectedAccountId }
             ?: state.accounts.firstOrNull()
+    }
+
+    private suspend fun ensureSteamSession(account: SteamAccount): SteamAccount? = withContext(Dispatchers.IO) {
+        if (account.accessToken.isNullOrBlank() && account.refreshToken.isNullOrBlank()) {
+            SteamDiagLogger.append("session_refresh skipped no_tokens")
+            return@withContext null
+        }
+        if (!sessionRefreshService.shouldRefresh(account)) {
+            return@withContext account
+        }
+        val refreshResult = sessionRefreshService.refreshIfNeeded(account)
+        if (refreshResult == null) {
+            SteamDiagLogger.append("session_refresh failed refresh_token_present=${!account.refreshToken.isNullOrBlank()}")
+            if (account.accessToken.isNullOrBlank()) null else account
+        } else {
+            val refreshedAccount = account.copy(
+                accessToken = refreshResult.accessToken,
+                refreshToken = refreshResult.refreshToken ?: account.refreshToken,
+                steamLoginSecure = "${account.steamId}||${refreshResult.accessToken}"
+            )
+            repository.updateSessionTokens(
+                id = account.id,
+                accessToken = refreshResult.accessToken,
+                refreshToken = refreshResult.refreshToken,
+                steamLoginSecure = refreshedAccount.steamLoginSecure
+            )
+            _uiState.value = _uiState.value.copy(
+                accounts = _uiState.value.accounts.map { existing ->
+                    if (existing.id == refreshedAccount.id) refreshedAccount else existing
+                }
+            )
+            SteamDiagLogger.append("session_refresh success refresh_rotated=${!refreshResult.refreshToken.isNullOrBlank()}")
+            refreshedAccount
+        }
     }
 
     private fun updateForAccounts(accounts: List<SteamAccount>, nowMillis: Long) {

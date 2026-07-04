@@ -40,6 +40,65 @@ class SteamMaFileParserTest {
     }
 
     @Test
+    fun parsesSteamPlusMaFileWithSteam64AndOtpAuthUriSecret() {
+        val steamPlusMaFile = """
+            {
+              "shared_secret": "WRONG-BUT-IGNORED",
+              "identity_secret": "YWJjZGVmZ2hpamtsbW5vcHFyc3Q=",
+              "account_name": "steam_plus_user",
+              "steam64": "76561198000000002",
+              "token_gid": "gid",
+              "uri": "otpauth://totp/Steam:steam_plus_user?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Steam"
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(steamPlusMaFile)
+
+        assertEquals("76561198000000002", payload.steamId)
+        assertEquals("steam_plus_user", payload.accountName)
+        assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
+        assertEquals("YWJjZGVmZ2hpamtsbW5vcHFyc3Q=", payload.identitySecret)
+    }
+
+    @Test
+    fun parsesSteamPlusMaFileWithBase32SharedSecretAndFileNameSteamId() {
+        val steamPlusMaFile = """
+            {
+              "shared_secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+              "identity_secret": "YWJjZGVmZ2hpamtsbW5vcHFyc3Q=",
+              "account_name": "filename_user",
+              "token_gid": "gid"
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(
+            maFileContent = steamPlusMaFile,
+            fileName = "76561198000000003.maFile"
+        )
+
+        assertEquals("76561198000000003", payload.steamId)
+        assertEquals("filename_user", payload.accountName)
+        assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
+    }
+
+    @Test
+    fun acceptsSbeamidTypoAsSteamId64CompatibilityAlias() {
+        val steamPlusMaFile = """
+            {
+              "shared_secret": "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=",
+              "identity_secret": "YWJjZGVmZ2hpamtsbW5vcHFyc3Q=",
+              "account_name": "typo_user",
+              "sbeamid": "76561198000000004"
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(steamPlusMaFile)
+
+        assertEquals("76561198000000004", payload.steamId)
+        assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
+    }
+
+    @Test
     fun decryptsSdaEncryptedMaFileWithManifestEntry() {
         val salt = SteamMaFileCrypto.randomSaltBase64()
         val iv = SteamMaFileCrypto.randomIvBase64()
@@ -100,7 +159,7 @@ class SteamMaFileParserTest {
             accountName = "backup_user",
             displayName = "Backup User",
             deviceId = "android:backup-device",
-            sharedSecret = "shared-secret",
+            sharedSecret = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=",
             identitySecret = "identity-secret",
             revocationCode = "R98765",
             tokenGid = "token-gid",
@@ -120,7 +179,7 @@ class SteamMaFileParserTest {
         assertEquals("76561198000000001", payload.steamId)
         assertEquals("backup_user", payload.accountName)
         assertEquals("android:backup-device", payload.deviceId)
-        assertEquals("shared-secret", payload.sharedSecret)
+        assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
         assertEquals("identity-secret", payload.identitySecret)
         assertEquals("R98765", payload.revocationCode)
         assertEquals("token-gid", payload.tokenGid)

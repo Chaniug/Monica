@@ -1,6 +1,6 @@
 package takagi.ru.monica.steam.network
 
-import android.net.Uri
+import java.net.URLDecoder
 import takagi.ru.monica.steam.core.SteamLoginApprovalSigner
 import takagi.ru.monica.steam.data.SteamAccount
 
@@ -10,14 +10,57 @@ data class SteamQrChallenge(
 ) {
     companion object {
         fun parse(raw: String): SteamQrChallenge? {
-            val uri = runCatching { Uri.parse(raw.trim()) }.getOrNull() ?: return null
-            val segments = uri.pathSegments ?: return null
-            val index = segments.indexOf("q")
-            if (index < 0 || segments.size < index + 3) return null
-            val version = segments[index + 1].toIntOrNull() ?: return null
-            val clientId = segments[index + 2].toLongOrNull() ?: return null
+            val normalized = raw.trim().takeIf { it.isNotBlank() } ?: return null
+            return parseCandidates(normalized)
+                .asSequence()
+                .flatMap { candidate ->
+                    sequenceOf(candidate, candidate.decodeUrlComponent())
+                }
+                .mapNotNull(::parseCandidate)
+                .firstOrNull()
+        }
+
+        private fun parseCandidates(raw: String): List<String> {
+            val trimmed = raw.trimQrPayload()
+            val urls = URL_PATTERN.findAll(trimmed)
+                .map { it.value.trimQrPayload() }
+                .toList()
+            return buildList {
+                add(trimmed)
+                addAll(urls)
+                (urls + trimmed).forEach { value ->
+                    unwrapSteamOpenUrl(value)?.let(::add)
+                }
+            }
+        }
+
+        private fun parseCandidate(value: String): SteamQrChallenge? {
+            val match = STEAM_QR_PATH_PATTERN.find(value) ?: return null
+            val version = match.groupValues[1].toIntOrNull() ?: return null
+            val clientId = match.groupValues[2].toLongOrNull() ?: return null
             return SteamQrChallenge(version = version, clientId = clientId)
         }
+
+        private fun unwrapSteamOpenUrl(value: String): String? {
+            val match = STEAM_OPEN_URL_PATTERN.find(value) ?: return null
+            return match.groupValues[1].decodeUrlComponent().trimQrPayload().takeIf { it.isNotBlank() }
+        }
+
+        private fun String.decodeUrlComponent(): String {
+            return runCatching {
+                URLDecoder.decode(replace("+", "%2B"), Charsets.UTF_8.name())
+            }.getOrDefault(this)
+        }
+
+        private fun String.trimQrPayload(): String {
+            return trim()
+                .trim('"', '\'', '`', '<', '>', '(', ')', '[', ']', '{', '}')
+                .trimEnd('.', ',', ';')
+        }
+
+        private val URL_PATTERN = Regex("""(?:https?://|steam://)\S+""", RegexOption.IGNORE_CASE)
+        private val STEAM_OPEN_URL_PATTERN = Regex("""^steam://openurl/(.+)$""", RegexOption.IGNORE_CASE)
+        private val STEAM_QR_PATH_PATTERN = Regex("""(?:^|/)q/(\d+)/(-?\d+)(?:\D|$)""", RegexOption.IGNORE_CASE)
     }
 }
 
