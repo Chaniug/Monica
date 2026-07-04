@@ -1,6 +1,7 @@
 package takagi.ru.monica.steam.network
 
 import java.net.URLDecoder
+import java.net.URI
 import takagi.ru.monica.steam.core.SteamLoginApprovalSigner
 import takagi.ru.monica.steam.data.SteamAccount
 
@@ -26,7 +27,7 @@ data class SteamQrChallenge(
                 .map { it.value.trimQrPayload() }
                 .toList()
             return buildList {
-                add(trimmed)
+                if (urls.isEmpty()) add(trimmed)
                 addAll(urls)
                 (urls + trimmed).forEach { value ->
                     unwrapSteamOpenUrl(value)?.let(::add)
@@ -35,10 +36,21 @@ data class SteamQrChallenge(
         }
 
         private fun parseCandidate(value: String): SteamQrChallenge? {
-            val match = STEAM_QR_PATH_PATTERN.find(value) ?: return null
+            val path = steamQrPath(value) ?: return null
+            val match = STEAM_QR_PATH_PATTERN.find(path) ?: return null
             val version = match.groupValues[1].toIntOrNull() ?: return null
             val clientId = match.groupValues[2].toLongOrNull() ?: return null
             return SteamQrChallenge(version = version, clientId = clientId)
+        }
+
+        private fun steamQrPath(value: String): String? {
+            val candidate = value.trimQrPayload()
+            if (!candidate.contains("://")) return candidate
+            val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
+            val scheme = uri.scheme?.lowercase() ?: return null
+            val host = uri.host?.lowercase() ?: return null
+            if (scheme != "https" || host !in ALLOWED_QR_HOSTS) return null
+            return uri.rawPath?.decodeUrlComponent()?.takeIf { it.isNotBlank() }
         }
 
         private fun unwrapSteamOpenUrl(value: String): String? {
@@ -54,13 +66,13 @@ data class SteamQrChallenge(
 
         private fun String.trimQrPayload(): String {
             return trim()
-                .trim('"', '\'', '`', '<', '>', '(', ')', '[', ']', '{', '}')
-                .trimEnd('.', ',', ';')
+                .trim('"', '\'', '`', '<', '>', '(', ')', '[', ']', '{', '}', '.', ',', ';')
         }
 
         private val URL_PATTERN = Regex("""(?:https?://|steam://)\S+""", RegexOption.IGNORE_CASE)
         private val STEAM_OPEN_URL_PATTERN = Regex("""^steam://openurl/(.+)$""", RegexOption.IGNORE_CASE)
         private val STEAM_QR_PATH_PATTERN = Regex("""(?:^|/)q/(\d+)/(-?\d+)(?:\D|$)""", RegexOption.IGNORE_CASE)
+        private val ALLOWED_QR_HOSTS = setOf("s.team", "steamcommunity.com", "www.steamcommunity.com")
     }
 }
 

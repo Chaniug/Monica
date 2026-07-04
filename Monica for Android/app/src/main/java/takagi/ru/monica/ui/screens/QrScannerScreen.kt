@@ -84,8 +84,6 @@ fun QrScannerScreen(
     title: String? = null,
     subtitle: String? = null,
     allowedFormats: Collection<BarcodeFormat> = DEFAULT_SCANNER_FORMATS,
-    isQrCodeAccepted: (String) -> Boolean = { true },
-    rejectedQrMessage: String? = null,
     bottomContent: @Composable (launchGallery: () -> Unit) -> Unit = { launchGallery ->
         DefaultQrScannerBottomContent(launchGallery = launchGallery)
     }
@@ -110,8 +108,6 @@ fun QrScannerScreen(
                     title = title ?: stringResource(R.string.scan_qr_code_title),
                     subtitle = subtitle ?: stringResource(R.string.qr_align_hint),
                     allowedFormats = allowedFormats,
-                    isQrCodeAccepted = isQrCodeAccepted,
-                    rejectedQrMessage = rejectedQrMessage,
                     bottomContent = bottomContent
                 )
             }
@@ -180,8 +176,6 @@ private fun QrCodeScanner(
     title: String,
     subtitle: String,
     allowedFormats: Collection<BarcodeFormat>,
-    isQrCodeAccepted: (String) -> Boolean,
-    rejectedQrMessage: String?,
     bottomContent: @Composable (launchGallery: () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
@@ -195,17 +189,9 @@ private fun QrCodeScanner(
     ) { uri ->
         if (uri != null) {
             val result = processImage(context, uri, allowedFormats)
-            if (result != null && isQrCodeAccepted(result)) {
-                if (scanConsumed.compareAndSet(false, true)) {
-                    onQrCodeScanned(result)
-                }
-            } else if (result != null) {
-                Toast.makeText(
-                    context,
-                    rejectedQrMessage ?: context.getString(R.string.qr_not_found),
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
+            if (result != null && scanConsumed.compareAndSet(false, true)) {
+                onQrCodeScanned(result)
+            } else if (result == null) {
                 Toast.makeText(context, context.getString(R.string.qr_not_found), Toast.LENGTH_SHORT).show()
             }
         }
@@ -270,7 +256,6 @@ private fun QrCodeScanner(
                             if (
                                 !value.isNullOrBlank() &&
                                 result.barcodeFormat in allowedFormats &&
-                                isQrCodeAccepted(value) &&
                                 scanConsumed.compareAndSet(false, true)
                             ) {
                                 onQrCodeScanned(value)
