@@ -55,6 +55,21 @@ import com.journeyapps.barcodescanner.camera.CameraSettings
 import takagi.ru.monica.R
 import java.util.concurrent.atomic.AtomicBoolean
 
+private val DEFAULT_SCANNER_FORMATS = listOf(
+    BarcodeFormat.QR_CODE,
+    BarcodeFormat.CODE_128,
+    BarcodeFormat.CODE_39,
+    BarcodeFormat.CODE_93,
+    BarcodeFormat.EAN_13,
+    BarcodeFormat.EAN_8,
+    BarcodeFormat.UPC_A,
+    BarcodeFormat.UPC_E,
+    BarcodeFormat.ITF,
+    BarcodeFormat.CODABAR,
+    BarcodeFormat.DATA_MATRIX,
+    BarcodeFormat.AZTEC,
+    BarcodeFormat.PDF_417
+)
 
 /**
  * QR码扫描屏幕
@@ -68,6 +83,7 @@ fun QrScannerScreen(
     modifier: Modifier = Modifier,
     title: String? = null,
     subtitle: String? = null,
+    allowedFormats: Collection<BarcodeFormat> = DEFAULT_SCANNER_FORMATS,
     bottomContent: @Composable (launchGallery: () -> Unit) -> Unit = { launchGallery ->
         DefaultQrScannerBottomContent(launchGallery = launchGallery)
     }
@@ -91,6 +107,7 @@ fun QrScannerScreen(
                     onNavigateBack = onNavigateBack,
                     title = title ?: stringResource(R.string.scan_qr_code_title),
                     subtitle = subtitle ?: stringResource(R.string.qr_align_hint),
+                    allowedFormats = allowedFormats,
                     bottomContent = bottomContent
                 )
             }
@@ -158,6 +175,7 @@ private fun QrCodeScanner(
     onNavigateBack: () -> Unit,
     title: String,
     subtitle: String,
+    allowedFormats: Collection<BarcodeFormat>,
     bottomContent: @Composable (launchGallery: () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
@@ -170,7 +188,7 @@ private fun QrCodeScanner(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val result = processImage(context, uri)
+            val result = processImage(context, uri, allowedFormats)
             if (result != null && scanConsumed.compareAndSet(false, true)) {
                 onQrCodeScanned(result)
             } else if (result == null) {
@@ -211,21 +229,6 @@ private fun QrCodeScanner(
                         scannerView.findViewById<View>(statusViewId)?.visibility = View.GONE
                     }
 
-                    val formats = listOf(
-                        BarcodeFormat.QR_CODE,
-                        BarcodeFormat.CODE_128,
-                        BarcodeFormat.CODE_39,
-                        BarcodeFormat.CODE_93,
-                        BarcodeFormat.EAN_13,
-                        BarcodeFormat.EAN_8,
-                        BarcodeFormat.UPC_A,
-                        BarcodeFormat.UPC_E,
-                        BarcodeFormat.ITF,
-                        BarcodeFormat.CODABAR,
-                        BarcodeFormat.DATA_MATRIX,
-                        BarcodeFormat.AZTEC,
-                        BarcodeFormat.PDF_417
-                    )
                     val decodeHints = mapOf(
                         DecodeHintType.TRY_HARDER to true,
                         DecodeHintType.CHARACTER_SET to "UTF-8"
@@ -233,7 +236,7 @@ private fun QrCodeScanner(
 
                     // Use mixed scan type (normal + inverted) to improve low-contrast/complex QR detection.
                     scannerView.barcodeView.decoderFactory = DefaultDecoderFactory(
-                        formats,
+                        allowedFormats.toList(),
                         decodeHints,
                         "UTF-8",
                         2
@@ -250,7 +253,11 @@ private fun QrCodeScanner(
                     scannerView.decodeContinuous(object : BarcodeCallback {
                         override fun barcodeResult(result: BarcodeResult?) {
                             val value = result?.text?.trim()
-                            if (!value.isNullOrBlank() && scanConsumed.compareAndSet(false, true)) {
+                            if (
+                                !value.isNullOrBlank() &&
+                                result.barcodeFormat in allowedFormats &&
+                                scanConsumed.compareAndSet(false, true)
+                            ) {
                                 onQrCodeScanned(value)
                             }
                         }
@@ -504,7 +511,8 @@ private fun ScannerCorner(
 
 private fun processImage(
     context: Context,
-    uri: Uri
+    uri: Uri,
+    allowedFormats: Collection<BarcodeFormat>
 ): String? {
     val imageBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
     if (imageBytes.isEmpty()) return null
@@ -514,10 +522,10 @@ private fun processImage(
     for (sampleSize in sampleSizes) {
         val baseBitmap = decodeBitmapFromBytes(imageBytes, sampleSize) ?: continue
         try {
-            val decoded = decodeQrFromBitmap(baseBitmap)
-                ?: decodeWithRotation(baseBitmap, 90f)
-                ?: decodeWithRotation(baseBitmap, 180f)
-                ?: decodeWithRotation(baseBitmap, 270f)
+            val decoded = decodeQrFromBitmap(baseBitmap, allowedFormats)
+                ?: decodeWithRotation(baseBitmap, 90f, allowedFormats)
+                ?: decodeWithRotation(baseBitmap, 180f, allowedFormats)
+                ?: decodeWithRotation(baseBitmap, 270f, allowedFormats)
 
             if (decoded != null) {
                 return decoded
@@ -563,16 +571,23 @@ private fun rotateBitmap(source: Bitmap, angle: Float): Bitmap {
     return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
 }
 
-private fun decodeWithRotation(baseBitmap: Bitmap, angle: Float): String? {
+private fun decodeWithRotation(
+    baseBitmap: Bitmap,
+    angle: Float,
+    allowedFormats: Collection<BarcodeFormat>
+): String? {
     val rotated = runCatching { rotateBitmap(baseBitmap, angle) }.getOrNull() ?: return null
     return try {
-        decodeQrFromBitmap(rotated)
+        decodeQrFromBitmap(rotated, allowedFormats)
     } finally {
         if (!rotated.isRecycled) rotated.recycle()
     }
 }
 
-private fun decodeQrFromBitmap(bitmap: Bitmap): String? {
+private fun decodeQrFromBitmap(
+    bitmap: Bitmap,
+    allowedFormats: Collection<BarcodeFormat>
+): String? {
     if (bitmap.width <= 0 || bitmap.height <= 0) return null
 
     val pixels = IntArray(bitmap.width * bitmap.height)
@@ -580,21 +595,7 @@ private fun decodeQrFromBitmap(bitmap: Bitmap): String? {
 
     val baseSource = RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
     val hints = mapOf(
-        DecodeHintType.POSSIBLE_FORMATS to listOf(
-            BarcodeFormat.QR_CODE,
-            BarcodeFormat.CODE_128,
-            BarcodeFormat.CODE_39,
-            BarcodeFormat.CODE_93,
-            BarcodeFormat.EAN_13,
-            BarcodeFormat.EAN_8,
-            BarcodeFormat.UPC_A,
-            BarcodeFormat.UPC_E,
-            BarcodeFormat.ITF,
-            BarcodeFormat.CODABAR,
-            BarcodeFormat.DATA_MATRIX,
-            BarcodeFormat.AZTEC,
-            BarcodeFormat.PDF_417
-        ),
+        DecodeHintType.POSSIBLE_FORMATS to allowedFormats.toList(),
         DecodeHintType.TRY_HARDER to true,
         DecodeHintType.CHARACTER_SET to "UTF-8"
     )
