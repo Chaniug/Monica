@@ -95,6 +95,35 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun webDavBackupExportsSteamAccountsAsMaFiles() {
+        val helperSource = projectFile("app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt").readText()
+        val applierSource = projectFile("app/src/main/java/takagi/ru/monica/utils/BackupRestoreApplier.kt").readText()
+        val codecSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/importer/SteamMaFileBackupCodec.kt"
+        ).readText()
+
+        assertTrue(helperSource.contains("STEAM_MAFILE_BACKUP_DIR = \"steam/mafiles\""))
+        assertTrue(helperSource.contains("preferences.includeAuthenticators"))
+        assertTrue(helperSource.contains("createSteamMaFileBackups(securityManager)"))
+        assertTrue(helperSource.contains("SteamMaFileBackupCodec.encode(account)"))
+        assertTrue(helperSource.contains("isSteamMaFileBackupEntry(normalizedEntryName)"))
+        assertTrue(helperSource.contains("restoreSteamMaFilePayload(tempFile)"))
+        assertTrue(helperSource.contains("steamMaFiles = steamMaFiles"))
+        assertTrue(helperSource.contains("if (steamMaFiles.isNotEmpty())"))
+        assertTrue(helperSource.contains("clearSteamAccounts = true"))
+        assertFalse(helperSource.contains("getDatabasePath(\"steam_database\")"))
+
+        assertTrue(applierSource.contains("SteamAccountRepository("))
+        assertTrue(applierSource.contains("steamRepository.upsertFromMaFile(payload)"))
+        assertTrue(applierSource.contains("steamAccountImported"))
+        assertTrue(codecSource.contains("shared_secret"))
+        assertTrue(codecSource.contains("identity_secret"))
+        assertTrue(codecSource.contains("SteamLoginSecure"))
+        assertTrue(codecSource.contains("AccessToken"))
+        assertTrue(codecSource.contains("RefreshToken"))
+    }
+
+    @Test
     fun steamLoginImportLogsDoNotPersistRawAccountData() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"

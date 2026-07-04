@@ -37,6 +37,9 @@ interface SteamAccountDao {
     @Query("DELETE FROM steam_accounts WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM steam_accounts")
+    suspend fun deleteAll()
+
     @Query("UPDATE steam_accounts SET selected = 0")
     suspend fun clearSelected()
 

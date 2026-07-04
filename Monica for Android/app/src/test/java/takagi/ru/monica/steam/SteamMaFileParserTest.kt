@@ -4,6 +4,8 @@ import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.steam.importer.SteamMaFileBackupCodec
 import takagi.ru.monica.steam.importer.SteamMaFileCrypto
 import takagi.ru.monica.steam.importer.SteamMaFileParser
 
@@ -88,6 +90,43 @@ class SteamMaFileParserTest {
         val cipher = SteamMaFileCrypto.encryptForTests("right", salt, iv, plainMaFile)
 
         assertNull(SteamMaFileCrypto.decrypt("wrong", salt, iv, cipher))
+    }
+
+    @Test
+    fun encodesSteamAccountAsRestorableMaFileWithSessionTokens() {
+        val account = SteamAccount(
+            id = 7L,
+            steamId = "76561198000000001",
+            accountName = "backup_user",
+            displayName = "Backup User",
+            deviceId = "android:backup-device",
+            sharedSecret = "shared-secret",
+            identitySecret = "identity-secret",
+            revocationCode = "R98765",
+            tokenGid = "token-gid",
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+            steamLoginSecure = "76561198000000001||access-token",
+            rawSteamGuardJson = """{"serial_number":"serial","fully_enrolled":true}""",
+            selected = true,
+            sortOrder = 0,
+            createdAt = 1L,
+            updatedAt = 2L
+        )
+
+        val maFile = SteamMaFileBackupCodec.encode(account)
+        val payload = SteamMaFileParser().parse(maFile)
+
+        assertEquals("76561198000000001", payload.steamId)
+        assertEquals("backup_user", payload.accountName)
+        assertEquals("android:backup-device", payload.deviceId)
+        assertEquals("shared-secret", payload.sharedSecret)
+        assertEquals("identity-secret", payload.identitySecret)
+        assertEquals("R98765", payload.revocationCode)
+        assertEquals("token-gid", payload.tokenGid)
+        assertEquals("access-token", payload.accessToken)
+        assertEquals("refresh-token", payload.refreshToken)
+        assertEquals("76561198000000001||access-token", payload.steamLoginSecure)
     }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
