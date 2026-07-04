@@ -2516,6 +2516,7 @@ fun MonicaContent(
                     navController.context
                 )
             }
+            val settings by settingsViewModel.settings.collectAsState()
             takagi.ru.monica.ui.screens.ExportDataScreen(
                 onNavigateBack = {
                     navController.popBackStack()
@@ -2545,6 +2546,16 @@ fun MonicaContent(
                     } else {
                         Result.failure(Exception("无法打开文件"))
                     }
+                },
+                biometricEnabled = settings.biometricEnabled,
+                onLoadSteamMaFileCandidates = {
+                    dataExportImportViewModel.loadSteamMaFileExportCandidates()
+                },
+                onPrepareSteamMaFileExport = { accountIds ->
+                    dataExportImportViewModel.prepareSteamMaFileExport(accountIds)
+                },
+                onWritePreparedSteamMaFileExport = { uri, preparedExport ->
+                    dataExportImportViewModel.writePreparedSteamMaFileExport(uri, preparedExport)
                 }
             )
         }

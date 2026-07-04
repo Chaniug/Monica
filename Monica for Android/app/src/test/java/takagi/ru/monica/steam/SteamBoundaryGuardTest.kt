@@ -124,6 +124,49 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun exportDataPageCanExportPlainSteamMaFiles() {
+        val exportScreenSource = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/ExportDataScreen.kt")
+            .readText()
+        val exportModelsSource = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/ExportModels.kt")
+            .readText()
+        val exportNamingSource = projectFile("app/src/main/java/takagi/ru/monica/ui/screens/ExportFileNaming.kt")
+            .readText()
+        val exportViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/DataExportImportViewModel.kt"
+        ).readText()
+        val mainActivitySource = projectFile("app/src/main/java/takagi/ru/monica/MainActivity.kt").readText()
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+
+        assertTrue(exportModelsSource.contains("STEAM_MAFILE"))
+        assertTrue(exportNamingSource.contains("ExportOption.STEAM_MAFILE -> \"steam_mafiles_${'$'}{timestamp}.zip\""))
+
+        assertTrue(exportScreenSource.contains("ExportOption.STEAM_MAFILE"))
+        assertTrue(exportScreenSource.contains("onLoadSteamMaFileCandidates"))
+        assertTrue(exportScreenSource.contains("onPrepareSteamMaFileExport"))
+        assertTrue(exportScreenSource.contains("onWritePreparedSteamMaFileExport"))
+        assertTrue(exportScreenSource.contains("SteamMaFileExportOptionsContent("))
+        assertTrue(exportScreenSource.contains("showSteamMaFileRiskDialog"))
+        assertTrue(exportScreenSource.contains("M3IdentityVerifyDialog("))
+        assertTrue(exportScreenSource.contains("securityManager.verifyMasterPassword(steamMaFilePasswordInput)"))
+        assertTrue(exportScreenSource.contains("biometricHelper.authenticate("))
+
+        assertTrue(exportViewModelSource.contains("loadSteamMaFileExportCandidates"))
+        assertTrue(exportViewModelSource.contains("prepareSteamMaFileExport"))
+        assertTrue(exportViewModelSource.contains("writePreparedSteamMaFileExport"))
+        assertTrue(exportViewModelSource.contains("SteamAccountRepository("))
+        assertTrue(exportViewModelSource.contains("SteamMaFileBackupCodec.encode(account)"))
+        assertTrue(exportViewModelSource.contains("ZipOutputStream(tempFile.outputStream())"))
+        assertFalse(exportViewModelSource.contains("getDatabasePath(\"steam_database\")"))
+
+        assertTrue(mainActivitySource.contains("onLoadSteamMaFileCandidates = {"))
+        assertTrue(mainActivitySource.contains("onPrepareSteamMaFileExport = { accountIds ->"))
+        assertTrue(mainActivitySource.contains("onWritePreparedSteamMaFileExport = { uri, preparedExport ->"))
+        assertTrue(defaultStrings.contains("<string name=\"export_option_steam_mafile\">Steam maFile</string>"))
+        assertTrue(zhStrings.contains("<string name=\"export_option_steam_mafile\">Steam maFile</string>"))
+    }
+
+    @Test
     fun steamLoginImportLogsDoNotPersistRawAccountData() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"

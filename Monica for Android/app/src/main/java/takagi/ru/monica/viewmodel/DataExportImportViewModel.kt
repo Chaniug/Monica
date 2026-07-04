@@ -16,11 +16,15 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.PreparedSteamMaFileExport
+import takagi.ru.monica.data.SteamMaFileExportCandidate
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.steam.data.SteamAccountRepository
+import takagi.ru.monica.steam.data.SteamDatabase
 import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.ImportedPasswordSnapshot
@@ -34,6 +38,7 @@ import takagi.ru.monica.utils.BackupContentScope
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
+import takagi.ru.monica.steam.importer.SteamMaFileBackupCodec
 import takagi.ru.monica.steam.service.SteamLoginImportService
 import java.io.File
 import java.io.IOException
@@ -41,8 +46,11 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.Date
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /**
  * 数据导入导出ViewModel
@@ -169,6 +177,35 @@ class DataExportImportViewModel(
         }
         context.contentResolver.openInputStream(outputUri)?.use(::validatePlainZipStream)
             ?: throw IOException("无法校验导出的ZIP文件")
+        copiedBytes
+    }
+
+    private suspend fun copyPlainFileToOutputUri(
+        sourceFile: File,
+        outputUri: Uri,
+        validateOutput: ((InputStream) -> Unit)? = null
+    ): Long = withContext(Dispatchers.IO) {
+        if (!sourceFile.isFile || sourceFile.length() <= 0L) {
+            throw IOException("导出文件为空")
+        }
+        val expectedBytes = sourceFile.length()
+        val copiedBytes = openExportOutputStream(outputUri).use { output ->
+            sourceFile.inputStream().use { input ->
+                input.copyTo(output)
+            }.also {
+                output.flush()
+            }
+        }
+        if (copiedBytes <= 0L) {
+            throw IOException("导出文件写入为空")
+        }
+        if (expectedBytes > 0L && copiedBytes != expectedBytes) {
+            throw IOException("导出文件写入不完整：$copiedBytes/$expectedBytes")
+        }
+        validateOutput?.let { validator ->
+            context.contentResolver.openInputStream(outputUri)?.use(validator)
+                ?: throw IOException("无法校验导出的文件")
+        }
         copiedBytes
     }
 
@@ -1135,6 +1172,140 @@ class DataExportImportViewModel(
             Result.failure(e)
         } finally {
             preparedFile?.delete()
+        }
+    }
+
+    suspend fun loadSteamMaFileExportCandidates(): Result<List<SteamMaFileExportCandidate>> = withContext(Dispatchers.IO) {
+        try {
+            val repository = SteamAccountRepository(
+                SteamDatabase.getDatabase(context).steamAccountDao(),
+                securityManager
+            )
+            val candidates = repository.getAccounts()
+                .filter { account -> account.sharedSecret.isNotBlank() }
+                .map { account ->
+                    val title = account.displayName
+                        .ifBlank { account.accountName }
+                        .ifBlank { "Steam" }
+                    val subtitle = account.steamId
+                        .ifBlank { account.accountName }
+                        .ifBlank { context.getString(R.string.steam_mafile_export_unknown_account) }
+                    SteamMaFileExportCandidate(
+                        id = account.id,
+                        title = title,
+                        subtitle = subtitle
+                    )
+                }
+            Result.success(candidates)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "加载Steam maFile导出账号失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun prepareSteamMaFileExport(accountIds: Set<Long>): Result<PreparedSteamMaFileExport> = withContext(Dispatchers.IO) {
+        try {
+            val selectedIds = accountIds.filter { it > 0L }.toSet()
+            if (selectedIds.isEmpty()) {
+                return@withContext Result.failure(Exception(context.getString(R.string.steam_mafile_export_no_selection)))
+            }
+
+            val repository = SteamAccountRepository(
+                SteamDatabase.getDatabase(context).steamAccountDao(),
+                securityManager
+            )
+            val selectedAccounts = repository.getAccounts()
+                .filter { account -> account.id in selectedIds && account.sharedSecret.isNotBlank() }
+
+            if (selectedAccounts.isEmpty()) {
+                return@withContext Result.failure(Exception(context.getString(R.string.steam_mafile_export_empty)))
+            }
+
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val prepared = if (selectedAccounts.size == 1) {
+                val account = selectedAccounts.first()
+                val fileName = SteamMaFileBackupCodec.fileName(account)
+                val tempFile = File(context.cacheDir, "steam_mafile_export_${System.nanoTime()}_$fileName")
+                tempFile.writeText(SteamMaFileBackupCodec.encode(account), Charsets.UTF_8)
+                if (!tempFile.isFile || tempFile.length() <= 0L) {
+                    throw IOException("导出的 maFile 为空")
+                }
+                PreparedSteamMaFileExport(
+                    file = tempFile,
+                    fileName = fileName,
+                    mimeType = "application/json",
+                    successMessage = context.getString(R.string.steam_mafile_export_success_single),
+                    accountCount = 1
+                )
+            } else {
+                val fileName = "steam_mafiles_$timestamp.zip"
+                val tempFile = File(context.cacheDir, "steam_mafile_export_${System.nanoTime()}.zip")
+                val usedFileNames = mutableSetOf<String>()
+                ZipOutputStream(tempFile.outputStream()).use { zip ->
+                    selectedAccounts.forEach { account ->
+                        val entryName = uniqueSteamMaFileName(
+                            SteamMaFileBackupCodec.fileName(account),
+                            usedFileNames
+                        )
+                        val bytes = SteamMaFileBackupCodec.encode(account).toByteArray(Charsets.UTF_8)
+                        zip.putNextEntry(ZipEntry(entryName))
+                        zip.write(bytes)
+                        zip.closeEntry()
+                    }
+                }
+                validatePlainZipFile(tempFile)
+                PreparedSteamMaFileExport(
+                    file = tempFile,
+                    fileName = fileName,
+                    mimeType = "application/zip",
+                    successMessage = context.getString(
+                        R.string.steam_mafile_export_success_multi,
+                        selectedAccounts.size
+                    ),
+                    accountCount = selectedAccounts.size
+                )
+            }
+
+            Result.success(prepared)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "准备Steam maFile导出失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun writePreparedSteamMaFileExport(
+        outputUri: Uri,
+        preparedExport: PreparedSteamMaFileExport
+    ): Result<String> {
+        return try {
+            val validator: ((InputStream) -> Unit)? = if (preparedExport.fileName.endsWith(".zip", ignoreCase = true)) {
+                ::validatePlainZipStream
+            } else {
+                { input ->
+                    if (input.readBytes().isEmpty()) {
+                        throw IOException("导出的 maFile 为空")
+                    }
+                }
+            }
+            copyPlainFileToOutputUri(preparedExport.file, outputUri, validator)
+            Result.success(preparedExport.successMessage)
+        } catch (e: Exception) {
+            android.util.Log.e("DataExport", "写入Steam maFile导出失败: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun uniqueSteamMaFileName(fileName: String, usedNames: MutableSet<String>): String {
+        if (usedNames.add(fileName)) return fileName
+
+        val extensionIndex = fileName.lastIndexOf('.').takeIf { it > 0 } ?: fileName.length
+        val baseName = fileName.substring(0, extensionIndex).ifBlank { "steam" }
+        val extension = fileName.substring(extensionIndex)
+        var suffix = 2
+        while (true) {
+            val candidate = "$baseName-$suffix$extension"
+            if (usedNames.add(candidate)) return candidate
+            suffix++
         }
     }
 

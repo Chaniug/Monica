@@ -17,6 +17,7 @@ fun exportDocumentSpec(
     val fileName = when (selectedOption) {
         ExportOption.ZIP_BACKUP -> "monica_backup_${timestamp}.zip"
         ExportOption.KDBX -> "monica_${timestamp}.kdbx"
+        ExportOption.STEAM_MAFILE -> "steam_mafiles_${timestamp}.zip"
     }
 
     val mimeType = when {
