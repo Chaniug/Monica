@@ -1,6 +1,8 @@
 package takagi.ru.monica.utils
 
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,5 +26,33 @@ class UpdateCheckerTest {
     @Test
     fun compareVersionTags_detectsOlderRelease() {
         assertTrue(UpdateChecker.compareVersionTags("1.0.287", "1.0.293") < 0)
+    }
+
+    @Test
+    fun apkDownloadUsesLongRunningClientAndReportsProgress() {
+        val source = File("src/main/java/takagi/ru/monica/utils/UpdateChecker.kt").readText()
+        val downloadClientBlock = source
+            .substringAfter("private val downloadClient")
+            .substringBefore("suspend fun checkLatestRelease")
+        val downloadApkBlock = source
+            .substringAfter("suspend fun downloadApk(")
+            .substringBefore("fun validateDownloadedApk")
+
+        assertFalse(downloadClientBlock.contains("callTimeout(20, TimeUnit.SECONDS)"))
+        assertTrue(downloadApkBlock.contains("onProgress: suspend (UpdateDownloadProgress) -> Unit"))
+        assertTrue(downloadApkBlock.contains("downloadClient.newCall(request)"))
+        assertTrue(downloadApkBlock.contains("body.contentLength()"))
+        assertTrue(downloadApkBlock.contains("onProgress(UpdateDownloadProgress(bytesRead, totalBytes))"))
+    }
+
+    @Test
+    fun updateDownloadProgressCalculatesFractionOnlyWhenTotalIsKnown() {
+        val known = UpdateDownloadProgress(bytesRead = 25L, totalBytes = 100L)
+        val unknown = UpdateDownloadProgress(bytesRead = 25L, totalBytes = -1L)
+
+        assertTrue(known.hasTotal)
+        assertEquals(0.25f, known.fraction, 0.0001f)
+        assertFalse(unknown.hasTotal)
+        assertEquals(0f, unknown.fraction, 0.0001f)
     }
 }

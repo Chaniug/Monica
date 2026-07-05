@@ -1292,6 +1292,8 @@
     <string name="update_check_open_release">Open Release</string>
     <string name="update_download_and_install">Download &amp; Install</string>
     <string name="update_download_downloading">Downloading...</string>
+    <string name="update_download_progress_known">%1$s / %2$s</string>
+    <string name="update_download_progress_unknown">%1$s downloaded</string>
     <string name="update_download_failed">Download failed: %1$s</string>
     <string name="update_install_permission_required">Allow Monica to install unknown apps, then try again.</string>
     <string name="update_install_open_failed">Could not open the system installer.</string>

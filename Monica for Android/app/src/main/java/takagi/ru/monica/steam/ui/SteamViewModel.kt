@@ -197,12 +197,13 @@ class SteamViewModel(
     }
 
     fun selectAccount(id: Long) {
+        val selectedId = _uiState.value.accounts.firstOrNull { it.id == id }?.id ?: return
+        selectRuntimeAccount(selectedId)
         if (_uiState.value.storageSource is SteamStorageSource.Mdbx) {
-            selectRuntimeAccount(id)
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
-            repository.select(id)
+            repository.select(selectedId)
         }
     }
 

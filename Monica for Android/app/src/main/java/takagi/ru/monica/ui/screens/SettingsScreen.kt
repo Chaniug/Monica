@@ -60,9 +60,12 @@ import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.UpdateCheckResult
 import takagi.ru.monica.utils.UpdateChecker
+import takagi.ru.monica.utils.UpdateDownloadProgress
 import takagi.ru.monica.viewmodel.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
@@ -76,6 +79,7 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import takagi.ru.monica.ui.components.OutlinedTextField
 import java.io.File
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -132,6 +136,7 @@ fun SettingsScreen(
     var showUpdateCheckDialog by remember { mutableStateOf(false) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var updateDownloadProgress by remember { mutableStateOf<UpdateDownloadProgress?>(null) }
     var updateCheckResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
     var updateCheckError by remember { mutableStateOf<String?>(null) }
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
@@ -190,10 +195,15 @@ fun SettingsScreen(
 
         if (!isDownloadingUpdate) {
             isDownloadingUpdate = true
+            updateDownloadProgress = null
             coroutineScope.launch {
                 val apkName = result.apkAssetName ?: "Monica-${result.latestVersion}.apk"
                 val outputDir = File(context.cacheDir, "update_apk")
-                UpdateChecker.downloadApk(downloadUrl, outputDir, apkName)
+                UpdateChecker.downloadApk(downloadUrl, outputDir, apkName) { progress ->
+                    withContext(Dispatchers.Main.immediate) {
+                        updateDownloadProgress = progress
+                    }
+                }
                     .onSuccess { apkFile ->
                         UpdateChecker.validateDownloadedApk(context, apkFile)
                             .onSuccess {
@@ -242,6 +252,7 @@ fun SettingsScreen(
                             Toast.LENGTH_LONG
                         ).show()
                     }
+                updateDownloadProgress = null
                 isDownloadingUpdate = false
             }
         }
@@ -1474,6 +1485,35 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            if (isDownloadingUpdate) {
+                                val progress = updateDownloadProgress
+                                Spacer(modifier = Modifier.height(16.dp))
+                                if (progress?.hasTotal == true) {
+                                    LinearProgressIndicator(
+                                        progress = { progress.fraction.coerceIn(0f, 1f) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                } else {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = if (progress?.hasTotal == true) {
+                                        stringResource(
+                                            R.string.update_download_progress_known,
+                                            formatUpdateDownloadBytes(progress.bytesRead),
+                                            formatUpdateDownloadBytes(progress.totalBytes)
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.update_download_progress_unknown,
+                                            formatUpdateDownloadBytes(progress?.bytesRead ?: 0L)
+                                        )
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -1954,6 +1994,11 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+private fun formatUpdateDownloadBytes(bytes: Long): String {
+    val mb = bytes.toDouble() / (1024.0 * 1024.0)
+    return String.format(Locale.US, "%.1f MB", mb)
 }
 
 @Composable

@@ -310,6 +310,9 @@ class SteamBoundaryGuardTest {
         val source = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
             .readText()
             .replace("\r\n", "\n")
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+            .replace("\r\n", "\n")
 
         assertTrue(source.contains("ExpressiveTopBar"))
         assertTrue(source.contains("PasswordTopActionsDropdownMenu"))
@@ -529,11 +532,29 @@ class SteamBoundaryGuardTest {
         assertTrue(confirmationsContent.contains("accounts: List<SteamAccount>"))
         assertTrue(confirmationsContent.contains("onSelectAccount: (Long) -> Unit"))
         assertTrue(confirmationsContent.contains("var showAccountPicker by remember"))
+        assertTrue(confirmationsContent.contains("var pendingAccountSwitchId by remember"))
+        assertTrue(confirmationsContent.contains("LaunchedEffect(showAccountPicker, pendingAccountSwitchId)"))
+        assertTrue(confirmationsContent.contains("pendingAccountSwitchId = selected.id"))
+        assertTrue(confirmationsContent.contains("onSelectAccount(accountId)"))
         assertTrue(confirmationsContent.contains("SteamConfirmationAccountPickerSheet("))
         assertTrue(confirmationsContent.contains("SteamConfirmationAccountCard("))
         assertTrue(confirmationsContent.contains("onClick = { showAccountPicker = true }"))
         assertTrue(confirmationsContent.contains("MonicaModalBottomSheet("))
         assertTrue(confirmationsContent.contains("R.string.steam_switch_account"))
+
+        val selectAccountContent = viewModelSource
+            .substringAfter("fun selectAccount(id: Long)")
+            .substringBefore("fun updateSortOrders")
+        assertTrue(selectAccountContent.contains("selectRuntimeAccount(selectedId)"))
+        assertTrue(selectAccountContent.indexOf("selectRuntimeAccount(selectedId)") < selectAccountContent.indexOf("repository.select(selectedId)"))
+
+        val selectRuntimeAccountContent = viewModelSource
+            .substringAfter("private fun selectRuntimeAccount(id: Long)")
+            .substringBefore("private suspend fun saveMaFilePayload")
+        assertTrue(selectRuntimeAccountContent.contains("confirmations = emptyList()"))
+        assertTrue(selectRuntimeAccountContent.contains("pendingLogins = emptyList()"))
+        assertTrue(selectRuntimeAccountContent.contains("authorizedDevices = emptyList()"))
+        assertTrue(selectRuntimeAccountContent.contains("selectedConfirmationIds = emptySet()"))
 
         val topBarSource = projectFile("app/src/main/java/takagi/ru/monica/ui/components/ExpressiveTopBar.kt")
             .readText()

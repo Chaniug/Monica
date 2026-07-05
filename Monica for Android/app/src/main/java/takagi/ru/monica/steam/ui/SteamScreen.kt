@@ -2268,15 +2268,24 @@ private fun SteamConfirmationsContent(
     var pendingAction by remember { mutableStateOf<ConfirmationActionRequest?>(null) }
     var showBulkActionDialog by remember { mutableStateOf(false) }
     var showAccountPicker by remember { mutableStateOf(false) }
+    var pendingAccountSwitchId by remember { mutableStateOf<Long?>(null) }
     val selectedConfirmations = confirmations.filter { it.id in selectedIds }
     val selectionMode = selectedIds.isNotEmpty()
+
+    LaunchedEffect(showAccountPicker, pendingAccountSwitchId) {
+        val accountId = pendingAccountSwitchId
+        if (!showAccountPicker && accountId != null) {
+            pendingAccountSwitchId = null
+            onSelectAccount(accountId)
+        }
+    }
 
     if (showAccountPicker) {
         SteamConfirmationAccountPickerSheet(
             accounts = accounts,
             selectedAccountId = account?.id,
             onSelectAccount = { selected ->
-                onSelectAccount(selected.id)
+                pendingAccountSwitchId = selected.id
                 showAccountPicker = false
             },
             onDismissRequest = { showAccountPicker = false }

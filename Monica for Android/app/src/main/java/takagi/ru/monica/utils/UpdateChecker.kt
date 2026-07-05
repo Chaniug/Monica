@@ -28,6 +28,17 @@ data class UpdateCheckResult(
     val isUpdateAvailable: Boolean
 )
 
+data class UpdateDownloadProgress(
+    val bytesRead: Long,
+    val totalBytes: Long
+) {
+    val hasTotal: Boolean
+        get() = totalBytes > 0L
+
+    val fraction: Float
+        get() = if (hasTotal) bytesRead.toFloat() / totalBytes.toFloat() else 0f
+}
+
 object UpdateChecker {
     private const val RELEASE_API_URL =
         "https://api.github.com/repos/Monica-Pass/Monica/releases/latest"
@@ -40,6 +51,11 @@ object UpdateChecker {
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(20, TimeUnit.SECONDS)
+        .build()
+
+    private val downloadClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     suspend fun checkLatestRelease(currentVersion: String): Result<UpdateCheckResult> =
@@ -78,7 +94,12 @@ object UpdateChecker {
             }
         }
 
-    suspend fun downloadApk(downloadUrl: String, outputDir: File, outputName: String): Result<File> =
+    suspend fun downloadApk(
+        downloadUrl: String,
+        outputDir: File,
+        outputName: String,
+        onProgress: suspend (UpdateDownloadProgress) -> Unit = {}
+    ): Result<File> =
         withContext(Dispatchers.IO) {
             runCatching {
                 outputDir.mkdirs()
@@ -98,15 +119,33 @@ object UpdateChecker {
                     .header("User-Agent", "Monica-Android")
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                downloadClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         throw IOException("APK download failed: HTTP ${response.code}")
                     }
 
                     val body = response.body ?: throw IOException("APK download response is empty")
+                    val totalBytes = body.contentLength()
                     outputFile.outputStream().use { output ->
                         body.byteStream().use { input ->
-                            input.copyTo(output)
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var bytesRead = 0L
+                            var lastProgressAt = 0L
+                            onProgress(UpdateDownloadProgress(bytesRead, totalBytes))
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                output.write(buffer, 0, read)
+                                bytesRead += read
+                                val now = System.currentTimeMillis()
+                                if (
+                                    totalBytes > 0L && bytesRead >= totalBytes ||
+                                    now - lastProgressAt >= 250L
+                                ) {
+                                    lastProgressAt = now
+                                    onProgress(UpdateDownloadProgress(bytesRead, totalBytes))
+                                }
+                            }
                         }
                     }
                 }
