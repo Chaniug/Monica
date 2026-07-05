@@ -106,6 +106,32 @@ class SteamLoginImportServiceGuardTest {
     }
 
     @Test
+    fun steamIdCompletionLoginDoesNotStartAuthenticatorTransfer() {
+        val serviceSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
+        ).readText()
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt"
+        ).readText()
+        val completionLoginSource = viewModelSource.substringAfter(
+            "fun beginSteamIdCompletionLogin(accountId: Long, userName: String, password: String)"
+        ).substringBefore("fun beginSteamQrLogin")
+
+        assertTrue(serviceSource.contains("private enum class LoginPurpose"))
+        assertTrue(serviceSource.contains("SESSION_ONLY"))
+        assertTrue(serviceSource.contains("fun beginSessionLogin("))
+        assertTrue(serviceSource.contains("purpose = LoginPurpose.SESSION_ONLY"))
+        assertTrue(serviceSource.contains("if (purpose == LoginPurpose.SESSION_ONLY)"))
+        assertTrue(serviceSource.contains("return buildSessionOnlyLoginResult("))
+        assertTrue(serviceSource.contains("sessionOnly = true"))
+        assertTrue(viewModelSource.contains("loginImportService.beginSessionLogin(userName, password)"))
+        assertFalse(completionLoginSource.contains("loginImportService.beginLogin(userName, password)"))
+        assertTrue(viewModelSource.contains("result.toSteamIdCompletionPayload(account)"))
+        assertTrue(viewModelSource.contains("sharedSecret = account.sharedSecret"))
+        assertTrue(viewModelSource.contains("identitySecret = account.identitySecret"))
+    }
+
+    @Test
     fun steamProtoSupportsSteamFixed64Fields() {
         val steamId = 76561198000000000L
         val writer = SteamProtoWriter().apply {

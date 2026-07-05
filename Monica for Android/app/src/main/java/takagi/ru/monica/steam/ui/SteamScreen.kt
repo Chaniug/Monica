@@ -232,9 +232,11 @@ fun SteamScreen(
     val passwordDatabase = remember(context) {
         PasswordDatabase.getDatabase(context.applicationContext)
     }
-    val mdbxDatabases by passwordDatabase.localMdbxDatabaseDao()
+    val mdbxDatabasesState by passwordDatabase.localMdbxDatabaseDao()
         .getAllDatabases()
-        .collectAsState(initial = emptyList())
+        .collectAsState(initial = null)
+    val mdbxDatabases = mdbxDatabasesState.orEmpty()
+    val mdbxDatabasesLoaded = mdbxDatabasesState != null
     val settingsManager = remember { SettingsManager(context.applicationContext) }
     val appSettings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
     val uiState by viewModel.uiState.collectAsState()
@@ -340,9 +342,13 @@ fun SteamScreen(
         }
     }
 
-    LaunchedEffect(uiState.storageSource, mdbxDatabases.map { it.id }) {
+    LaunchedEffect(uiState.storageSource, mdbxDatabasesLoaded, mdbxDatabases.map { it.id }) {
         val source = uiState.storageSource
-        if (source is SteamStorageSource.Mdbx && mdbxDatabases.none { it.id == source.databaseId }) {
+        if (
+            mdbxDatabasesLoaded &&
+            source is SteamStorageSource.Mdbx &&
+            mdbxDatabases.none { it.id == source.databaseId }
+        ) {
             viewModel.selectStorageSource(SteamStorageSource.Local)
         }
     }

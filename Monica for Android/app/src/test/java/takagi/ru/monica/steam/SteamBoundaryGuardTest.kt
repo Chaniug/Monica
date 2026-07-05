@@ -176,7 +176,7 @@ class SteamBoundaryGuardTest {
 
         val importDialogBlock = screenSource
             .substringAfter("private fun SteamMaFileImportDialog(")
-            .substringBefore("@Composable\nprivate fun SteamMaFileSteamIdCompletionDialog(")
+            .substringBefore("private fun SteamMaFileSteamIdCompletionDialog(")
         val completionDialogBlock = screenSource
             .substringAfter("private fun SteamMaFileSteamIdCompletionDialog(")
             .substringBefore("private fun String.isValidSteamIdOrAccountId()")
@@ -286,6 +286,11 @@ class SteamBoundaryGuardTest {
         assertTrue(steamScreenSource.contains("SteamMaFileTransferAction.COPY"))
         assertTrue(steamScreenSource.contains("SteamRemarkEditDialog("))
         assertTrue(steamScreenSource.contains("UnifiedCategoryFilterChipMenuDropdown("))
+        assertTrue(steamScreenSource.contains("val mdbxDatabasesState by passwordDatabase.localMdbxDatabaseDao()"))
+        assertTrue(steamScreenSource.contains(".collectAsState(initial = null)"))
+        assertTrue(steamScreenSource.contains("val mdbxDatabasesLoaded = mdbxDatabasesState != null"))
+        assertTrue(steamScreenSource.contains("LaunchedEffect(uiState.storageSource, mdbxDatabasesLoaded"))
+        assertTrue(steamScreenSource.contains("mdbxDatabasesLoaded &&"))
         assertFalse(steamScreenSource.contains("UnifiedCategoryFilterChipMenu("))
     }
 

@@ -363,7 +363,7 @@ class SteamViewModel(
             setLoading(true)
             _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
             when (val result = withContext(Dispatchers.IO) {
-                loginImportService.beginLogin(userName, password)
+                loginImportService.beginSessionLogin(userName, password)
             }) {
                 is SteamLoginImportService.LoginResult.ChallengeRequired -> {
                     val challenge = result.toChallengeUi()
@@ -761,14 +761,6 @@ class SteamViewModel(
         result: SteamLoginImportService.LoginResult.ReadyForImport,
         displayNameOverride: String? = pendingLoginDisplayName
     ): Int {
-        val payload = parser.parseSteamGuardJson(
-            steamId = result.steamId,
-            deviceId = result.payload.deviceId,
-            steamGuardJson = result.payload.steamGuardJson,
-            accessToken = result.accessToken,
-            refreshToken = result.refreshToken,
-            displayNameOverride = displayNameOverride
-        )
         val completionAccountId = pendingLoginCompletionAccountId
         if (completionAccountId != null) {
             val account = accountById(completionAccountId)
@@ -776,6 +768,18 @@ class SteamViewModel(
             if (account.hasRealSteamId) {
                 pendingLoginCompletionAccountId = null
                 return R.string.steam_steamid_completion_done
+            }
+            val payload = if (result.payload.sessionOnly) {
+                result.toSteamIdCompletionPayload(account)
+            } else {
+                parser.parseSteamGuardJson(
+                    steamId = result.steamId,
+                    deviceId = result.payload.deviceId,
+                    steamGuardJson = result.payload.steamGuardJson,
+                    accessToken = result.accessToken,
+                    refreshToken = result.refreshToken,
+                    displayNameOverride = displayNameOverride
+                )
             }
             if (_uiState.value.accounts.any { it.id != account.id && it.steamId == payload.steamId }) {
                 pendingLoginCompletionAccountId = null
@@ -789,8 +793,41 @@ class SteamViewModel(
                 R.string.steam_steamid_completion_done
             }
         }
+        val payload = parser.parseSteamGuardJson(
+            steamId = result.steamId,
+            deviceId = result.payload.deviceId,
+            steamGuardJson = result.payload.steamGuardJson,
+            accessToken = result.accessToken,
+            refreshToken = result.refreshToken,
+            displayNameOverride = displayNameOverride
+        )
         saveMaFilePayload(payload)
         return R.string.steam_account_imported
+    }
+
+    private fun SteamLoginImportService.LoginResult.ReadyForImport.toSteamIdCompletionPayload(
+        account: SteamAccount
+    ): SteamMaFilePayload {
+        val accountName = payload.accountName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: account.accountName
+                .takeIf { it.isNotBlank() }
+            ?: steamId
+        return SteamMaFilePayload(
+            steamId = steamId,
+            accountName = accountName,
+            displayName = account.displayName,
+            deviceId = payload.deviceId,
+            sharedSecret = account.sharedSecret,
+            identitySecret = account.identitySecret,
+            revocationCode = account.revocationCode,
+            tokenGid = account.tokenGid,
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            steamLoginSecure = accessToken.takeIf { it.isNotBlank() }?.let { "$steamId||$it" },
+            rawJson = account.rawSteamGuardJson
+        )
     }
 
     private suspend fun saveCompletedSteamIdAccount(

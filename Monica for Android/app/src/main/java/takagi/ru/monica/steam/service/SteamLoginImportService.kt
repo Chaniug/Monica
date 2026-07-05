@@ -149,8 +149,14 @@ class SteamLoginImportService(
         REPLACE_EXISTING_AUTHENTICATOR
     }
 
+    private enum class LoginPurpose {
+        IMPORT_AUTHENTICATOR,
+        SESSION_ONLY
+    }
+
     private data class PendingAuthSession(
         val flow: AuthFlow,
+        val purpose: LoginPurpose = LoginPurpose.IMPORT_AUTHENTICATOR,
         val userName: String,
         val clientId: String,
         val requestId: String,
@@ -225,12 +231,33 @@ class SteamLoginImportService(
 
     data class SteamGuardPayload(
         val deviceId: String,
-        val steamGuardJson: String
+        val steamGuardJson: String,
+        val sessionOnly: Boolean = false,
+        val accountName: String? = null
     )
 
     suspend fun beginLogin(
         userName: String,
         password: String
+    ): LoginResult = beginLoginInternal(
+        userName = userName,
+        password = password,
+        purpose = LoginPurpose.IMPORT_AUTHENTICATOR
+    )
+
+    suspend fun beginSessionLogin(
+        userName: String,
+        password: String
+    ): LoginResult = beginLoginInternal(
+        userName = userName,
+        password = password,
+        purpose = LoginPurpose.SESSION_ONLY
+    )
+
+    private suspend fun beginLoginInternal(
+        userName: String,
+        password: String,
+        purpose: LoginPurpose
     ): LoginResult = withContext(Dispatchers.IO) {
         if (userName.isBlank() || password.isBlank()) {
             return@withContext LoginResult.Failure("账号或密码不能为空", retryable = false)
@@ -277,6 +304,7 @@ class SteamLoginImportService(
                     val pendingSessionId = UUID.randomUUID().toString()
                     pendingSessions[pendingSessionId] = PendingAuthSession(
                         flow = AuthFlow.AUTH_API,
+                        purpose = purpose,
                         userName = userName.trim(),
                         clientId = protobufBeginSession.clientId,
                         requestId = protobufBeginSession.requestId,
@@ -294,7 +322,8 @@ class SteamLoginImportService(
                 return@runCatching pollForToken(
                     protobufBeginSession.clientId,
                     protobufBeginSession.requestId,
-                    protobufBeginSession.steamId
+                    protobufBeginSession.steamId,
+                    purpose = purpose
                 )
             }
             logDiag("begin auth protobuf unavailable; falling back form")
@@ -335,7 +364,7 @@ class SteamLoginImportService(
                     TAG,
                     "BeginAuth missing required fields. eResult=$eResult, payloadKeys=[$payloadKeys]"
                 )
-                val fallbackResult = beginLegacyLogin(userName.trim(), password)
+                val fallbackResult = beginLegacyLogin(userName.trim(), password, purpose)
                 if (fallbackResult !is LoginResult.Failure) {
                     android.util.Log.i(TAG, "Fallback to legacy Steam login route succeeded")
                     return@runCatching fallbackResult
@@ -357,6 +386,7 @@ class SteamLoginImportService(
                 val pendingSessionId = UUID.randomUUID().toString()
                 pendingSessions[pendingSessionId] = PendingAuthSession(
                     flow = AuthFlow.AUTH_API,
+                    purpose = purpose,
                     userName = userName.trim(),
                     clientId = clientId,
                     requestId = requestId,
@@ -371,7 +401,7 @@ class SteamLoginImportService(
                 )
             }
 
-            pollForToken(clientId, requestId, steamId)
+            pollForToken(clientId, requestId, steamId, purpose = purpose)
         }.getOrElse { error ->
             android.util.Log.e(TAG, "beginLogin failed: ${error.message}", error)
             LoginResult.Failure(error.message ?: "Steam 登录失败")
@@ -429,7 +459,12 @@ class SteamLoginImportService(
                 }
             }
 
-            val pollResult = pollForToken(session.clientId, session.requestId, session.steamId)
+            val pollResult = pollForToken(
+                clientId = session.clientId,
+                requestId = session.requestId,
+                steamId = session.steamId,
+                purpose = session.purpose
+            )
             if (pollResult is LoginResult.ReadyForImport) {
                 pendingSessions.remove(pendingSessionId)
             }
@@ -770,7 +805,8 @@ class SteamLoginImportService(
             requestId = session.requestId,
             steamId = session.steamId,
             maxAttempts = 1,
-            pendingResult = pendingResult
+            pendingResult = pendingResult,
+            purpose = session.purpose
         )
         if (result is LoginResult.ReadyForImport || result is LoginResult.Failure) {
             pendingSessions.remove(pendingSessionId)
@@ -794,20 +830,22 @@ class SteamLoginImportService(
         requestId: String,
         steamId: String,
         maxAttempts: Int = MAX_POLL_ATTEMPTS,
-        pendingResult: LoginResult? = null
+        pendingResult: LoginResult? = null,
+        purpose: LoginPurpose = LoginPurpose.IMPORT_AUTHENTICATOR
     ): LoginResult {
         val authIds = buildAuthApiSessionIds(clientId, requestId, steamId)
         if (authIds != null) {
-            return pollForTokenWithProtobuf(authIds, steamId, maxAttempts, pendingResult)
+            return pollForTokenWithProtobuf(authIds, steamId, maxAttempts, pendingResult, purpose)
         }
-        return pollForTokenWithForm(clientId, requestId, steamId, maxAttempts, pendingResult)
+        return pollForTokenWithForm(clientId, requestId, steamId, maxAttempts, pendingResult, purpose)
     }
 
     private suspend fun pollForTokenWithProtobuf(
         authIds: AuthApiSessionIds,
         steamId: String,
         maxAttempts: Int,
-        pendingResult: LoginResult?
+        pendingResult: LoginResult?,
+        purpose: LoginPurpose
     ): LoginResult {
         var clientId = authIds.clientId
         repeat(maxAttempts) { attempt ->
@@ -844,11 +882,12 @@ class SteamLoginImportService(
                     return LoginResult.Failure("Steam 登录成功但无法识别 SteamID，无法继续导入")
                 }
                 val accountName = fields[6]?.asString?.takeIf { it.isNotBlank() } ?: resolvedSteamId
-                return resolveGuardPayloadAfterLogin(
+                return resolveLoginPayloadAfterToken(
                     steamId = resolvedSteamId,
                     userName = accountName,
                     accessToken = accessToken,
-                    refreshToken = refreshToken
+                    refreshToken = refreshToken,
+                    purpose = purpose
                 )
             }
             if (!refreshToken.isNullOrBlank()) {
@@ -861,11 +900,12 @@ class SteamLoginImportService(
                     refreshToken = refreshToken
                 ) ?: return LoginResult.Failure("Steam 登录成功但无法换取 access token，无法继续导入")
                 val accountName = fields[6]?.asString?.takeIf { it.isNotBlank() } ?: resolvedSteamId
-                return resolveGuardPayloadAfterLogin(
+                return resolveLoginPayloadAfterToken(
                     steamId = resolvedSteamId,
                     userName = accountName,
                     accessToken = refreshedTokens.accessToken,
-                    refreshToken = refreshedTokens.refreshToken ?: refreshToken
+                    refreshToken = refreshedTokens.refreshToken ?: refreshToken,
+                    purpose = purpose
                 )
             }
 
@@ -963,7 +1003,8 @@ class SteamLoginImportService(
         requestId: String,
         steamId: String,
         maxAttempts: Int,
-        pendingResult: LoginResult?
+        pendingResult: LoginResult?,
+        purpose: LoginPurpose
     ): LoginResult {
         repeat(maxAttempts) { attempt ->
             val pollResponse = postForm(
@@ -988,11 +1029,12 @@ class SteamLoginImportService(
             if (!accessToken.isNullOrBlank()) {
                 logDiag("poll form tokens access=true refresh=${!refreshToken.isNullOrBlank()}")
                 val accountName = payload.stringAny("account_name", "accountName") ?: steamId
-                return resolveGuardPayloadAfterLogin(
+                return resolveLoginPayloadAfterToken(
                     steamId = steamId,
                     userName = accountName,
                     accessToken = accessToken,
-                    refreshToken = refreshToken
+                    refreshToken = refreshToken,
+                    purpose = purpose
                 )
             }
             if (!refreshToken.isNullOrBlank()) {
@@ -1002,11 +1044,12 @@ class SteamLoginImportService(
                     refreshToken = refreshToken
                 ) ?: return LoginResult.Failure("Steam 登录成功但无法换取 access token，无法继续导入")
                 val accountName = payload?.stringAny("account_name", "accountName") ?: steamId
-                return resolveGuardPayloadAfterLogin(
+                return resolveLoginPayloadAfterToken(
                     steamId = steamId,
                     userName = accountName,
                     accessToken = refreshedTokens.accessToken,
-                    refreshToken = refreshedTokens.refreshToken ?: refreshToken
+                    refreshToken = refreshedTokens.refreshToken ?: refreshToken,
+                    purpose = purpose
                 )
             }
 
@@ -1071,6 +1114,60 @@ class SteamLoginImportService(
         return steamId.takeIf { it.isNotBlank() && it.toLongOrNull() != null }
             ?: steamIdFromJwt(refreshToken)
             ?: steamIdFromJwt(accessToken)
+    }
+
+    private fun resolveLoginPayloadAfterToken(
+        steamId: String,
+        userName: String,
+        accessToken: String,
+        refreshToken: String?,
+        purpose: LoginPurpose
+    ): LoginResult {
+        if (purpose == LoginPurpose.SESSION_ONLY) {
+            val resolvedSteamId = steamId.takeIf { it.isNotBlank() && it.toLongOrNull() != null }
+                ?: return LoginResult.Failure("Steam 登录成功但无法识别 SteamID，无法继续补全")
+            logDiag("session only login ready")
+            return buildSessionOnlyLoginResult(
+                steamId = resolvedSteamId,
+                userName = userName,
+                accessToken = accessToken,
+                refreshToken = refreshToken
+            )
+        }
+        return resolveGuardPayloadAfterLogin(
+            steamId = steamId,
+            userName = userName,
+            accessToken = accessToken,
+            refreshToken = refreshToken
+        )
+    }
+
+    private fun buildSessionOnlyLoginResult(
+        steamId: String,
+        userName: String,
+        accessToken: String,
+        refreshToken: String?
+    ): LoginResult.ReadyForImport {
+        val accountName = userName.trim().takeIf { it.isNotBlank() } ?: steamId
+        val payload = buildJsonObject {
+            put("steamid", steamId)
+            put("account_name", accountName)
+            put("access_token", accessToken)
+            refreshToken?.takeIf { it.isNotBlank() }?.let { put("refresh_token", it) }
+            put("steamLoginSecure", "$steamId||$accessToken")
+            put("monica_session_only_login", true)
+        }
+        return LoginResult.ReadyForImport(
+            steamId = steamId,
+            payload = SteamGuardPayload(
+                deviceId = "",
+                steamGuardJson = payload.toString(),
+                sessionOnly = true,
+                accountName = accountName
+            ),
+            accessToken = accessToken,
+            refreshToken = refreshToken
+        )
     }
 
     private fun buildAuthApiSessionIds(
@@ -1716,7 +1813,8 @@ class SteamLoginImportService(
 
     private fun beginLegacyLogin(
         userName: String,
-        password: String
+        password: String,
+        purpose: LoginPurpose
     ): LoginResult {
         val rsaKey = getLegacyRsaKey(userName)
             ?: return LoginResult.Failure("Steam 登录失败：无法获取旧版 RSA 密钥")
@@ -1733,7 +1831,8 @@ class SteamLoginImportService(
             rsaTimestamp = rsaKey.timestamp,
             code = null,
             challengeType = null,
-            emailSteamId = null
+            emailSteamId = null,
+            purpose = purpose
         )
     }
 
@@ -1754,7 +1853,8 @@ class SteamLoginImportService(
             rsaTimestamp = rsaTimestamp,
             code = code,
             challengeType = challengeType,
-            emailSteamId = session.legacyEmailSteamId
+            emailSteamId = session.legacyEmailSteamId,
+            purpose = session.purpose
         )
     }
 
@@ -1764,7 +1864,8 @@ class SteamLoginImportService(
         rsaTimestamp: String,
         code: String?,
         challengeType: Int?,
-        emailSteamId: String?
+        emailSteamId: String?,
+        purpose: LoginPurpose
     ): LoginResult {
         val doLoginResponse = postForm(
             URL_LEGACY_DO_LOGIN,
@@ -1797,11 +1898,12 @@ class SteamLoginImportService(
                 ?: return LoginResult.Failure("Steam 登录成功但未返回 OAuth token，无法继续导入")
             val steamId = oauth.first ?: userName
 
-            return resolveGuardPayloadAfterLogin(
+            return resolveLoginPayloadAfterToken(
                 steamId = steamId,
                 userName = userName,
                 accessToken = accessToken,
-                refreshToken = null
+                refreshToken = null,
+                purpose = purpose
             )
         }
 
@@ -1817,6 +1919,7 @@ class SteamLoginImportService(
             val steamId = doLoginResponse.stringAny("steamid", "steam_id") ?: userName
             pendingSessions[pendingSessionId] = PendingAuthSession(
                 flow = AuthFlow.LEGACY_WEB,
+                purpose = purpose,
                 userName = userName,
                 clientId = "",
                 requestId = "",
@@ -1847,6 +1950,7 @@ class SteamLoginImportService(
             val emailId = doLoginResponse.stringAny("emailsteamid", "email_steamid")
             pendingSessions[pendingSessionId] = PendingAuthSession(
                 flow = AuthFlow.LEGACY_WEB,
+                purpose = purpose,
                 userName = userName,
                 clientId = "",
                 requestId = "",
