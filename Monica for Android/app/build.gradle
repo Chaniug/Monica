@@ -13,7 +13,7 @@ android {
 
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
     def appVersionCode = 10
-    def baseVersionName = previewVersionSuffix ? "1.0.292-${previewVersionSuffix}" : "1.0.292"
+    def baseVersionName = previewVersionSuffix ? "1.0.293-${previewVersionSuffix}" : "1.0.293"
     def workspaceRootDir = rootDir?.parentFile ?: rootDir
     def buildBakRootDir = new File(workspaceRootDir, 'Build bak')
 
