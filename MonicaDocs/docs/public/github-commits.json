@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-04T21:13:32.372Z",
+  "generatedAt": "2026-07-05T21:19:18.490Z",
   "range": {
-    "from": "2025-07-05",
-    "to": "2026-07-04"
+    "from": "2025-07-06",
+    "to": "2026-07-05"
   },
   "activity": [
-    {
-      "date": "2025-07-05",
-      "count": 0
-    },
     {
       "date": "2025-07-06",
       "count": 0
@@ -1465,10 +1461,95 @@
     },
     {
       "date": "2026-07-04",
-      "count": 15
+      "count": 16
+    },
+    {
+      "date": "2026-07-05",
+      "count": 8
     }
   ],
   "latest": [
+    {
+      "sha": "feb615b5c66206b29fdb0f5184403397f80950e9",
+      "shortSha": "feb615b",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-05T16:47:50Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/feb615b5c66206b29fdb0f5184403397f80950e9"
+    },
+    {
+      "sha": "4f1d7c0f75b49757dd040e02f4c769eb6536a6e3",
+      "shortSha": "4f1d7c0",
+      "message": "Fix Steam confirmation switching and update downloads",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-05T16:45:50Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/4f1d7c0f75b49757dd040e02f4c769eb6536a6e3"
+    },
+    {
+      "sha": "ce184e311141d5bca7f10a6bcaabb853231a2b12",
+      "shortSha": "ce184e3",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-05T15:42:22Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/ce184e311141d5bca7f10a6bcaabb853231a2b12"
+    },
+    {
+      "sha": "e992b9eca2470fd18d0e61978ee0277d8c6a08c3",
+      "shortSha": "e992b9e",
+      "message": "Show Steam recovery code in details",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-05T15:41:47Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/e992b9eca2470fd18d0e61978ee0277d8c6a08c3"
+    },
+    {
+      "sha": "958b28a603ba6c1e3ddbefe3c2c4fa4a3e356a14",
+      "shortSha": "958b28a",
+      "message": "Bump Android version to 1.0.293",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-05T15:22:08Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/958b28a603ba6c1e3ddbefe3c2c4fa4a3e356a14"
+    },
+    {
+      "sha": "e82850daa93d50ec233a35ed92d8ac0165013b98",
+      "shortSha": "e82850d",
+      "message": "Fix Steam ID completion login flow",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-05T14:55:55Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/e82850daa93d50ec233a35ed92d8ac0165013b98"
+    },
+    {
+      "sha": "8ece2e753274a6a1f2926b71586da9dd5e191adf",
+      "shortSha": "8ece2e7",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-05T14:28:03Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/8ece2e753274a6a1f2926b71586da9dd5e191adf"
+    },
+    {
+      "sha": "68446a4f7b2171e56e720ad4f84908129cd53601",
+      "shortSha": "68446a4",
+      "message": "Improve Steam maFile storage and recovery",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-05T14:25:45Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/68446a4f7b2171e56e720ad4f84908129cd53601"
+    },
+    {
+      "sha": "463fc7e3009f19bf556a96677bcf122720f6f9ab",
+      "shortSha": "463fc7e",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-04T21:13:32Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/463fc7e3009f19bf556a96677bcf122720f6f9ab"
+    },
     {
       "sha": "348ca0e23fc6b7274baed4aa2f1146208649ffa6",
       "shortSha": "348ca0e",
@@ -1477,87 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
       "date": "2026-07-04T14:53:05Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/348ca0e23fc6b7274baed4aa2f1146208649ffa6"
-    },
-    {
-      "sha": "53d2f8cc631c8bc34c78956914619148ee7abdcd",
-      "shortSha": "53d2f8c",
-      "message": "Use ML Kit scanning and split Android APKs",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T14:51:22Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/53d2f8cc631c8bc34c78956914619148ee7abdcd"
-    },
-    {
-      "sha": "12a134af7fdd7acee4d1aad4c5cda12f23905da0",
-      "shortSha": "12a134a",
-      "message": "Restore Steam QR scan flow",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T09:49:17Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/12a134af7fdd7acee4d1aad4c5cda12f23905da0"
-    },
-    {
-      "sha": "442f1e0b027c570d9deb9da7f72e78ffe3990ef6",
-      "shortSha": "442f1e0",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T09:37:13Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/442f1e0b027c570d9deb9da7f72e78ffe3990ef6"
-    },
-    {
-      "sha": "0b9e7c11457609e75776cf3317271ddeb0ac7ce9",
-      "shortSha": "0b9e7c1",
-      "message": "Fix Steam restore sessions and QR scan validation",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T09:35:52Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/0b9e7c11457609e75776cf3317271ddeb0ac7ce9"
-    },
-    {
-      "sha": "b46877a037849e4840a50f276e944efad2543e30",
-      "shortSha": "b46877a",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T05:29:56Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/b46877a037849e4840a50f276e944efad2543e30"
-    },
-    {
-      "sha": "04d138ebeef7e5140264f7fb6e9fd488a824fc88",
-      "shortSha": "04d138e",
-      "message": "Improve Steam account import flow",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T05:27:41Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/04d138ebeef7e5140264f7fb6e9fd488a824fc88"
-    },
-    {
-      "sha": "aed557f31342c02ae404dc77abaec73cfd71911e",
-      "shortSha": "aed557f",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T04:14:46Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/aed557f31342c02ae404dc77abaec73cfd71911e"
-    },
-    {
-      "sha": "0247466f9a44faacb615ee0e2b1a6c1a4eaa967a",
-      "shortSha": "0247466",
-      "message": "Allow local Steam authenticator deletion",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T04:13:22Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/0247466f9a44faacb615ee0e2b1a6c1a4eaa967a"
-    },
-    {
-      "sha": "037920966d472e7b2d8a73e87bdf8b8c1ad49251",
-      "shortSha": "0379209",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T03:59:26Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/037920966d472e7b2d8a73e87bdf8b8c1ad49251"
     }
   ]
 }
