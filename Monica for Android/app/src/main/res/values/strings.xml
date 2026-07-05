@@ -914,6 +914,8 @@
     <string name="steam_id_label">Steam ID</string>
     <string name="steam_account_label">Account</string>
     <string name="steam_device_label">Device</string>
+    <string name="steam_revocation_code_label">Recovery code</string>
+    <string name="steam_revocation_code_copied">Recovery code copied</string>
     <string name="steam_confirmations_label">Confirmations</string>
     <string name="steam_login_approval_label">Login approval</string>
     <string name="steam_credentials_label">Credentials</string>

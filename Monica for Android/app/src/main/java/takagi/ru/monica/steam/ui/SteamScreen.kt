@@ -62,6 +62,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
@@ -161,6 +163,7 @@ import takagi.ru.monica.ui.navigation.easyNotesScreenExit
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.rememberTotpTickerMillis
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.SettingsManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -1737,6 +1740,8 @@ private fun SteamAccountCredentialCard(
     clipboard: ClipboardManager,
     onEditRemark: () -> Unit
 ) {
+    var revocationCodeVisible by rememberSaveable(account.id) { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1777,6 +1782,13 @@ private fun SteamAccountCredentialCard(
                 context = context,
                 clipboard = clipboard
             )
+            SteamSensitiveInfoRow(
+                label = stringResource(R.string.steam_revocation_code_label),
+                value = account.revocationCode.orEmpty(),
+                visible = revocationCodeVisible,
+                onToggleVisibility = { revocationCodeVisible = !revocationCodeVisible },
+                context = context
+            )
         }
     }
 }
@@ -1808,6 +1820,67 @@ private fun SteamRemarkInfoRow(
                 imageVector = Icons.Default.Edit,
                 contentDescription = stringResource(R.string.steam_edit_remark_title)
             )
+        }
+    }
+}
+
+@Composable
+private fun SteamSensitiveInfoRow(
+    label: String,
+    value: String,
+    visible: Boolean,
+    onToggleVisibility: () -> Unit,
+    context: Context
+) {
+    val hasValue = value.isNotBlank()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = when {
+                    !hasValue -> stringResource(R.string.steam_empty_field)
+                    visible -> value
+                    else -> "•".repeat(8)
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (hasValue) {
+            IconButton(onClick = onToggleVisibility) {
+                Icon(
+                    imageVector = if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (visible) stringResource(R.string.hide) else stringResource(R.string.show)
+                )
+            }
+            IconButton(
+                onClick = {
+                    ClipboardUtils.copyToClipboard(
+                        context = context,
+                        text = value,
+                        label = label,
+                        sensitive = true
+                    )
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.steam_revocation_code_copied),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = stringResource(R.string.copy)
+                )
+            }
         }
     }
 }

@@ -907,6 +907,8 @@
     <string name="steam_id_label">Steam ID</string>
     <string name="steam_account_label">账号</string>
     <string name="steam_device_label">设备</string>
+    <string name="steam_revocation_code_label">恢复码</string>
+    <string name="steam_revocation_code_copied">恢复码已复制</string>
     <string name="steam_confirmations_label">交易确认</string>
     <string name="steam_login_approval_label">登录批准</string>
     <string name="steam_credentials_label">账号信息</string>
