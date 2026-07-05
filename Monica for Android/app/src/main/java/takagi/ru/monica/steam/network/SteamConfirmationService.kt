@@ -50,6 +50,7 @@ class SteamConfirmationService(
         accept: Boolean,
         nowSeconds: Long = System.currentTimeMillis() / 1000L
     ): Boolean {
+        require(account.canUseConfirmations) { "Steam account has no identity secret, real SteamID, or access token" }
         val op = if (accept) "allow" else "cancel"
         val form = (baseQuery(account, nowSeconds, op) + mapOf(
             "tag" to op,
@@ -72,6 +73,7 @@ class SteamConfirmationService(
         nowSeconds: Long = System.currentTimeMillis() / 1000L
     ): SteamBatchResult {
         if (confirmations.isEmpty()) return SteamBatchResult(ok = 0, failed = 0)
+        require(account.canUseConfirmations) { "Steam account has no identity secret, real SteamID, or access token" }
         val op = if (accept) "allow" else "cancel"
         val form = baseQuery(account, nowSeconds, op)
             .mapValues { listOf(it.value) }

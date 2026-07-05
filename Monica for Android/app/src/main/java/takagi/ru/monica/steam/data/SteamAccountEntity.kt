@@ -52,9 +52,19 @@ data class SteamAccount(
     val createdAt: Long,
     val updatedAt: Long
 ) {
+    val hasRealSteamId: Boolean
+        get() = steamId.matches(Regex("""7656119\d{10}"""))
+
+    val visibleSteamId: String
+        get() = steamId.takeIf { hasRealSteamId }.orEmpty()
+
     val canUseConfirmations: Boolean
-        get() = !identitySecret.isNullOrBlank() && (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank())
+        get() = hasRealSteamId &&
+            !identitySecret.isNullOrBlank() &&
+            (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank())
 
     val canApproveLogins: Boolean
-        get() = sharedSecret.isNotBlank() && (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank())
+        get() = hasRealSteamId &&
+            sharedSecret.isNotBlank() &&
+            (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank())
 }

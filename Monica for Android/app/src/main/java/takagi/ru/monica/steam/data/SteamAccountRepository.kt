@@ -67,6 +67,35 @@ class SteamAccountRepository(
         )
     }
 
+    suspend fun replaceAccount(account: SteamAccount): Long {
+        val existing = dao.getById(account.id) ?: return 0L
+        val duplicate = findExistingBySteamId(account.steamId)
+            ?.takeIf { it.id != account.id }
+        require(duplicate == null) { "Steam account already exists" }
+        dao.update(
+            SteamAccountEntity(
+                id = existing.id,
+                steamId = encrypt(account.steamId),
+                accountName = encrypt(account.accountName),
+                displayName = encrypt(account.displayName),
+                deviceId = encrypt(account.deviceId),
+                sharedSecret = encrypt(account.sharedSecret),
+                identitySecret = account.identitySecret?.let(::encrypt),
+                revocationCode = account.revocationCode?.let(::encrypt),
+                tokenGid = account.tokenGid?.let(::encrypt),
+                accessToken = account.accessToken?.let(::encrypt),
+                refreshToken = account.refreshToken?.let(::encrypt),
+                steamLoginSecure = account.steamLoginSecure?.let(::encrypt),
+                rawSteamGuardJson = encrypt(account.rawSteamGuardJson),
+                selected = existing.selected,
+                sortOrder = existing.sortOrder,
+                createdAt = existing.createdAt,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        return existing.id
+    }
+
     suspend fun delete(id: Long) {
         val wasSelected = dao.getById(id)?.selected == true
         dao.deleteById(id)

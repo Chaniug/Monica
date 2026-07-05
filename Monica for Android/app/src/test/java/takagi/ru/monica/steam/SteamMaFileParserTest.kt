@@ -2,7 +2,9 @@ package takagi.ru.monica.steam
 
 import java.util.Base64
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.importer.SteamMaFileBackupCodec
@@ -82,6 +84,47 @@ class SteamMaFileParserTest {
     }
 
     @Test
+    fun parsesMaFileMissingSteamIdWithSteamId64Override() {
+        val maFile = """
+            {
+              "shared_secret": "WRONG-BUT-IGNORED",
+              "identity_secret": "YWJjZGVmZ2hpamtsbW5vcHFyc3Q=",
+              "account_name": "missing_id_user",
+              "uri": "otpauth://totp/Steam:missing_id_user?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Steam"
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(
+            maFileContent = maFile,
+            steamIdOverride = "76561198000000005"
+        )
+
+        assertEquals("76561198000000005", payload.steamId)
+        assertEquals("missing_id_user", payload.accountName)
+        assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
+        assertEquals(true, payload.rawJson.contains(""""steamid":"76561198000000005""""))
+    }
+
+    @Test
+    fun convertsSteamAccountId32OverrideToSteamId64() {
+        val maFile = """
+            {
+              "shared_secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+              "identity_secret": "YWJjZGVmZ2hpamtsbW5vcHFyc3Q=",
+              "account_name": "account_id_user"
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(
+            maFileContent = maFile,
+            steamIdOverride = "123456"
+        )
+
+        assertEquals("76561197960389184", payload.steamId)
+        assertEquals(true, payload.rawJson.contains(""""steamid":"76561197960389184""""))
+    }
+
+    @Test
     fun acceptsSbeamidTypoAsSteamId64CompatibilityAlias() {
         val steamPlusMaFile = """
             {
@@ -96,6 +139,48 @@ class SteamMaFileParserTest {
 
         assertEquals("76561198000000004", payload.steamId)
         assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
+    }
+
+    @Test
+    fun importsMissingSteamIdAsCodeOnlyWhenAllowed() {
+        val maFile = """
+            {
+              "shared_secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+              "identity_secret": "YWJjZGVmZ2hpamtsbW5vcHFyc3Q=",
+              "account_name": "code_only_user"
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(
+            maFileContent = maFile,
+            allowMissingSteamId = true
+        )
+
+        assertTrue(payload.steamId.startsWith("monica-missing-steamid-"))
+        assertFalse(payload.hasRealSteamId)
+        assertEquals("code_only_user", payload.accountName)
+        assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
+        assertTrue(payload.rawJson.contains(""""monica_missing_steamid":true"""))
+        assertTrue(payload.rawJson.contains(""""monica_local_steamid":"${payload.steamId}""""))
+        assertFalse(payload.rawJson.contains(""""steamid""""))
+    }
+
+    @Test
+    fun extractsMissingSteamIdFromSteamLoginSecureWhenPresent() {
+        val maFile = """
+            {
+              "shared_secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+              "account_name": "session_user",
+              "Session": {
+                "SteamLoginSecure": "76561198000000006||access-token"
+              }
+            }
+        """.trimIndent()
+
+        val payload = SteamMaFileParser().parse(maFile)
+
+        assertEquals("76561198000000006", payload.steamId)
+        assertTrue(payload.hasRealSteamId)
     }
 
     @Test
@@ -178,6 +263,7 @@ class SteamMaFileParserTest {
 
         assertEquals("76561198000000001", payload.steamId)
         assertEquals("backup_user", payload.accountName)
+        assertEquals("Backup User", payload.displayName)
         assertEquals("android:backup-device", payload.deviceId)
         assertEquals("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=", payload.sharedSecret)
         assertEquals("identity-secret", payload.identitySecret)
@@ -186,6 +272,67 @@ class SteamMaFileParserTest {
         assertEquals("access-token", payload.accessToken)
         assertEquals("refresh-token", payload.refreshToken)
         assertEquals("76561198000000001||access-token", payload.steamLoginSecure)
+    }
+
+    @Test
+    fun doesNotMarkAccountNameAsMonicaRemarkInMaFileBackup() {
+        val account = SteamAccount(
+            id = 8L,
+            steamId = "76561198000000002",
+            accountName = "same_user",
+            displayName = "same_user",
+            deviceId = "android:same-device",
+            sharedSecret = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=",
+            identitySecret = null,
+            revocationCode = null,
+            tokenGid = null,
+            accessToken = null,
+            refreshToken = null,
+            steamLoginSecure = null,
+            rawSteamGuardJson = "{}",
+            selected = false,
+            sortOrder = 1,
+            createdAt = 1L,
+            updatedAt = 2L
+        )
+
+        val maFile = SteamMaFileBackupCodec.encode(account)
+
+        assertFalse(maFile.contains("monica_display_name"))
+    }
+
+    @Test
+    fun encodesCodeOnlyAccountWithoutFakeSteamId() {
+        val account = SteamAccount(
+            id = 9L,
+            steamId = "monica-missing-steamid-0123456789abcdef",
+            accountName = "code_only_user",
+            displayName = "Code Only",
+            deviceId = "",
+            sharedSecret = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=",
+            identitySecret = "identity-secret",
+            revocationCode = null,
+            tokenGid = null,
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+            steamLoginSecure = "monica-missing-steamid-0123456789abcdef||access-token",
+            rawSteamGuardJson = """{"steamid":"76561198000009999","shared_secret":"old"}""",
+            selected = false,
+            sortOrder = 2,
+            createdAt = 1L,
+            updatedAt = 2L
+        )
+
+        val maFile = SteamMaFileBackupCodec.encode(account)
+        val payload = SteamMaFileParser().parse(maFile)
+
+        assertFalse(maFile.contains(""""steamid""""))
+        assertFalse(maFile.contains("access-token"))
+        assertTrue(maFile.contains(""""monica_missing_steamid":true"""))
+        assertEquals(account.steamId, payload.steamId)
+        assertFalse(payload.hasRealSteamId)
+        assertFalse(account.canUseConfirmations)
+        assertFalse(account.canApproveLogins)
     }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }

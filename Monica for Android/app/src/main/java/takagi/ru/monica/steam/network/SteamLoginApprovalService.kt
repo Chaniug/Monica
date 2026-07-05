@@ -96,6 +96,7 @@ class SteamLoginApprovalService(
     private val api: SteamApiClient = SteamApiClient()
 ) {
     fun pendingLogins(account: SteamAccount): List<SteamPendingLogin> {
+        if (!account.hasRealSteamId) return emptyList()
         val token = account.accessToken ?: return emptyList()
         val ids = pendingLoginClientIds(token)
         return ids.mapNotNull { clientId ->
@@ -104,6 +105,7 @@ class SteamLoginApprovalService(
     }
 
     fun sessionInfo(account: SteamAccount, clientId: Long): SteamPendingLogin? {
+        if (!account.hasRealSteamId) return null
         val token = account.accessToken ?: return null
         val request = SteamProtoWriter().apply {
             writeVarint(1, clientId)
@@ -141,6 +143,7 @@ class SteamLoginApprovalService(
         version: Int,
         approve: Boolean
     ): Boolean {
+        require(account.canApproveLogins) { "Steam account has no real SteamID or access token" }
         val token = requireNotNull(account.accessToken) { "access token required" }
         val signature = SteamLoginApprovalSigner.signature(
             sharedSecretBase64 = account.sharedSecret,

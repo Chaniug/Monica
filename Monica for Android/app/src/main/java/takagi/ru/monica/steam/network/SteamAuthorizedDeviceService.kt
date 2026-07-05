@@ -27,6 +27,7 @@ class SteamAuthorizedDeviceService(
     private val api: SteamApiClient = SteamApiClient()
 ) {
     fun fetch(account: SteamAccount): List<SteamAuthorizedDevice> {
+        if (!account.hasRealSteamId) return emptyList()
         val token = account.accessToken ?: return emptyList()
         val request = SteamProtoWriter().apply {
             writeBool(1, false)

@@ -17,13 +17,22 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.repository.MdbxRepository
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.steam.core.SteamTotp
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.data.SteamAccountRepository
 import takagi.ru.monica.steam.data.SteamDatabase
+import takagi.ru.monica.steam.data.SteamMaFileTransferAction
+import takagi.ru.monica.steam.data.SteamMdbxAccountRecord
+import takagi.ru.monica.steam.data.SteamMdbxAccountStore
+import takagi.ru.monica.steam.data.SteamStorageSource
 import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
+import takagi.ru.monica.steam.importer.SteamMaFileBackupCodec
 import takagi.ru.monica.steam.importer.SteamMaFileParser
+import takagi.ru.monica.steam.importer.SteamMaFilePayload
 import takagi.ru.monica.steam.network.SteamAuthenticatorService
 import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamAuthorizedDeviceService
@@ -37,6 +46,7 @@ import takagi.ru.monica.steam.network.SteamSessionRefreshService
 import takagi.ru.monica.steam.service.SteamLoginImportService
 
 data class SteamUiState(
+    val storageSource: SteamStorageSource = SteamStorageSource.Local,
     val accounts: List<SteamAccount> = emptyList(),
     val selectedAccountId: Long? = null,
     val currentCode: String = "",
@@ -48,6 +58,7 @@ data class SteamUiState(
     val selectedConfirmationIds: Set<String> = emptySet(),
     val pendingLoginChallenge: SteamLoginChallengeUi? = null,
     val pendingQrLoginChallenge: SteamQrLoginChallengeUi? = null,
+    val pendingMaFileSteamIdRequest: SteamMaFileSteamIdRequestUi? = null,
     val loading: Boolean = false,
     val message: String? = null
 )
@@ -66,9 +77,18 @@ data class SteamQrLoginChallengeUi(
     val challengeUrl: String
 )
 
+data class SteamMaFileSteamIdRequestUi(
+    val maFileUri: Uri,
+    val manifestUri: Uri?,
+    val password: String,
+    val displayName: String,
+    val fileName: String
+)
+
 class SteamViewModel(
     private val appContext: Context,
     private val repository: SteamAccountRepository,
+    private val mdbxRepository: MdbxRepository? = null,
     private val parser: SteamMaFileParser = SteamMaFileParser(),
     private val confirmationService: SteamConfirmationService = SteamConfirmationService(),
     private val authenticatorService: SteamAuthenticatorService = SteamAuthenticatorService(),
@@ -80,12 +100,24 @@ class SteamViewModel(
     private val _uiState = MutableStateFlow(SteamUiState())
     val uiState: StateFlow<SteamUiState> = _uiState.asStateFlow()
     private var pendingLoginPollJob: Job? = null
+    private val mdbxAccountStore = mdbxRepository?.let { SteamMdbxAccountStore(it, parser) }
+    private var localAccounts: List<SteamAccount> = emptyList()
+    private var mdbxAccountRecords: List<SteamMdbxAccountRecord> = emptyList()
+    private var pendingLoginDisplayName: String? = null
+    private var pendingLoginCompletionAccountId: Long? = null
 
     init {
         SteamDiagLogger.initialize(appContext.applicationContext)
         viewModelScope.launch {
             repository.observeAccounts().collect { accounts ->
-                updateForAccounts(accounts, System.currentTimeMillis())
+                localAccounts = accounts
+                if (_uiState.value.storageSource is SteamStorageSource.Local) {
+                    updateForAccounts(
+                        accounts = accounts,
+                        nowMillis = System.currentTimeMillis(),
+                        storageSource = SteamStorageSource.Local
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -103,17 +135,117 @@ class SteamViewModel(
                 }
             }
         }
+        val initialSource = readSteamStorageSource(appContext)
+        if (initialSource is SteamStorageSource.Mdbx) {
+            selectStorageSource(initialSource, persist = false)
+        }
+    }
+
+    fun selectStorageSource(
+        source: SteamStorageSource,
+        persist: Boolean = true,
+        forceRefresh: Boolean = false
+    ) {
+        if (!forceRefresh && source == _uiState.value.storageSource) return
+        if (persist) saveSteamStorageSource(appContext, source)
+        when (source) {
+            SteamStorageSource.Local -> {
+                mdbxAccountRecords = emptyList()
+                updateForAccounts(
+                    accounts = localAccounts,
+                    nowMillis = System.currentTimeMillis(),
+                    storageSource = SteamStorageSource.Local,
+                    clearAccountScopedState = true
+                )
+            }
+            is SteamStorageSource.Mdbx -> {
+                viewModelScope.launch {
+                    val store = mdbxAccountStore
+                    if (store == null) {
+                        setMessage(R.string.steam_cannot_load_mdbx_accounts)
+                        return@launch
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        storageSource = source,
+                        accounts = emptyList(),
+                        selectedAccountId = null,
+                        confirmations = emptyList(),
+                        pendingLogins = emptyList(),
+                        authorizedDevices = emptyList(),
+                        selectedConfirmationIds = emptySet()
+                    )
+                    setLoading(true)
+                    runCatching {
+                        withContext(Dispatchers.IO) { store.loadAccounts(source.databaseId) }
+                    }.onSuccess { records ->
+                        mdbxAccountRecords = records
+                        updateForAccounts(
+                            accounts = records.map { it.account },
+                            nowMillis = System.currentTimeMillis(),
+                            storageSource = source,
+                            clearAccountScopedState = true
+                        )
+                    }.onFailure { error ->
+                        mdbxAccountRecords = emptyList()
+                        _uiState.value = _uiState.value.copy(accounts = emptyList())
+                        setMessage(error.message ?: appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+                    }
+                    setLoading(false)
+                }
+            }
+        }
     }
 
     fun selectAccount(id: Long) {
+        if (_uiState.value.storageSource is SteamStorageSource.Mdbx) {
+            selectRuntimeAccount(id)
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             repository.select(id)
         }
     }
 
     fun updateSortOrders(items: List<Pair<Long, Int>>) {
+        if (_uiState.value.storageSource is SteamStorageSource.Mdbx) return
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateSortOrders(items)
+        }
+    }
+
+    fun updateDisplayName(accountId: Long, displayName: String) {
+        viewModelScope.launch {
+            runCatching {
+                val storedAccount = accountById(accountId) ?: return@launch
+                val normalizedDisplayName = displayName.trim()
+                    .ifBlank { storedAccount.accountName.ifBlank { storedAccount.steamId } }
+                when (val source = _uiState.value.storageSource) {
+                    SteamStorageSource.Local -> withContext(Dispatchers.IO) {
+                        repository.updateDisplayName(accountId, displayName)
+                    }
+                    is SteamStorageSource.Mdbx -> {
+                        val store = mdbxAccountStore
+                            ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+                        val record = mdbxAccountRecords.firstOrNull { it.account.id == accountId }
+                            ?: return@launch
+                        withContext(Dispatchers.IO) {
+                            store.upsertAccount(
+                                databaseId = source.databaseId,
+                                entryId = record.entryId,
+                                account = storedAccount.copy(
+                                    displayName = normalizedDisplayName,
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                        reloadMdbxAccounts(source)
+                    }
+                }
+            }.onSuccess {
+                setMessage(R.string.steam_remark_updated)
+            }.onFailure { error ->
+                setMessage(error.message ?: appContext.getString(R.string.steam_import_failed))
+            }
         }
     }
 
@@ -121,11 +253,17 @@ class SteamViewModel(
         _uiState.value = _uiState.value.copy(message = null)
     }
 
+    fun clearPendingMaFileSteamIdRequest() {
+        _uiState.value = _uiState.value.copy(pendingMaFileSteamIdRequest = null)
+    }
+
     fun importMaFile(
         maFileUri: Uri,
         manifestUri: Uri?,
         password: String,
-        displayName: String
+        displayName: String,
+        steamId: String,
+        allowMissingSteamId: Boolean = false
     ) {
         viewModelScope.launch {
             setLoading(true)
@@ -137,21 +275,52 @@ class SteamViewModel(
                     fileName = maFileUri.lastPathSegment,
                     manifestContent = manifestText,
                     password = password.takeIf { it.isNotEmpty() },
-                    displayNameOverride = displayName
+                    displayNameOverride = displayName,
+                    steamIdOverride = steamId.takeIf { it.isNotBlank() },
+                    allowMissingSteamId = allowMissingSteamId
                 )
-                repository.upsertFromMaFile(payload)
+                saveMaFilePayload(payload)
             }.onSuccess {
-                setMessage(R.string.steam_account_imported)
+                _uiState.value = _uiState.value.copy(pendingMaFileSteamIdRequest = null)
+                setMessage(
+                    if (allowMissingSteamId) {
+                        R.string.steam_account_imported_code_only
+                    } else {
+                        R.string.steam_account_imported
+                    }
+                )
             }.onFailure { error ->
-                setMessage(error.message ?: appContext.getString(R.string.steam_import_failed))
+                if (error.message == "maFile missing steamid" && steamId.isBlank()) {
+                    _uiState.value = _uiState.value.copy(
+                        pendingMaFileSteamIdRequest = SteamMaFileSteamIdRequestUi(
+                            maFileUri = maFileUri,
+                            manifestUri = manifestUri,
+                            password = password,
+                            displayName = displayName,
+                            fileName = maFileUri.lastPathSegment.orEmpty()
+                        )
+                    )
+                } else {
+                    setMessage(steamImportErrorMessage(error))
+                }
             }
             setLoading(false)
         }
     }
 
-    fun beginSteamLogin(userName: String, password: String) {
+    private fun steamImportErrorMessage(error: Throwable): String {
+        return when (error.message) {
+            "maFile missing steamid" -> appContext.getString(R.string.steam_mafile_missing_steamid_message)
+            "Invalid SteamID" -> appContext.getString(R.string.steam_mafile_invalid_steamid_message)
+            else -> error.message ?: appContext.getString(R.string.steam_import_failed)
+        }
+    }
+
+    fun beginSteamLogin(userName: String, password: String, displayName: String = "") {
         viewModelScope.launch {
             pendingLoginPollJob?.cancel()
+            pendingLoginCompletionAccountId = null
+            pendingLoginDisplayName = displayName.trim().takeIf { it.isNotBlank() }
             setLoading(true)
             _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
             when (val result = withContext(Dispatchers.IO) {
@@ -169,19 +338,63 @@ class SteamViewModel(
                 }
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
                     pendingLoginPollJob?.cancel()
-                    saveLoginResult(result)
+                    val successMessage = saveLoginResultSafely(result, pendingLoginDisplayName)
+                    pendingLoginDisplayName = null
                     _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
-                    setMessage(R.string.steam_account_imported)
+                    successMessage?.let(::setMessage)
                 }
-                is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
+                is SteamLoginImportService.LoginResult.Failure -> {
+                    pendingLoginCompletionAccountId = null
+                    pendingLoginDisplayName = null
+                    setMessage(result.message)
+                }
             }
             setLoading(false)
         }
     }
 
-    fun beginSteamQrLogin() {
+    fun beginSteamIdCompletionLogin(accountId: Long, userName: String, password: String) {
+        val account = accountById(accountId) ?: return
+        if (account.hasRealSteamId) return
         viewModelScope.launch {
             pendingLoginPollJob?.cancel()
+            pendingLoginCompletionAccountId = accountId
+            pendingLoginDisplayName = null
+            setLoading(true)
+            _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
+            when (val result = withContext(Dispatchers.IO) {
+                loginImportService.beginLogin(userName, password)
+            }) {
+                is SteamLoginImportService.LoginResult.ChallengeRequired -> {
+                    val challenge = result.toChallengeUi()
+                    _uiState.value = _uiState.value.copy(
+                        pendingLoginChallenge = challenge,
+                        message = challenge.message
+                    )
+                    if (challenge.canPoll) {
+                        startPendingLoginPolling(challenge.pendingSessionId)
+                    }
+                }
+                is SteamLoginImportService.LoginResult.ReadyForImport -> {
+                    pendingLoginPollJob?.cancel()
+                    val successMessage = saveLoginResultSafely(result, null)
+                    _uiState.value = _uiState.value.copy(pendingLoginChallenge = null)
+                    successMessage?.let(::setMessage)
+                }
+                is SteamLoginImportService.LoginResult.Failure -> {
+                    pendingLoginCompletionAccountId = null
+                    setMessage(result.message)
+                }
+            }
+            setLoading(false)
+        }
+    }
+
+    fun beginSteamQrLogin(displayName: String = "") {
+        viewModelScope.launch {
+            pendingLoginPollJob?.cancel()
+            pendingLoginCompletionAccountId = null
+            pendingLoginDisplayName = displayName.trim().takeIf { it.isNotBlank() }
             setLoading(true)
             _uiState.value = _uiState.value.copy(
                 pendingLoginChallenge = null,
@@ -203,14 +416,19 @@ class SteamViewModel(
                     handleLoginChallenge(result.challenge)
                 }
                 is SteamLoginImportService.QrLoginResult.ReadyForImport -> {
-                    saveLoginResult(result.result)
+                    val successMessage = saveLoginResultSafely(result.result, pendingLoginDisplayName)
+                    pendingLoginDisplayName = null
                     _uiState.value = _uiState.value.copy(
                         pendingLoginChallenge = null,
                         pendingQrLoginChallenge = null
                     )
-                    setMessage(R.string.steam_account_imported)
+                    successMessage?.let(::setMessage)
                 }
-                is SteamLoginImportService.QrLoginResult.Failure -> setMessage(result.message)
+                is SteamLoginImportService.QrLoginResult.Failure -> {
+                    pendingLoginCompletionAccountId = null
+                    pendingLoginDisplayName = null
+                    setMessage(result.message)
+                }
             }
             setLoading(false)
         }
@@ -231,17 +449,21 @@ class SteamViewModel(
             }) {
                 is SteamLoginImportService.LoginResult.ReadyForImport -> {
                     pendingLoginPollJob?.cancel()
-                    saveLoginResult(result)
+                    val successMessage = saveLoginResultSafely(result, pendingLoginDisplayName)
+                    pendingLoginDisplayName = null
                     _uiState.value = _uiState.value.copy(
                         pendingLoginChallenge = null,
                         pendingQrLoginChallenge = null
                     )
-                    setMessage(R.string.steam_account_imported)
+                    successMessage?.let(::setMessage)
                 }
                 is SteamLoginImportService.LoginResult.ChallengeRequired -> {
                     handleLoginChallenge(result, fallbackType = challenge.confirmationType)
                 }
-                is SteamLoginImportService.LoginResult.Failure -> setMessage(result.message)
+                is SteamLoginImportService.LoginResult.Failure -> {
+                    pendingLoginCompletionAccountId = null
+                    setMessage(result.message)
+                }
             }
             setLoading(false)
         }
@@ -260,36 +482,58 @@ class SteamViewModel(
             pendingLoginChallenge = null,
             pendingQrLoginChallenge = null
         )
+        pendingLoginDisplayName = null
+        pendingLoginCompletionAccountId = null
     }
 
     fun deleteAccount(id: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.delete(id)
-            _uiState.value = _uiState.value.copy(
-                confirmations = emptyList(),
-                pendingLogins = emptyList(),
-                authorizedDevices = emptyList(),
-                selectedConfirmationIds = emptySet()
-            )
+        viewModelScope.launch {
+            deleteAccountByActiveSource(id)
         }
     }
 
     fun deleteLocalAuthenticator(accountId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.delete(accountId)
-            _uiState.value = _uiState.value.copy(
-                confirmations = emptyList(),
-                pendingLogins = emptyList(),
-                authorizedDevices = emptyList(),
-                selectedConfirmationIds = emptySet()
-            )
+        viewModelScope.launch {
+            deleteAccountByActiveSource(accountId)
             setMessage(R.string.steam_remove_authenticator_local_done)
+        }
+    }
+
+    fun transferAccounts(
+        accountIds: List<Long>,
+        targetSource: SteamStorageSource,
+        action: SteamMaFileTransferAction
+    ) {
+        val source = _uiState.value.storageSource
+        if (accountIds.isEmpty() || source == targetSource) return
+        viewModelScope.launch {
+            setLoading(true)
+            runCatching {
+                val accounts = accountIds.distinct().mapNotNull(::accountById)
+                require(accounts.isNotEmpty()) {
+                    appContext.getString(R.string.steam_transfer_mafile_failed)
+                }
+                withContext(Dispatchers.IO) {
+                    writeAccountsToStorageSource(accounts, targetSource)
+                    if (action == SteamMaFileTransferAction.MOVE) {
+                        deleteAccountsFromStorageSource(source, accounts.map { it.id })
+                    }
+                }
+                if (source is SteamStorageSource.Mdbx && action == SteamMaFileTransferAction.MOVE) {
+                    reloadMdbxAccounts(source, clearAccountScopedState = true)
+                }
+            }.onSuccess {
+                setMessage(R.string.steam_transfer_mafile_done)
+            }.onFailure { error ->
+                setMessage(error.message ?: appContext.getString(R.string.steam_transfer_mafile_failed))
+            }
+            setLoading(false)
         }
     }
 
     fun removeAuthenticator(accountId: Long) {
         viewModelScope.launch {
-            val storedAccount = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val storedAccount = accountById(accountId) ?: return@launch
             val account = ensureSteamSession(storedAccount)
             if (account == null || account.accessToken.isNullOrBlank()) {
                 setMessage(R.string.steam_remove_authenticator_missing_access_token)
@@ -304,13 +548,7 @@ class SteamViewModel(
                 withContext(Dispatchers.IO) { authenticatorService.remove(account) }
             }.onSuccess { result ->
                 if (result.success) {
-                    withContext(Dispatchers.IO) { repository.delete(accountId) }
-                    _uiState.value = _uiState.value.copy(
-                        confirmations = emptyList(),
-                        pendingLogins = emptyList(),
-                        authorizedDevices = emptyList(),
-                        selectedConfirmationIds = emptySet()
-                    )
+                    deleteAccountByActiveSource(accountId)
                     setMessage(R.string.steam_remove_authenticator_done)
                 } else {
                     val message = result.attemptsRemaining?.let { attempts ->
@@ -429,7 +667,7 @@ class SteamViewModel(
 
     fun refreshAuthorizedDevices(accountId: Long, silent: Boolean = false) {
         viewModelScope.launch {
-            val storedAccount = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val storedAccount = accountById(accountId) ?: return@launch
             val account = ensureSteamSession(storedAccount)
             if (account == null || account.accessToken.isNullOrBlank()) {
                 _uiState.value = _uiState.value.copy(authorizedDevices = emptyList())
@@ -454,7 +692,7 @@ class SteamViewModel(
 
     fun revokeAuthorizedDevice(accountId: Long, device: SteamAuthorizedDevice) {
         viewModelScope.launch {
-            val storedAccount = withContext(Dispatchers.IO) { repository.getAccount(accountId) } ?: return@launch
+            val storedAccount = accountById(accountId) ?: return@launch
             val account = ensureSteamSession(storedAccount) ?: return@launch
             setLoading(true)
             val ok = runCatching {
@@ -505,19 +743,101 @@ class SteamViewModel(
         }
     }
 
+    private suspend fun saveLoginResultSafely(
+        result: SteamLoginImportService.LoginResult.ReadyForImport,
+        displayNameOverride: String? = pendingLoginDisplayName
+    ): Int? {
+        return runCatching {
+            saveLoginResult(result, displayNameOverride)
+        }.getOrElse { error ->
+            pendingLoginCompletionAccountId = null
+            pendingLoginDisplayName = null
+            setMessage(error.message ?: appContext.getString(R.string.steam_import_failed))
+            null
+        }
+    }
+
     private suspend fun saveLoginResult(
-        result: SteamLoginImportService.LoginResult.ReadyForImport
-    ) {
+        result: SteamLoginImportService.LoginResult.ReadyForImport,
+        displayNameOverride: String? = pendingLoginDisplayName
+    ): Int {
         val payload = parser.parseSteamGuardJson(
             steamId = result.steamId,
             deviceId = result.payload.deviceId,
             steamGuardJson = result.payload.steamGuardJson,
             accessToken = result.accessToken,
             refreshToken = result.refreshToken,
-            displayNameOverride = null
+            displayNameOverride = displayNameOverride
         )
-        withContext(Dispatchers.IO) {
-            repository.upsertFromMaFile(payload)
+        val completionAccountId = pendingLoginCompletionAccountId
+        if (completionAccountId != null) {
+            val account = accountById(completionAccountId)
+                ?: throw IllegalStateException(appContext.getString(R.string.steam_steamid_completion_missing_account))
+            if (account.hasRealSteamId) {
+                pendingLoginCompletionAccountId = null
+                return R.string.steam_steamid_completion_done
+            }
+            if (_uiState.value.accounts.any { it.id != account.id && it.steamId == payload.steamId }) {
+                pendingLoginCompletionAccountId = null
+                throw IllegalStateException(appContext.getString(R.string.steam_steamid_completion_duplicate))
+            }
+            saveCompletedSteamIdAccount(account, payload)
+            pendingLoginCompletionAccountId = null
+            return if (account.identitySecret.isNullOrBlank() && payload.identitySecret.isNullOrBlank()) {
+                R.string.steam_steamid_completion_code_only_done
+            } else {
+                R.string.steam_steamid_completion_done
+            }
+        }
+        saveMaFilePayload(payload)
+        return R.string.steam_account_imported
+    }
+
+    private suspend fun saveCompletedSteamIdAccount(
+        account: SteamAccount,
+        loginPayload: SteamMaFilePayload
+    ) {
+        val remark = account.steamRemarkNameOrNull()
+        val completedBase = account.copy(
+            steamId = loginPayload.steamId,
+            accountName = loginPayload.accountName.ifBlank { account.accountName },
+            displayName = remark
+                ?: loginPayload.accountName.ifBlank { account.accountName }.ifBlank { loginPayload.steamId },
+            deviceId = account.deviceId.ifBlank { loginPayload.deviceId },
+            sharedSecret = account.sharedSecret,
+            identitySecret = account.identitySecret ?: loginPayload.identitySecret,
+            revocationCode = account.revocationCode ?: loginPayload.revocationCode,
+            tokenGid = account.tokenGid ?: loginPayload.tokenGid,
+            accessToken = loginPayload.accessToken,
+            refreshToken = loginPayload.refreshToken,
+            steamLoginSecure = loginPayload.steamLoginSecure,
+            updatedAt = System.currentTimeMillis()
+        )
+        val completed = completedBase.copy(
+            rawSteamGuardJson = SteamMaFileBackupCodec.encode(completedBase)
+        )
+        persistCompletedSteamIdAccount(completed)
+    }
+
+    private suspend fun persistCompletedSteamIdAccount(account: SteamAccount) {
+        when (val source = _uiState.value.storageSource) {
+            SteamStorageSource.Local -> withContext(Dispatchers.IO) {
+                repository.replaceAccount(account)
+            }
+            is SteamStorageSource.Mdbx -> {
+                val store = mdbxAccountStore
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+                val record = mdbxAccountRecords.firstOrNull { it.account.id == account.id }
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_steamid_completion_missing_account))
+                withContext(Dispatchers.IO) {
+                    store.upsertAccount(
+                        databaseId = source.databaseId,
+                        entryId = record.entryId,
+                        account = account
+                    )
+                }
+                reloadMdbxAccounts(source, clearAccountScopedState = true)
+            }
         }
     }
 
@@ -604,12 +924,13 @@ class SteamViewModel(
                 when (result) {
                     is SteamLoginImportService.LoginResult.ReadyForImport -> {
                         setLoading(true)
-                        saveLoginResult(result)
+                        val successMessage = saveLoginResultSafely(result, pendingLoginDisplayName)
+                        pendingLoginDisplayName = null
                         _uiState.value = _uiState.value.copy(
                             pendingLoginChallenge = null,
                             pendingQrLoginChallenge = null
                         )
-                        setMessage(R.string.steam_account_imported)
+                        successMessage?.let(::setMessage)
                         setLoading(false)
                         pendingLoginPollJob = null
                         return@launch
@@ -618,12 +939,16 @@ class SteamViewModel(
                         handleLoginChallenge(result, startPolling = false)
                     }
                     is SteamLoginImportService.LoginResult.Failure -> {
+                        pendingLoginDisplayName = null
+                        pendingLoginCompletionAccountId = null
                         setMessage(result.message)
                         pendingLoginPollJob = null
                         return@launch
                     }
                 }
             }
+            pendingLoginDisplayName = null
+            pendingLoginCompletionAccountId = null
             setMessage(R.string.steam_login_approval_timeout)
             pendingLoginPollJob = null
         }
@@ -652,17 +977,20 @@ class SteamViewModel(
                     }
                     is SteamLoginImportService.QrLoginResult.ReadyForImport -> {
                         setLoading(true)
-                        saveLoginResult(result.result)
+                        val successMessage = saveLoginResultSafely(result.result, pendingLoginDisplayName)
+                        pendingLoginDisplayName = null
                         _uiState.value = _uiState.value.copy(
                             pendingLoginChallenge = null,
                             pendingQrLoginChallenge = null
                         )
-                        setMessage(R.string.steam_account_imported)
+                        successMessage?.let(::setMessage)
                         setLoading(false)
                         pendingLoginPollJob = null
                         return@launch
                     }
                     is SteamLoginImportService.QrLoginResult.Failure -> {
+                        pendingLoginDisplayName = null
+                        pendingLoginCompletionAccountId = null
                         _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
                         setMessage(result.message)
                         pendingLoginPollJob = null
@@ -670,10 +998,180 @@ class SteamViewModel(
                     }
                 }
             }
+            pendingLoginDisplayName = null
+            pendingLoginCompletionAccountId = null
             _uiState.value = _uiState.value.copy(pendingQrLoginChallenge = null)
             setMessage(R.string.steam_login_approval_timeout)
             pendingLoginPollJob = null
         }
+    }
+
+    private fun selectRuntimeAccount(id: Long) {
+        val state = _uiState.value
+        val accounts = state.accounts.map { account ->
+            account.copy(selected = account.id == id)
+        }
+        mdbxAccountRecords = mdbxAccountRecords.map { record ->
+            record.copy(account = record.account.copy(selected = record.account.id == id))
+        }
+        _uiState.value = state.copy(
+            accounts = accounts,
+            selectedAccountId = accounts.firstOrNull { it.id == id }?.id ?: accounts.firstOrNull()?.id,
+            confirmations = emptyList(),
+            pendingLogins = emptyList(),
+            authorizedDevices = emptyList(),
+            selectedConfirmationIds = emptySet()
+        )
+    }
+
+    private suspend fun saveMaFilePayload(payload: SteamMaFilePayload) {
+        when (val source = _uiState.value.storageSource) {
+            SteamStorageSource.Local -> withContext(Dispatchers.IO) {
+                repository.upsertFromMaFile(payload)
+            }
+            is SteamStorageSource.Mdbx -> {
+                val store = mdbxAccountStore
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+                withContext(Dispatchers.IO) {
+                    store.upsertPayload(source.databaseId, payload)
+                }
+                reloadMdbxAccounts(source)
+            }
+        }
+    }
+
+    private suspend fun writeAccountsToStorageSource(
+        accounts: List<SteamAccount>,
+        targetSource: SteamStorageSource
+    ) {
+        when (targetSource) {
+            SteamStorageSource.Local -> {
+                accounts.forEach { account ->
+                    repository.upsertFromMaFile(account.toCompleteMaFilePayload())
+                }
+            }
+            is SteamStorageSource.Mdbx -> {
+                val store = mdbxAccountStore
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+                val existingBySteamId = store.loadAccounts(targetSource.databaseId)
+                    .associateBy { it.account.steamId }
+                accounts.forEach { account ->
+                    store.upsertAccount(
+                        databaseId = targetSource.databaseId,
+                        entryId = existingBySteamId[account.steamId]?.entryId,
+                        account = account
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun deleteAccountsFromStorageSource(
+        source: SteamStorageSource,
+        accountIds: List<Long>
+    ) {
+        when (source) {
+            SteamStorageSource.Local -> {
+                accountIds.forEach { accountId -> repository.delete(accountId) }
+            }
+            is SteamStorageSource.Mdbx -> {
+                val store = mdbxAccountStore
+                    ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+                val selectedIds = accountIds.toSet()
+                val entryIds = mdbxAccountRecords
+                    .filter { it.account.id in selectedIds }
+                    .map { it.entryId }
+                entryIds.forEach { entryId ->
+                    store.deleteAccount(source.databaseId, entryId)
+                }
+            }
+        }
+    }
+
+    private fun SteamAccount.toCompleteMaFilePayload(): SteamMaFilePayload {
+        val maFileJson = SteamMaFileBackupCodec.encode(this)
+        return parser.parse(
+            maFileContent = maFileJson,
+            fileName = SteamMaFileBackupCodec.fileName(this),
+            displayNameOverride = displayName.takeIf { it.isNotBlank() },
+            steamIdOverride = visibleSteamId.takeIf { it.isNotBlank() },
+            allowMissingSteamId = !hasRealSteamId
+        )
+    }
+
+    private suspend fun deleteAccountByActiveSource(accountId: Long) {
+        when (val source = _uiState.value.storageSource) {
+            SteamStorageSource.Local -> {
+                withContext(Dispatchers.IO) { repository.delete(accountId) }
+                _uiState.value = _uiState.value.copy(
+                    confirmations = emptyList(),
+                    pendingLogins = emptyList(),
+                    authorizedDevices = emptyList(),
+                    selectedConfirmationIds = emptySet()
+                )
+            }
+            is SteamStorageSource.Mdbx -> {
+                val store = mdbxAccountStore ?: return
+                val entryId = mdbxAccountRecords.firstOrNull { it.account.id == accountId }?.entryId
+                    ?: return
+                withContext(Dispatchers.IO) {
+                    store.deleteAccount(source.databaseId, entryId)
+                }
+                reloadMdbxAccounts(source, clearAccountScopedState = true)
+            }
+        }
+    }
+
+    private suspend fun reloadMdbxAccounts(
+        source: SteamStorageSource.Mdbx,
+        clearAccountScopedState: Boolean = false
+    ) {
+        val store = mdbxAccountStore
+            ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
+        val records = withContext(Dispatchers.IO) {
+            store.loadAccounts(source.databaseId)
+        }
+        mdbxAccountRecords = records
+        updateForAccounts(
+            accounts = records.map { it.account },
+            nowMillis = System.currentTimeMillis(),
+            storageSource = source,
+            clearAccountScopedState = clearAccountScopedState
+        )
+    }
+
+    private suspend fun persistRefreshedSession(
+        originalAccount: SteamAccount,
+        refreshedAccount: SteamAccount
+    ) {
+        when (val source = _uiState.value.storageSource) {
+            SteamStorageSource.Local -> {
+                repository.updateSessionTokens(
+                    id = originalAccount.id,
+                    accessToken = refreshedAccount.accessToken.orEmpty(),
+                    refreshToken = refreshedAccount.refreshToken,
+                    steamLoginSecure = refreshedAccount.steamLoginSecure
+                )
+            }
+            is SteamStorageSource.Mdbx -> {
+                val store = mdbxAccountStore ?: return
+                val record = mdbxAccountRecords.firstOrNull { it.account.id == originalAccount.id }
+                    ?: return
+                val updatedRecord = store.upsertAccount(
+                    databaseId = source.databaseId,
+                    entryId = record.entryId,
+                    account = refreshedAccount
+                )
+                mdbxAccountRecords = mdbxAccountRecords.map { existing ->
+                    if (existing.entryId == record.entryId) updatedRecord else existing
+                }
+            }
+        }
+    }
+
+    private fun accountById(accountId: Long): SteamAccount? {
+        return _uiState.value.accounts.firstOrNull { it.id == accountId }
+            ?: mdbxAccountRecords.firstOrNull { it.account.id == accountId }?.account
     }
 
     private fun selectedAccount(): SteamAccount? {
@@ -683,6 +1181,10 @@ class SteamViewModel(
     }
 
     private suspend fun ensureSteamSession(account: SteamAccount): SteamAccount? = withContext(Dispatchers.IO) {
+        if (!account.hasRealSteamId) {
+            SteamDiagLogger.append("session_refresh skipped missing_steamid")
+            return@withContext null
+        }
         if (account.accessToken.isNullOrBlank() && account.refreshToken.isNullOrBlank()) {
             SteamDiagLogger.append("session_refresh skipped no_tokens")
             return@withContext null
@@ -700,12 +1202,7 @@ class SteamViewModel(
                 refreshToken = refreshResult.refreshToken ?: account.refreshToken,
                 steamLoginSecure = "${account.steamId}||${refreshResult.accessToken}"
             )
-            repository.updateSessionTokens(
-                id = account.id,
-                accessToken = refreshResult.accessToken,
-                refreshToken = refreshResult.refreshToken,
-                steamLoginSecure = refreshedAccount.steamLoginSecure
-            )
+            persistRefreshedSession(account, refreshedAccount)
             _uiState.value = _uiState.value.copy(
                 accounts = _uiState.value.accounts.map { existing ->
                     if (existing.id == refreshedAccount.id) refreshedAccount else existing
@@ -716,21 +1213,30 @@ class SteamViewModel(
         }
     }
 
-    private fun updateForAccounts(accounts: List<SteamAccount>, nowMillis: Long) {
-        val selected = accounts.firstOrNull { it.selected } ?: accounts.firstOrNull()
+    private fun updateForAccounts(
+        accounts: List<SteamAccount>,
+        nowMillis: Long,
+        storageSource: SteamStorageSource = _uiState.value.storageSource,
+        clearAccountScopedState: Boolean = false
+    ) {
         val previous = _uiState.value
+        val previousSelected = previous.selectedAccountId
+        val selected = accounts.firstOrNull { it.id == previousSelected }
+            ?: accounts.firstOrNull { it.selected }
+            ?: accounts.firstOrNull()
         val selectedChanged = previous.selectedAccountId != selected?.id
         val nowSeconds = nowMillis / 1000L
         _uiState.value = previous.copy(
+            storageSource = storageSource,
             accounts = accounts,
             selectedAccountId = selected?.id,
             currentCode = selected?.let { SteamTotp.generateAuthCode(it.sharedSecret, nowSeconds) }.orEmpty(),
             secondsRemaining = secondsRemaining(nowMillis),
             periodProgress = periodProgress(nowMillis),
-            confirmations = if (selectedChanged) emptyList() else previous.confirmations,
-            pendingLogins = if (selectedChanged) emptyList() else previous.pendingLogins,
-            authorizedDevices = if (selectedChanged) emptyList() else previous.authorizedDevices,
-            selectedConfirmationIds = if (selectedChanged) emptySet() else previous.selectedConfirmationIds
+            confirmations = if (selectedChanged || clearAccountScopedState) emptyList() else previous.confirmations,
+            pendingLogins = if (selectedChanged || clearAccountScopedState) emptyList() else previous.pendingLogins,
+            authorizedDevices = if (selectedChanged || clearAccountScopedState) emptyList() else previous.authorizedDevices,
+            selectedConfirmationIds = if (selectedChanged || clearAccountScopedState) emptySet() else previous.selectedConfirmationIds
         )
     }
 
@@ -752,6 +1258,16 @@ class SteamViewModel(
     private fun periodProgress(nowMillis: Long): Float {
         val remainingMillis = CODE_PERIOD_MS - Math.floorMod(nowMillis, CODE_PERIOD_MS)
         return (remainingMillis.toFloat() / CODE_PERIOD_MS.toFloat()).coerceIn(0f, 1f)
+    }
+
+    private fun SteamAccount.steamRemarkNameOrNull(): String? {
+        val remark = displayName.trim()
+        val accountLabel = accountName.ifBlank { visibleSteamId }.trim()
+        return remark.takeIf {
+            it.isNotBlank() &&
+                it != accountLabel &&
+                it != steamId
+        }
     }
 
     private fun setLoading(loading: Boolean) {
@@ -776,10 +1292,21 @@ class SteamViewModel(
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     val database = SteamDatabase.getDatabase(appContext)
+                    val passwordDatabase = PasswordDatabase.getDatabase(appContext)
                     val securityManager = SecurityManager(appContext)
+                    val mdbxRepository = MdbxVaultStore(
+                        context = appContext,
+                        databaseDao = passwordDatabase.localMdbxDatabaseDao(),
+                        securityManager = securityManager,
+                        remoteSourceDao = passwordDatabase.mdbxRemoteSourceDao(),
+                        passwordEntryDao = passwordDatabase.passwordEntryDao(),
+                        secureItemDao = passwordDatabase.secureItemDao(),
+                        customFieldDao = passwordDatabase.customFieldDao()
+                    )
                     return SteamViewModel(
                         appContext = appContext,
-                        repository = SteamAccountRepository(database.steamAccountDao(), securityManager)
+                        repository = SteamAccountRepository(database.steamAccountDao(), securityManager),
+                        mdbxRepository = mdbxRepository
                     ) as T
                 }
             }

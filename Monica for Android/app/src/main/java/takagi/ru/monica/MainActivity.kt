@@ -2293,7 +2293,7 @@ fun MonicaContent(
             arguments = listOf(
                 navArgument(Screen.SteamQrScan.ARG_ACCOUNT_ID) {
                     type = NavType.LongType
-                    defaultValue = -1L
+                    defaultValue = 0L
                 }
             ),
             enterTransition = { easyNotesScreenEnter() },
@@ -2303,7 +2303,7 @@ fun MonicaContent(
         ) { backStackEntry ->
             val initialSteamAccountId = backStackEntry.arguments
                 ?.getLong(Screen.SteamQrScan.ARG_ACCOUNT_ID)
-                ?.takeIf { it > 0L }
+                ?.takeIf { it != 0L }
             SteamQrScannerScreen(
                 initialAccountId = initialSteamAccountId,
                 onQrCodeScanned = { qrData, accountId ->

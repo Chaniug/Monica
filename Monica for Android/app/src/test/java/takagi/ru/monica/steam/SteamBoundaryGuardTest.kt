@@ -118,6 +118,7 @@ class SteamBoundaryGuardTest {
         assertTrue(applierSource.contains("steamAccountImported"))
         assertTrue(codecSource.contains("shared_secret"))
         assertTrue(codecSource.contains("identity_secret"))
+        assertTrue(codecSource.contains("monica_display_name"))
         assertTrue(codecSource.contains("SteamLoginSecure"))
         assertTrue(codecSource.contains("AccessToken"))
         assertTrue(codecSource.contains("RefreshToken"))
@@ -167,6 +168,30 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun maFileSteamIdCompletionIsASecondDialogOnlyAfterMissingSteamId() {
+        val screenSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+
+        val importDialogBlock = screenSource
+            .substringAfter("private fun SteamMaFileImportDialog(")
+            .substringBefore("@Composable\nprivate fun SteamMaFileSteamIdCompletionDialog(")
+        val completionDialogBlock = screenSource
+            .substringAfter("private fun SteamMaFileSteamIdCompletionDialog(")
+            .substringBefore("private fun String.isValidSteamIdOrAccountId()")
+
+        assertTrue(viewModelSource.contains("pendingMaFileSteamIdRequest"))
+        assertTrue(viewModelSource.contains("error.message == \"maFile missing steamid\" && steamId.isBlank()"))
+        assertTrue(screenSource.contains("uiState.pendingMaFileSteamIdRequest?.let { request ->"))
+        assertFalse(importDialogBlock.contains("steam_mafile_steamid_label"))
+        assertFalse(importDialogBlock.contains("steam_mafile_steamid_completion_desc"))
+        assertTrue(completionDialogBlock.contains("steam_mafile_steamid_label"))
+        assertTrue(completionDialogBlock.contains("steam_mafile_steamid_completion_desc"))
+        assertTrue(completionDialogBlock.contains("isValidSteamIdOrAccountId()"))
+    }
+
+    @Test
     fun steamLoginImportLogsDoNotPersistRawAccountData() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt"
@@ -211,6 +236,57 @@ class SteamBoundaryGuardTest {
         assertFalse(steamSources.contains("DataExportImportViewModel"))
         assertFalse(steamSources.contains("importSteamMaFile"))
         assertFalse(steamSources.contains("insertSteamGuardEntry"))
+    }
+
+    @Test
+    fun steamMdbxSourceUsesMaFileEntriesWithoutLocalRoomImport() {
+        val repositorySource = projectFile("app/src/main/java/takagi/ru/monica/repository/MdbxRepository.kt")
+            .readText()
+        val storeSource = projectFile("app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt")
+            .readText()
+        val steamMdbxStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/data/SteamMdbxAccountStore.kt"
+        ).readText()
+        val steamViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt"
+        ).readText()
+        val steamScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt"
+        ).readText()
+
+        assertTrue(repositorySource.contains("listSteamMaFileEntries"))
+        assertTrue(repositorySource.contains("upsertSteamMaFileEntry"))
+        assertTrue(repositorySource.contains("deleteSteamMaFileEntry"))
+        assertTrue(storeSource.contains("STEAM_MAFILE_ENTRY_TYPE = \"steam-mafile\""))
+        assertTrue(storeSource.contains(".put(\"mafile_json\", maFileJson)"))
+
+        assertTrue(steamMdbxStoreSource.contains("repository.listSteamMaFileEntries(databaseId)"))
+        assertTrue(steamMdbxStoreSource.contains("parser.parse("))
+        assertTrue(steamMdbxStoreSource.contains("SteamMaFileBackupCodec.encode(account)"))
+        assertTrue(steamMdbxStoreSource.contains("runtimeAccountId(databaseId, entry.entryId)"))
+
+        assertTrue(steamViewModelSource.contains("SteamStorageSource.Mdbx"))
+        assertTrue(steamViewModelSource.contains("saveMaFilePayload(payload)"))
+        assertTrue(steamViewModelSource.contains("reloadMdbxAccounts(source"))
+        assertTrue(steamViewModelSource.contains("fun transferAccounts("))
+        assertTrue(steamViewModelSource.contains("fun updateDisplayName(accountId: Long, displayName: String)"))
+        assertTrue(steamViewModelSource.contains("writeAccountsToStorageSource(accounts, targetSource)"))
+        assertTrue(steamViewModelSource.contains("deleteAccountsFromStorageSource(source, accounts.map { it.id })"))
+        assertTrue(
+            steamViewModelSource.indexOf("writeAccountsToStorageSource(accounts, targetSource)") <
+                steamViewModelSource.indexOf("deleteAccountsFromStorageSource(source, accounts.map { it.id })")
+        )
+        assertTrue(steamViewModelSource.contains("repository.upsertFromMaFile(account.toCompleteMaFilePayload())"))
+        assertTrue(steamViewModelSource.contains("SteamMaFileBackupCodec.encode(this)"))
+        assertTrue(steamViewModelSource.contains("existingBySteamId[account.steamId]?.entryId"))
+        assertTrue(steamViewModelSource.contains("store.upsertAccount("))
+        assertTrue(steamScreenSource.contains("SteamStorageSourceMenu("))
+        assertTrue(steamScreenSource.contains("SteamMaFileTransferSheet("))
+        assertTrue(steamScreenSource.contains("SteamMaFileTransferAction.MOVE"))
+        assertTrue(steamScreenSource.contains("SteamMaFileTransferAction.COPY"))
+        assertTrue(steamScreenSource.contains("SteamRemarkEditDialog("))
+        assertTrue(steamScreenSource.contains("UnifiedCategoryFilterChipMenuDropdown("))
+        assertFalse(steamScreenSource.contains("UnifiedCategoryFilterChipMenu("))
     }
 
     @Test
@@ -346,6 +422,7 @@ class SteamBoundaryGuardTest {
         assertTrue(codeContent.contains("onToggleSelection: (SteamAccount) -> Unit"))
         assertTrue(codeContent.contains("onSelectAll: () -> Unit"))
         assertTrue(codeContent.contains("onDeleteSelected: () -> Unit"))
+        assertTrue(codeContent.contains("onTransferSelected: () -> Unit"))
         assertTrue(codeContent.contains("onOpenDetail: (SteamAccount) -> Unit"))
         assertTrue(codeContent.contains("appSettings: AppSettings"))
         assertTrue(codeContent.contains("rememberTotpTickerMillis(appSettings.validatorSmoothProgress)"))
@@ -366,6 +443,7 @@ class SteamBoundaryGuardTest {
         assertTrue(codeContent.contains("allowSwipeLeft = false"))
         assertTrue(codeContent.contains("SelectionActionBar("))
         assertTrue(codeContent.contains("onSelectAll = onSelectAll"))
+        assertTrue(codeContent.contains("onMoveToCategory = onTransferSelected"))
         assertTrue(codeContent.contains("if (selectionMode)"))
         assertTrue(codeContent.contains(".align(Alignment.BottomStart)"))
         assertTrue(codeContent.contains("onOpenDetail(account)"))
@@ -386,11 +464,35 @@ class SteamBoundaryGuardTest {
             .substringAfter("private fun SteamAccountDetailContent(")
             .substringBefore("@Composable\nprivate fun SteamAccountCredentialCard(")
         assertTrue(detailContent.contains("authorizedDevices: List<SteamAuthorizedDevice>"))
+        assertTrue(detailContent.contains("onEditRemark: () -> Unit"))
+        assertTrue(detailContent.contains("onCompleteSteamIdLogin: () -> Unit"))
+        assertTrue(detailContent.contains("if (!account.hasRealSteamId)"))
+        assertTrue(detailContent.contains("SteamMissingSteamIdPromptCard("))
+        assertTrue(detailContent.contains("hasIdentitySecret = !account.identitySecret.isNullOrBlank()"))
         assertTrue(detailContent.contains("SteamAuthorizedDevicesSection("))
         assertTrue(detailContent.contains("onRevokeAuthorizedDevice: (SteamAuthorizedDevice) -> Unit"))
         assertTrue(source.contains("uiState.authorizedDevices"))
+        assertTrue(source.contains("editRemarkAccount"))
+        assertTrue(source.contains("viewModel.updateDisplayName(account.id, remark)"))
+        assertTrue(source.contains("SteamRemarkInfoRow("))
+        assertTrue(source.contains("SteamRemarkEditDialog("))
+        assertTrue(source.contains("R.string.steam_remark_optional_label"))
+        assertTrue(source.contains("remarkNameOrEmpty()"))
+        assertTrue(source.contains("steamIdCompletionAccountId"))
+        assertTrue(source.contains("viewModel.beginSteamIdCompletionLogin(account.id, userName, password)"))
+        assertTrue(source.contains("titleRes = R.string.steam_steamid_completion_login_title"))
+        assertTrue(source.contains("showRemarkField = false"))
+        assertTrue(source.contains("if (scanQr != null && account != null && account.hasRealSteamId)"))
         assertTrue(source.contains("viewModel.refreshAuthorizedDevices(animatedDetailAccount.id)"))
         assertTrue(source.contains("viewModel.revokeAuthorizedDevice(animatedDetailAccount.id, device)"))
+
+        val missingSteamIdPromptContent = source
+            .substringAfter("private fun SteamMissingSteamIdPromptCard(")
+            .substringBefore("@Composable\nprivate fun SteamAccountCredentialCard(")
+        assertTrue(missingSteamIdPromptContent.contains("R.string.steam_steamid_completion_title"))
+        assertTrue(missingSteamIdPromptContent.contains("R.string.steam_steamid_completion_desc"))
+        assertTrue(missingSteamIdPromptContent.contains("R.string.steam_steamid_completion_code_only_desc"))
+        assertTrue(missingSteamIdPromptContent.contains("R.string.steam_steamid_completion_login_button"))
 
         val authorizedDevicesContent = source
             .substringAfter("private fun SteamAuthorizedDevicesSection(")
@@ -487,6 +589,11 @@ class SteamBoundaryGuardTest {
         assertTrue(steamQrScannerSource.contains("rememberSaveable(initialAccountId, rememberedAccountId)"))
         assertTrue(steamQrScannerSource.contains("import com.google.zxing.BarcodeFormat"))
         assertTrue(steamQrScannerSource.contains("import takagi.ru.monica.ui.screens.QrScannerScreen"))
+        assertTrue(steamQrScannerSource.contains("repository.getAccounts()"))
+        assertTrue(steamQrScannerSource.contains("withContext(Dispatchers.IO)"))
+        assertFalse(steamQrScannerSource.contains("SteamViewModel.factory"))
+        assertFalse(steamQrScannerSource.contains("viewModel("))
+        assertFalse(steamQrScannerSource.contains("collectAsState"))
         assertFalse(steamQrScannerSource.contains("import com.google.mlkit.vision.barcode.BarcodeScanning"))
         assertFalse(steamQrScannerSource.contains("SteamQrScannerEngine.MlKit"))
         assertFalse(steamQrScannerSource.contains("SteamQrScannerEngine.ZXing"))
@@ -502,6 +609,11 @@ class SteamBoundaryGuardTest {
         assertFalse(steamQrScannerSource.contains("STEAM_QR_CAMERA_RELEASE_DELAY_MS"))
         assertTrue(steamQrScannerSource.contains("allowedFormats = listOf(BarcodeFormat.QR_CODE)"))
         assertTrue(steamQrScannerSource.contains("resultValidator = ::isValidSteamQrPayload"))
+        assertTrue(steamQrScannerSource.contains("invalidResultMessage = stringResource(R.string.steam_qr_invalid_link)"))
+        assertTrue(steamQrScannerSource.contains("SteamDiagLogger.initialize(appContext)"))
+        assertTrue(steamQrScannerSource.contains("SteamDiagLogger::append"))
+        assertTrue(steamQrScannerSource.contains("diagnosticLabel = \"steam_qr\""))
+        assertTrue(steamQrScannerSource.contains("event=screen_enter"))
         assertTrue(steamQrScannerSource.contains("SteamQrChallenge.parse(raw) != null"))
         assertFalse(steamQrScannerSource.contains("STEAM_QR_MLKIT_FALLBACK_DELAY_MS"))
         assertFalse(steamQrScannerSource.contains("if (!scanConsumed.get())"))
@@ -523,7 +635,11 @@ class SteamBoundaryGuardTest {
         assertTrue(qrScannerSource.contains("ProcessCameraProvider.getInstance(context)"))
         assertTrue(qrScannerSource.contains("InputImage.fromMediaImage("))
         assertTrue(qrScannerSource.contains("InputImage.fromFilePath(context, uri)"))
-        assertTrue(qrScannerSource.contains("ML_KIT_FRAME_TIMEOUT_MS"))
+        assertFalse(qrScannerSource.contains("ML_KIT_FRAME_TIMEOUT_MS"))
+        assertFalse(qrScannerSource.contains("ML_KIT_CAMERA_STALE_MS"))
+        assertFalse(qrScannerSource.contains("scannerGeneration"))
+        assertFalse(qrScannerSource.contains("onFrameTimeout"))
+        assertFalse(qrScannerSource.contains("LifecycleEventObserver"))
         assertTrue(qrScannerSource.contains("processingFrame.compareAndSet(false, true)"))
         assertFalse(qrScannerSource.contains("DecoratedBarcodeView"))
         assertFalse(qrScannerSource.contains("MultiFormatReader"))
@@ -562,9 +678,23 @@ class SteamBoundaryGuardTest {
         assertTrue(qrScannerSource.contains("createMlKitBarcodeScanner(mlKitFormats)"))
         assertTrue(qrScannerSource.contains("analyzeFrameWithMlKit("))
         assertTrue(qrScannerSource.contains("processImageWithMlKit("))
+        assertTrue(qrScannerSource.contains("invalidResultMessage: String? = null"))
+        assertTrue(qrScannerSource.contains("diagnosticLabel: String? = null"))
+        assertTrue(qrScannerSource.contains("onDiagnostic: ((String) -> Unit)? = null"))
+        assertTrue(qrScannerSource.contains("QrScannerDiagnostics("))
+        assertTrue(qrScannerSource.contains("QR_SCAN_DIAG_HEARTBEAT_MS = 30_000L"))
+        assertTrue(qrScannerSource.contains("\"heartbeat\""))
+        assertTrue(qrScannerSource.contains("\"first_frame\""))
+        assertTrue(qrScannerSource.contains("\"camera_bind_success\""))
+        assertTrue(qrScannerSource.contains("\"camera_bind_failed\""))
+        assertTrue(qrScannerSource.contains("\"gallery_result\""))
+        assertTrue(qrScannerSource.contains("onInvalid: () -> Unit"))
+        assertTrue(qrScannerSource.contains("candidates.isEmpty()"))
+        assertTrue(qrScannerSource.contains("url?.url"))
         assertTrue(qrScannerSource.contains("allowedFormats.toMlKitFormatList()"))
         assertTrue(qrScannerSource.contains("Barcode.FORMAT_QR_CODE"))
-        assertTrue(qrScannerSource.contains("ML_KIT_FRAME_TIMEOUT_MS"))
+        assertFalse(qrScannerSource.contains("ML_KIT_FRAME_TIMEOUT_MS"))
+        assertFalse(qrScannerSource.contains("scannerGeneration"))
 
         assertTrue(viewModelSource.contains("CODE_TICK_INTERVAL_MS = 250L"))
         assertTrue(viewModelSource.contains("periodProgress"))
@@ -692,8 +822,13 @@ class SteamBoundaryGuardTest {
         val localDeleteBlock = viewModelSource
             .substringAfter("fun deleteLocalAuthenticator(accountId: Long)")
             .substringBefore("fun removeAuthenticator(accountId: Long)")
-        assertTrue(localDeleteBlock.contains("repository.delete(accountId)"))
+        assertTrue(localDeleteBlock.contains("deleteAccountByActiveSource(accountId)"))
         assertFalse(localDeleteBlock.contains("authenticatorService.remove"))
+        val activeDeleteBlock = viewModelSource
+            .substringAfter("private suspend fun deleteAccountByActiveSource(accountId: Long)")
+            .substringBefore("private suspend fun reloadMdbxAccounts(")
+        assertTrue(activeDeleteBlock.contains("repository.delete(accountId)"))
+        assertTrue(activeDeleteBlock.contains("store.deleteAccount(source.databaseId, entryId)"))
 
         val authenticatorServiceSource = projectFile(
             "app/src/main/java/takagi/ru/monica/steam/network/SteamAuthenticatorService.kt"

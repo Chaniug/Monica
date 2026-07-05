@@ -33,7 +33,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,10 +45,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.zxing.BarcodeFormat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.repository.MdbxVaultStore
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.steam.data.SteamAccount
+import takagi.ru.monica.steam.data.SteamAccountRepository
+import takagi.ru.monica.steam.data.SteamDatabase
+import takagi.ru.monica.steam.data.SteamMdbxAccountStore
+import takagi.ru.monica.steam.data.SteamStorageSource
+import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.steam.network.SteamQrChallenge
 import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.screens.QrScannerScreen
@@ -62,32 +70,71 @@ fun SteamQrScannerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val viewModel: SteamViewModel = viewModel(
-        factory = remember(context) { SteamViewModel.factory(context) }
-    )
-    val uiState by viewModel.uiState.collectAsState()
+    val appContext = remember(context) { context.applicationContext }
+    val securityManager = remember(appContext) { SecurityManager(appContext) }
+    val repository = remember(appContext) {
+        SteamAccountRepository(
+            SteamDatabase.getDatabase(appContext).steamAccountDao(),
+            securityManager
+        )
+    }
+    val mdbxAccountStore = remember(appContext) {
+        val passwordDatabase = PasswordDatabase.getDatabase(appContext)
+        SteamMdbxAccountStore(
+            MdbxVaultStore(
+                context = appContext,
+                databaseDao = passwordDatabase.localMdbxDatabaseDao(),
+                securityManager = securityManager,
+                remoteSourceDao = passwordDatabase.mdbxRemoteSourceDao(),
+                passwordEntryDao = passwordDatabase.passwordEntryDao(),
+                secureItemDao = passwordDatabase.secureItemDao(),
+                customFieldDao = passwordDatabase.customFieldDao()
+            )
+        )
+    }
+    val storageSource = remember(context) { readSteamStorageSource(context) }
     val rememberedAccountId = remember(context) { readLastSteamQrAccountId(context) }
+    var accounts by remember { mutableStateOf(emptyList<SteamAccount>()) }
     var selectedAccountId by rememberSaveable(initialAccountId, rememberedAccountId) {
         mutableStateOf(initialAccountId ?: rememberedAccountId)
     }
     var showAccountPicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(initialAccountId, rememberedAccountId, uiState.accounts) {
-        val existingIds = uiState.accounts.map { it.id }.toSet()
+    LaunchedEffect(repository, mdbxAccountStore, storageSource) {
+        accounts = withContext(Dispatchers.IO) {
+            when (storageSource) {
+                SteamStorageSource.Local -> repository.getAccounts()
+                is SteamStorageSource.Mdbx -> runCatching {
+                    mdbxAccountStore
+                        .loadAccounts(storageSource.databaseId)
+                        .map { it.account }
+                }.getOrDefault(emptyList())
+            }
+        }
+    }
+
+    LaunchedEffect(initialAccountId, rememberedAccountId, accounts) {
+        val existingIds = accounts.map { it.id }.toSet()
         selectedAccountId = when {
             initialAccountId != null && initialAccountId in existingIds -> initialAccountId
             selectedAccountId != null && selectedAccountId in existingIds -> selectedAccountId
             rememberedAccountId != null && rememberedAccountId in existingIds -> rememberedAccountId
-            uiState.selectedAccountId != null && uiState.selectedAccountId in existingIds -> uiState.selectedAccountId
-            else -> uiState.accounts.firstOrNull()?.id
+            else -> accounts.firstOrNull { it.selected }?.id ?: accounts.firstOrNull()?.id ?: selectedAccountId
         }
     }
 
-    val selectedAccount = uiState.accounts.firstOrNull { it.id == selectedAccountId }
+    val selectedAccount = accounts.firstOrNull { it.id == selectedAccountId }
+
+    LaunchedEffect(appContext) {
+        SteamDiagLogger.initialize(appContext)
+        SteamDiagLogger.append(
+            "qr_scan label=steam_qr event=screen_enter has_initial_account=${initialAccountId != null}"
+        )
+    }
 
     if (showAccountPicker) {
         SteamQrAccountPickerDialog(
-            accounts = uiState.accounts,
+            accounts = accounts,
             selectedAccountId = selectedAccountId,
             onSelectAccount = { account ->
                 selectedAccountId = account.id
@@ -119,6 +166,9 @@ fun SteamQrScannerScreen(
         subtitle = stringResource(R.string.qr_align_hint),
         allowedFormats = listOf(BarcodeFormat.QR_CODE),
         resultValidator = ::isValidSteamQrPayload,
+        invalidResultMessage = stringResource(R.string.steam_qr_invalid_link),
+        diagnosticLabel = "steam_qr",
+        onDiagnostic = SteamDiagLogger::append,
         bottomContent = bottomContent
     )
 }

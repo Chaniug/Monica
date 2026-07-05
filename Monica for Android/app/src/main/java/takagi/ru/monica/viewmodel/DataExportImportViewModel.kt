@@ -1187,7 +1187,7 @@ class DataExportImportViewModel(
                     val title = account.displayName
                         .ifBlank { account.accountName }
                         .ifBlank { "Steam" }
-                    val subtitle = account.steamId
+                    val subtitle = account.visibleSteamId
                         .ifBlank { account.accountName }
                         .ifBlank { context.getString(R.string.steam_mafile_export_unknown_account) }
                     SteamMaFileExportCandidate(

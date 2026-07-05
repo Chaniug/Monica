@@ -1,7 +1,9 @@
 package takagi.ru.monica.steam.importer
 
 import java.net.URLDecoder
+import java.security.MessageDigest
 import java.util.Base64
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -24,7 +26,10 @@ data class SteamMaFilePayload(
     val refreshToken: String?,
     val steamLoginSecure: String?,
     val rawJson: String
-)
+) {
+    val hasRealSteamId: Boolean
+        get() = steamId.isSteamId64Value()
+}
 
 data class SteamMaFileManifestEntry(
     val filename: String,
@@ -61,7 +66,9 @@ class SteamMaFileParser(
         return SteamMaFilePayload(
             steamId = steamId,
             accountName = accountName,
-            displayName = displayNameOverride?.trim()?.takeIf { it.isNotBlank() } ?: accountName,
+            displayName = displayNameOverride?.trim()?.takeIf { it.isNotBlank() }
+                ?: root.stringAny("monica_display_name", "monicaDisplayName")
+                ?: accountName,
             deviceId = deviceId.ifBlank { root.stringAny("device_id", "deviceId").orEmpty() },
             sharedSecret = normalizedSharedSecret,
             identitySecret = root.stringAny("identity_secret", "identitySecret"),
@@ -79,7 +86,9 @@ class SteamMaFileParser(
         fileName: String? = null,
         manifestContent: String? = null,
         password: String? = null,
-        displayNameOverride: String? = null
+        displayNameOverride: String? = null,
+        steamIdOverride: String? = null,
+        allowMissingSteamId: Boolean = false
     ): SteamMaFilePayload {
         val trimmed = maFileContent.trim()
         val plainJson = if (trimmed.startsWith("{")) {
@@ -90,16 +99,36 @@ class SteamMaFileParser(
 
         val root = json.parseToJsonElement(plainJson).jsonObject
         val session = root.objectAny("Session", "session")
-        val steamId = root.steamIdAny()
+        val embeddedSteamId = root.steamIdAny()
             ?: session?.steamIdAny()
+            ?: root.stringAny("steamLoginSecure", "steam_login_secure")
+                ?.steamIdFromSteamLoginSecure()
+            ?: session?.stringAny("SteamLoginSecure", "steamLoginSecure")
+                ?.steamIdFromSteamLoginSecure()
             ?: fileName?.steamIdFromFileName()
-            ?: error("maFile missing steamid")
         val accountName = root.stringAny("account_name", "accountName", "AccountName")
             ?: session?.stringAny("AccountName", "account_name")
-            ?: steamId
+            ?: embeddedSteamId
+            ?: fileName?.substringBeforeLast('.')
+                ?.takeIf { it.isNotBlank() && it != fileName }
+            ?: "Steam"
         val (rawSharedSecret, sharedSecretSource) = root.preferredSharedSecret()
             ?: error("maFile missing shared_secret")
         val sharedSecret = normalizeSteamSharedSecret(rawSharedSecret, sharedSecretSource)
+        val steamId = steamIdOverride.normalizedSteamIdOverride()
+            ?: embeddedSteamId
+            ?: root.localSteamIdAny()
+            ?: if (allowMissingSteamId || root.boolAny("monica_missing_steamid", "monicaMissingSteamId") == true) {
+                generateLocalSteamId(
+                    accountName = accountName,
+                    sharedSecret = sharedSecret,
+                    identitySecret = root.stringAny("identity_secret", "identitySecret"),
+                    tokenGid = root.stringAny("token_gid", "tokenGid"),
+                    revocationCode = root.stringAny("revocation_code", "revocationCode")
+                )
+            } else {
+                error("maFile missing steamid")
+            }
         val deviceId = root.stringAny("device_id", "deviceId")
             ?: session?.stringAny("DeviceID", "device_id", "deviceId")
             ?: ""
@@ -112,7 +141,9 @@ class SteamMaFileParser(
         return SteamMaFilePayload(
             steamId = steamId,
             accountName = accountName,
-            displayName = displayNameOverride?.trim()?.takeIf { it.isNotBlank() } ?: accountName,
+            displayName = displayNameOverride?.trim()?.takeIf { it.isNotBlank() }
+                ?: root.stringAny("monica_display_name", "monicaDisplayName")
+                ?: accountName,
             deviceId = deviceId,
             sharedSecret = sharedSecret,
             identitySecret = root.stringAny("identity_secret", "identitySecret"),
@@ -122,7 +153,7 @@ class SteamMaFileParser(
             refreshToken = root.stringAny("refresh_token", "refreshToken")
                 ?: session?.stringAny("RefreshToken", "refresh_token"),
             steamLoginSecure = steamLoginSecure,
-            rawJson = plainJson
+            rawJson = root.rawJsonForSteamId(plainJson, steamId)
         )
     }
 
@@ -177,6 +208,19 @@ class SteamMaFileParser(
         return null
     }
 
+    private fun JsonObject.boolAny(vararg keys: String): Boolean? {
+        keys.forEach { key ->
+            val primitive = this[key] as? JsonPrimitive ?: return@forEach
+            primitive.contentOrNull?.lowercase()?.let { value ->
+                when (value) {
+                    "true", "1" -> return true
+                    "false", "0" -> return false
+                }
+            }
+        }
+        return null
+    }
+
     private fun JsonElement?.stringOrNull(): String? {
         return (this as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
     }
@@ -192,6 +236,11 @@ class SteamMaFileParser(
             "SteamID64",
             "sbeamid"
         )?.takeIf { it.isSteamId64() }
+    }
+
+    private fun JsonObject.localSteamIdAny(): String? {
+        return stringAny("monica_local_steamid", "monicaLocalSteamId")
+            ?.takeIf { it.isMonicaLocalSteamId() }
     }
 
     private fun JsonObject.preferredSharedSecret(): Pair<String, SharedSecretSource>? {
@@ -320,12 +369,117 @@ class SteamMaFileParser(
             ?.value
     }
 
+    private fun String.steamIdFromSteamLoginSecure(): String? {
+        return substringBefore("||", "")
+            .takeIf { it.isSteamId64() }
+    }
+
     private fun String.isSteamId64(): Boolean {
-        return matches(Regex("""7656119\d{10}"""))
+        return isSteamId64Value()
+    }
+
+    private fun String.isMonicaLocalSteamId(): Boolean {
+        return startsWith(MONICA_LOCAL_STEAM_ID_PREFIX) &&
+            removePrefix(MONICA_LOCAL_STEAM_ID_PREFIX).matches(Regex("""[0-9a-f]{16,64}"""))
+    }
+
+    private fun String?.normalizedSteamIdOverride(): String? {
+        val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (value.isSteamId64()) return value
+        val accountId = value
+            .takeIf { it.matches(Regex("""\d{1,10}""")) }
+            ?.toLongOrNull()
+            ?.takeIf { it in 1L..STEAM_ACCOUNT_ID32_MAX }
+        return accountId?.let { (STEAM_ID64_BASE + it).toString() }
+            ?: error("Invalid SteamID")
+    }
+
+    private fun JsonObject.rawJsonForSteamId(originalJson: String, steamId: String): String {
+        val hasRealSteamId = steamId.isSteamId64()
+        val alreadyHasRealSteamId = steamIdAny() != null
+        val hasMonicaMissingMarker =
+            containsKey("monica_missing_steamid") || containsKey("monicaMissingSteamId") ||
+                containsKey("monica_local_steamid") || containsKey("monicaLocalSteamId")
+        if (hasRealSteamId && alreadyHasRealSteamId && !hasMonicaMissingMarker) {
+            return originalJson
+        }
+
+        val enriched = JsonObject(toMutableMap().apply {
+            if (hasRealSteamId) {
+                removeMissingSteamIdMarkers()
+                if (!alreadyHasRealSteamId) {
+                    put("steamid", JsonPrimitive(steamId))
+                }
+            } else {
+                removeSteamIdFields()
+                put("monica_missing_steamid", JsonPrimitive(true))
+                put("monica_local_steamid", JsonPrimitive(steamId))
+            }
+        })
+        return json.encodeToString(enriched)
+    }
+
+    private fun MutableMap<String, JsonElement>.removeMissingSteamIdMarkers() {
+        remove("monica_missing_steamid")
+        remove("monicaMissingSteamId")
+        remove("monica_local_steamid")
+        remove("monicaLocalSteamId")
+    }
+
+    private fun MutableMap<String, JsonElement>.removeSteamIdFields() {
+        STEAM_ID_KEYS.forEach(::remove)
+        removeMissingSteamIdMarkers()
+        val session = (this["Session"] as? JsonObject)?.toMutableMap()
+            ?: (this["session"] as? JsonObject)?.toMutableMap()
+        if (session != null) {
+            STEAM_ID_KEYS.forEach(session::remove)
+            if (containsKey("Session")) {
+                this["Session"] = JsonObject(session)
+            } else {
+                this["session"] = JsonObject(session)
+            }
+        }
+    }
+
+    private fun generateLocalSteamId(
+        accountName: String,
+        sharedSecret: String,
+        identitySecret: String?,
+        tokenGid: String?,
+        revocationCode: String?
+    ): String {
+        val material = listOf(
+            accountName,
+            sharedSecret,
+            identitySecret.orEmpty(),
+            tokenGid.orEmpty(),
+            revocationCode.orEmpty()
+        ).joinToString("|")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(material.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return MONICA_LOCAL_STEAM_ID_PREFIX + digest.take(24)
     }
 
     private companion object {
         private const val STEAM_SECRET_BYTES = 20
         private const val BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        private const val STEAM_ID64_BASE = 76561197960265728L
+        private const val STEAM_ACCOUNT_ID32_MAX = 4_294_967_295L
+        private const val MONICA_LOCAL_STEAM_ID_PREFIX = "monica-missing-steamid-"
+        private val STEAM_ID_KEYS = listOf(
+            "steamid",
+            "steam_id",
+            "SteamID",
+            "steam64",
+            "steam_id64",
+            "steamID64",
+            "SteamID64",
+            "sbeamid"
+        )
     }
+}
+
+private fun String.isSteamId64Value(): Boolean {
+    return matches(Regex("""7656119\d{10}"""))
 }
