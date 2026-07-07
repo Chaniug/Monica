@@ -898,6 +898,7 @@
     <string name="steam_qr_album_select">相册选择</string>
     <string name="steam_qr_invalid_link">无效的 Steam 二维码链接</string>
     <string name="steam_add_method_mafile">导入 maFile</string>
+    <string name="steam_add_method_key_only">仅使用密钥导入验证码</string>
     <string name="steam_add_method_login">登录 Steam</string>
     <string name="steam_add_method_qr_login">二维码登录 Steam</string>
     <string name="steam_more_options_with_confirmations">更多，%1$d 项待确认交易</string>
@@ -931,6 +932,8 @@
     <string name="steam_confirmation_item_image">确认项目图片</string>
     <string name="steam_no_confirmation_session">没有可用的交易确认会话</string>
     <string name="steam_no_confirmation_missing_steamid">缺少 SteamID，这个验证器只能显示验证码。</string>
+    <string name="steam_no_confirmation_missing_identity_secret">无法使用交易确认：这个验证器缺少 identity_secret。如果要在 Monica 里批准交易，请导入完整 maFile。</string>
+    <string name="steam_no_confirmation_missing_session_detail">无法使用交易确认：缺少 Steam 登录会话。请在详情页重新绑定账号后再试。</string>
     <string name="steam_no_confirmations">暂无待确认项目</string>
     <string name="steam_approve_login_title">批准 Steam 登录</string>
     <string name="steam_reject_login_title">拒绝 Steam 登录</string>
@@ -939,6 +942,8 @@
     <string name="steam_reject_qr_login_title">拒绝 Steam 二维码登录</string>
     <string name="steam_no_login_session">没有可用的登录批准会话</string>
     <string name="steam_no_login_missing_steamid">缺少 SteamID，仅验证码验证器不能用于登录批准。</string>
+    <string name="steam_no_login_missing_shared_secret">无法使用登录批准：缺少 shared_secret。请导入完整 Steam 验证器或重新添加账号。</string>
+    <string name="steam_no_login_missing_session_detail">无法使用登录批准：缺少 Steam 登录会话。请在详情页重新绑定账号后再扫码。</string>
     <string name="steam_no_pending_logins">暂无待批准登录</string>
     <string name="steam_no_authorized_device_session">没有可用的已授权设备会话</string>
     <string name="steam_no_authorized_devices">暂无已授权设备</string>
@@ -962,6 +967,10 @@
     <string name="steam_mafile_button">maFile</string>
     <string name="steam_manifest_button">manifest.json</string>
     <string name="steam_no_mafile_selected">未选择 maFile</string>
+    <string name="steam_key_only_title">仅导入 Steam 验证码</string>
+    <string name="steam_key_only_desc">输入备注、账号和 shared_secret。Monica 只会导入 Steam Guard 验证码令牌，交易确认、扫码批准和已授权设备都会保持禁用。</string>
+    <string name="steam_key_only_secret_label">shared_secret 密钥</string>
+    <string name="steam_key_only_import_button">仅导入验证码</string>
     <string name="steam_mafile_steamid_completion_title">缺少 SteamID？</string>
     <string name="steam_mafile_steamid_completion_desc">有些 maFile 只包含验证器密钥。如果导入提示缺少 SteamID，可以在下面填写 SteamID64 或 32 位 Account ID。也可以使用 Steam 登录直接添加账号。</string>
     <string name="steam_mafile_code_only_desc">也可以不填 SteamID 继续导入，但这个账号将只显示 Steam Guard 验证码，交易确认、登录批准、已授权设备和远程移除都会保持禁用。</string>
@@ -994,6 +1003,10 @@
     <string name="steam_steamid_completion_code_only_done">SteamID 已补全。由于缺少交易确认密钥，这个验证器仍然只支持验证码。</string>
     <string name="steam_steamid_completion_duplicate">这个 Steam 账号已经存在于 Monica。</string>
     <string name="steam_steamid_completion_missing_account">这个 Steam 验证器已经不可用。</string>
+    <string name="steam_account_rebind_action">重新绑定账号</string>
+    <string name="steam_account_rebind_login_title">重新绑定 Steam 账号</string>
+    <string name="steam_account_rebind_login_message">请登录这个验证器对应的 Steam 账号。Monica 只会刷新 SteamID、设备和会话信息，不会替换令牌。</string>
+    <string name="steam_account_rebind_done">Steam 账号已重新绑定，验证器令牌未被替换。</string>
     <string name="steam_import_button">导入</string>
     <string name="steam_login_title">Steam 登录</string>
     <string name="steam_qr_login_import_title">Steam 二维码登录</string>
@@ -1012,6 +1025,9 @@
     <string name="steam_activation_email_message">Steam 已发送邮箱激活码，请输入该激活码完成 Steam Guard 绑定。</string>
     <string name="steam_activation_sms_message">Steam 已发送短信激活码，请输入该激活码完成 Steam Guard 绑定。</string>
     <string name="steam_code_label">验证码</string>
+    <string name="steam_use_monica_code">使用 Monica 验证码</string>
+    <string name="steam_authenticator_code_picker_title">选择 Steam 验证器</string>
+    <string name="steam_authenticator_code_picker_empty">Monica 中没有 Steam 验证器</string>
     <string name="steam_submit_code_button">提交</string>
     <string name="steam_account_imported">已导入 Steam 账号</string>
     <string name="steam_account_imported_code_only">已导入仅验证码 Steam 验证器</string>

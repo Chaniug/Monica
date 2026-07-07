@@ -98,6 +98,12 @@ class SteamLoginImportService(
                 isAddAuthenticatorActivationType(confirmationType)
         }
 
+        fun isSteamGuardCodeChallengeType(confirmationType: Int): Boolean {
+            return confirmationType == AUTH_CODE_TYPE_DEVICE ||
+                confirmationType == LEGACY_CODE_TYPE_TWO_FACTOR ||
+                confirmationType == REPLACE_CODE_TYPE_GENERIC
+        }
+
         fun isPollingChallengeType(confirmationType: Int): Boolean {
             return confirmationType == AUTH_CODE_TYPE_DEVICE_CONFIRMATION ||
                 confirmationType == AUTH_CODE_TYPE_EMAIL_CONFIRMATION

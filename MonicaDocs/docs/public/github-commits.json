@@ -1,12 +1,16 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-07T02:32:43.328Z",
+  "generatedAt": "2026-07-06T21:46:54.848Z",
   "range": {
-    "from": "2025-07-08",
-    "to": "2026-07-07"
+    "from": "2025-07-07",
+    "to": "2026-07-06"
   },
   "activity": [
+    {
+      "date": "2025-07-07",
+      "count": 0
+    },
     {
       "date": "2025-07-08",
       "count": 0
@@ -1460,139 +1464,28 @@
       "count": 9
     },
     {
-      "date": "2026-06-07",
-      "count": 2
-    },
-    {
-      "date": "2026-06-08",
-      "count": 3
-    },
-    {
-      "date": "2026-06-09",
-      "count": 2
-    },
-    {
-      "date": "2026-06-10",
-      "count": 0
-    },
-    {
-      "date": "2026-06-11",
-      "count": 1
-    },
-    {
-      "date": "2026-06-12",
-      "count": 0
-    },
-    {
-      "date": "2026-06-13",
-      "count": 2
-    },
-    {
-      "date": "2026-06-14",
-      "count": 0
-    },
-    {
-      "date": "2026-06-15",
-      "count": 1
-    },
-    {
-      "date": "2026-06-16",
-      "count": 0
-    },
-    {
-      "date": "2026-06-17",
-      "count": 3
-    },
-    {
-      "date": "2026-06-18",
-      "count": 0
-    },
-    {
-      "date": "2026-06-19",
-      "count": 0
-    },
-    {
-      "date": "2026-06-20",
-      "count": 1
-    },
-    {
-      "date": "2026-06-21",
-      "count": 7
-    },
-    {
-      "date": "2026-06-22",
-      "count": 0
-    },
-    {
-      "date": "2026-06-23",
-      "count": 0
-    },
-    {
-      "date": "2026-06-24",
-      "count": 2
-    },
-    {
-      "date": "2026-06-25",
-      "count": 5
-    },
-    {
-      "date": "2026-06-26",
-      "count": 0
-    },
-    {
-      "date": "2026-06-27",
-      "count": 0
-    },
-    {
-      "date": "2026-06-28",
-      "count": 0
-    },
-    {
-      "date": "2026-06-29",
-      "count": 0
-    },
-    {
-      "date": "2026-06-30",
-      "count": 0
-    },
-    {
-      "date": "2026-07-01",
-      "count": 0
-    },
-    {
-      "date": "2026-07-02",
-      "count": 0
-    },
-    {
-      "date": "2026-07-03",
-      "count": 49
-    },
-    {
-      "date": "2026-07-04",
-      "count": 9
-    },
-    {
-      "date": "2026-07-05",
-      "count": 5
-    },
-    {
       "date": "2026-07-06",
       "count": 0
-    },
-    {
-      "date": "2026-07-07",
-      "count": 1
     }
   ],
   "latest": [
     {
-      "sha": "1505326ad92cdc280003120ae956864e6790fc9a",
-      "shortSha": "1505326",
-      "message": "Improve Steam account binding and token import",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-07T00:40:07Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/1505326ad92cdc280003120ae956864e6790fc9a"
+      "sha": "80feb0314b01eedf6e116fda4c2e8daa1829f862",
+      "shortSha": "80feb03",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-05T21:19:18Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/80feb0314b01eedf6e116fda4c2e8daa1829f862"
+    },
+    {
+      "sha": "feb615b5c66206b29fdb0f5184403397f80950e9",
+      "shortSha": "feb615b",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-05T16:47:50Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/feb615b5c66206b29fdb0f5184403397f80950e9"
     },
     {
       "sha": "4f1d7c0f75b49757dd040e02f4c769eb6536a6e3",
@@ -1640,40 +1533,13 @@
       "url": "https://github.com/Monica-Pass/Monica/commit/68446a4f7b2171e56e720ad4f84908129cd53601"
     },
     {
-      "sha": "53d2f8cc631c8bc34c78956914619148ee7abdcd",
-      "shortSha": "53d2f8c",
-      "message": "Use ML Kit scanning and split Android APKs",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T14:51:22Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/53d2f8cc631c8bc34c78956914619148ee7abdcd"
-    },
-    {
-      "sha": "12a134af7fdd7acee4d1aad4c5cda12f23905da0",
-      "shortSha": "12a134a",
-      "message": "Restore Steam QR scan flow",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T09:49:17Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/12a134af7fdd7acee4d1aad4c5cda12f23905da0"
-    },
-    {
-      "sha": "0b9e7c11457609e75776cf3317271ddeb0ac7ce9",
-      "shortSha": "0b9e7c1",
-      "message": "Fix Steam restore sessions and QR scan validation",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T09:35:52Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/0b9e7c11457609e75776cf3317271ddeb0ac7ce9"
-    },
-    {
-      "sha": "04d138ebeef7e5140264f7fb6e9fd488a824fc88",
-      "shortSha": "04d138e",
-      "message": "Improve Steam account import flow",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-04T05:27:41Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/04d138ebeef7e5140264f7fb6e9fd488a824fc88"
+      "sha": "463fc7e3009f19bf556a96677bcf122720f6f9ab",
+      "shortSha": "463fc7e",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-07-04T21:13:32Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/463fc7e3009f19bf556a96677bcf122720f6f9ab"
     }
   ]
 }
