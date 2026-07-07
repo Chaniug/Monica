@@ -9,14 +9,5 @@ sidebar: false
 article: false
 ---
 
-# エコシステム
+<EcosystemLanding />
 
-::: note
-このページでは、Monica エコシステムの各クライアントと関連プロジェクトをまとめて確認できます。
-:::
-
-## エントリーポイント
-
-- [Android 版の紹介](/ja/03.Ecosystem/01.Android/AndroidReadme)
-- [iOS 版の紹介](/ja/03.Ecosystem/02.iOS/iOSReadme)
-- [Windows 版の紹介](/ja/03.Ecosystem/03.Windows/WindowsReadme)

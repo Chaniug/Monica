@@ -9,14 +9,5 @@ sidebar: false
 article: false
 ---
 
-# Экосистема Monica
+<EcosystemLanding />
 
-::: note Кратко
-Этот раздел знакомит с клиентами экосистемы Monica для Android, iOS и Windows. Каждая страница оформлена в стиле README и содержит позиционирование продукта, возможности, технические сведения и заметки для разработки.
-:::
-
-## Разделы
-
-- [Monica for Android](/ru/03.Ecosystem/01.Android/AndroidReadme)
-- [Monica for iOS](/ru/03.Ecosystem/02.iOS/iOSReadme)
-- [Monica for Windows](/ru/03.Ecosystem/03.Windows/WindowsReadme)

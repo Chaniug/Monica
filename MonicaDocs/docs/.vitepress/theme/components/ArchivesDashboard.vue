@@ -489,9 +489,9 @@ function formatShortDate(value?: string) {
 }
 
 :global(.tk-archives__header),
-:global(.tk-archives > .vp-doc),
+:global(.tk-archives .tk-doc > .vp-doc),
 :global(.tk-archives__timeline) {
-  display: none;
+  display: none !important;
 }
 
 @media (max-width: 900px) {

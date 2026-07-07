@@ -1317,27 +1317,27 @@
     },
     {
       "date": "2026-05-30",
-      "count": 30
+      "count": 18
     },
     {
       "date": "2026-05-31",
-      "count": 6
-    },
-    {
-      "date": "2026-06-01",
-      "count": 6
-    },
-    {
-      "date": "2026-06-02",
       "count": 3
     },
     {
+      "date": "2026-06-01",
+      "count": 5
+    },
+    {
+      "date": "2026-06-02",
+      "count": 2
+    },
+    {
       "date": "2026-06-03",
-      "count": 6
+      "count": 4
     },
     {
       "date": "2026-06-04",
-      "count": 9
+      "count": 5
     },
     {
       "date": "2026-06-05",
@@ -1457,7 +1457,7 @@
     },
     {
       "date": "2026-07-04",
-      "count": 16
+      "count": 14
     },
     {
       "date": "2026-07-05",
@@ -1497,15 +1497,6 @@
       "url": "https://github.com/Monica-Pass/Monica/commit/4f1d7c0f75b49757dd040e02f4c769eb6536a6e3"
     },
     {
-      "sha": "ce184e311141d5bca7f10a6bcaabb853231a2b12",
-      "shortSha": "ce184e3",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T15:42:22Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/ce184e311141d5bca7f10a6bcaabb853231a2b12"
-    },
-    {
       "sha": "e992b9eca2470fd18d0e61978ee0277d8c6a08c3",
       "shortSha": "e992b9e",
       "message": "Show Steam recovery code in details",
@@ -1533,15 +1524,6 @@
       "url": "https://github.com/Monica-Pass/Monica/commit/e82850daa93d50ec233a35ed92d8ac0165013b98"
     },
     {
-      "sha": "8ece2e753274a6a1f2926b71586da9dd5e191adf",
-      "shortSha": "8ece2e7",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T14:28:03Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/8ece2e753274a6a1f2926b71586da9dd5e191adf"
-    },
-    {
       "sha": "68446a4f7b2171e56e720ad4f84908129cd53601",
       "shortSha": "68446a4",
       "message": "Improve Steam maFile storage and recovery",
@@ -1561,3 +1543,4 @@
     }
   ]
 }
+

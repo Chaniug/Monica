@@ -6,7 +6,7 @@ export default defineConfig({
   cleanUrls: false,
   lastUpdated: true,
   sitemap: {
-    hostname: "https://Monica-Pass.github.io/Monica",
+    hostname: "https://Monica-Pass.github.io/Monica/",
     transformItems: (items) => {
       const permalinkItemBak = [];
       const permalinks = globalThis.VITEPRESS_CONFIG?.site?.themeConfig?.permalinks;
@@ -18,8 +18,7 @@ export default defineConfig({
     },
   },
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/teek-logo-mini.svg" }],
-    ["link", { rel: "icon", type: "image/png", href: "/teek-logo-mini.png" }],
+    ["link", { rel: "icon", type: "image/png", href: "/themepng.png" }],
     ["meta", { property: "og:type", content: "website" }],
   ],
   markdown: {
@@ -28,7 +27,7 @@ export default defineConfig({
   },
   themeConfig: {
     logo: "/themepng.png",
-    socialLinks: [{ icon: "github", link: "https://github.com/Monica-Pass/Monica" }],
+    socialLinks: [{ icon: "github", link: "https://github.com/JoyinJoester/Monica" }],
     search: { provider: "local" },
   },
   vite: {

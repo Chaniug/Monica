@@ -9,14 +9,5 @@ sidebar: false
 article: false
 ---
 
-# Hệ sinh thái Monica
+<EcosystemLanding />
 
-::: note Tóm tắt
-Phần này giới thiệu các ứng dụng khách trong hệ sinh thái Monica trên Android, iOS và Windows. Mỗi trang được viết theo phong cách README, bao gồm định vị sản phẩm, năng lực hiện có, chi tiết kỹ thuật và ghi chú phát triển.
-:::
-
-## Lối vào
-
-- [Monica for Android](/vi/03.Ecosystem/01.Android/AndroidReadme)
-- [Monica for iOS](/vi/03.Ecosystem/02.iOS/iOSReadme)
-- [Monica for Windows](/vi/03.Ecosystem/03.Windows/WindowsReadme)

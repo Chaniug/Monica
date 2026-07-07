@@ -1,6 +1,7 @@
 <script setup lang="ts" name="TeekLayoutProvider">
 import Teek from "vitepress-theme-teek";
 import ArchivesDashboard from "./ArchivesDashboard.vue";
+import ContributeChart from "./ContributeChart.vue";
 import GitHubCommitsPanel from "./GitHubCommitsPanel.vue";
 import NotFound from "./404.vue";
 
@@ -10,6 +11,7 @@ import NotFound from "./404.vue";
   <Teek.Layout>
     <template #teek-archives-top-before>
       <GitHubCommitsPanel />
+      <ContributeChart />
       <ArchivesDashboard />
     </template>
 

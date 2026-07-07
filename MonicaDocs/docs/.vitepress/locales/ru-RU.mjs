@@ -21,7 +21,7 @@ export default defineConfig({
     docFooter: { prev: "Предыдущая страница", next: "Следующая страница" },
     nav: [
       { text: "Главная", link: "/ru/" },
-      { text: "Экосистема", link: "/ru/03.Ecosystem/Menu" },
+      { text: "Эко-система", link: "/ru/ecosystem" },
       { text: "Руководство", link: "/ru/guide/intro" },
       { text: "Документация", link: "/ru/reference/catalogue" },
       {
