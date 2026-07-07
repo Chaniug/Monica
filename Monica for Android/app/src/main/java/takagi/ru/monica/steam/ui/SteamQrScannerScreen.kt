@@ -184,6 +184,7 @@ private fun SteamQrScannerBottomContent(
     onSelectAccount: () -> Unit,
     onPickFromGallery: () -> Unit
 ) {
+    val unavailableReason = selectedAccount?.takeUnless { it.canApproveLogins }?.steamQrUnavailableText()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -224,6 +225,15 @@ private fun SteamQrScannerBottomContent(
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.SemiBold
                 )
+                if (unavailableReason != null) {
+                    Text(
+                        text = unavailableReason,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
@@ -359,6 +369,7 @@ private fun SteamQrAccountOptionRow(
         MaterialTheme.colorScheme.onSurface
     }
     val displayName = account.displayNameForQr()
+    val unavailableReason = account.takeUnless { it.canApproveLogins }?.steamQrUnavailableText()
 
     Surface(
         modifier = Modifier
@@ -395,11 +406,16 @@ private fun SteamQrAccountOptionRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 val secondary = account.accountName.ifBlank { account.steamId }
-                if (secondary.isNotBlank() && secondary != displayName) {
+                val secondaryText = unavailableReason ?: secondary.takeIf { it.isNotBlank() && it != displayName }
+                if (!secondaryText.isNullOrBlank()) {
                     Text(
-                        text = secondary,
+                        text = secondaryText,
                         style = MaterialTheme.typography.labelMedium,
-                        color = contentColor.copy(alpha = 0.68f),
+                        color = if (unavailableReason == null) {
+                            contentColor.copy(alpha = 0.68f)
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -419,4 +435,15 @@ private fun SteamQrAccountOptionRow(
 
 private fun SteamAccount.displayNameForQr(): String {
     return displayName.ifBlank { accountName.ifBlank { steamId } }
+}
+
+@Composable
+private fun SteamAccount.steamQrUnavailableText(): String {
+    return when {
+        !hasRealSteamId -> stringResource(R.string.steam_no_login_missing_steamid)
+        sharedSecret.isBlank() -> stringResource(R.string.steam_no_login_missing_shared_secret)
+        accessToken.isNullOrBlank() && refreshToken.isNullOrBlank() ->
+            stringResource(R.string.steam_no_login_missing_session_detail)
+        else -> stringResource(R.string.steam_no_login_session)
+    }
 }

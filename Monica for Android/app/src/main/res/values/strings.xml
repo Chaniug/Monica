@@ -905,6 +905,7 @@
     <string name="steam_qr_album_select">Album</string>
     <string name="steam_qr_invalid_link">Invalid Steam QR link</string>
     <string name="steam_add_method_mafile">Import maFile</string>
+    <string name="steam_add_method_key_only">Import code from key only</string>
     <string name="steam_add_method_login">Sign in with Steam</string>
     <string name="steam_add_method_qr_login">Sign in with QR code</string>
     <string name="steam_more_options_with_confirmations">More options, %1$d pending confirmation(s)</string>
@@ -938,6 +939,8 @@
     <string name="steam_confirmation_item_image">Confirmation item image</string>
     <string name="steam_no_confirmation_session">No confirmation session</string>
     <string name="steam_no_confirmation_missing_steamid">Missing SteamID. This authenticator can only show codes.</string>
+    <string name="steam_no_confirmation_missing_identity_secret">Confirmations unavailable: this authenticator has no identity_secret. Import a complete maFile if you want Monica to approve trades.</string>
+    <string name="steam_no_confirmation_missing_session_detail">Confirmations unavailable: missing Steam login session. Rebind this account from the detail page, then try again.</string>
     <string name="steam_no_confirmations">No confirmations</string>
     <string name="steam_approve_login_title">Approve Steam login</string>
     <string name="steam_reject_login_title">Reject Steam login</string>
@@ -946,6 +949,8 @@
     <string name="steam_reject_qr_login_title">Reject Steam QR login</string>
     <string name="steam_no_login_session">No login session</string>
     <string name="steam_no_login_missing_steamid">Missing SteamID. Login approval is unavailable for this code-only authenticator.</string>
+    <string name="steam_no_login_missing_shared_secret">Login approval unavailable: missing shared_secret. Import a complete Steam authenticator or re-add this account.</string>
+    <string name="steam_no_login_missing_session_detail">Login approval unavailable: missing Steam login session. Rebind this account from the detail page, then scan again.</string>
     <string name="steam_no_pending_logins">No pending logins</string>
     <string name="steam_no_authorized_device_session">No authorized device session</string>
     <string name="steam_no_authorized_devices">No authorized devices</string>
@@ -969,6 +974,10 @@
     <string name="steam_mafile_button">maFile</string>
     <string name="steam_manifest_button">manifest.json</string>
     <string name="steam_no_mafile_selected">No maFile selected</string>
+    <string name="steam_key_only_title">Import Steam code only</string>
+    <string name="steam_key_only_desc">Enter a remark, account and shared secret. Monica will only import the Steam Guard code token; confirmations, QR approval and authorized devices stay disabled.</string>
+    <string name="steam_key_only_secret_label">Shared secret</string>
+    <string name="steam_key_only_import_button">Import code only</string>
     <string name="steam_mafile_steamid_completion_title">Missing SteamID?</string>
     <string name="steam_mafile_steamid_completion_desc">Some maFiles only contain the authenticator secret. If import reports a missing SteamID, enter SteamID64 or the 32-bit Account ID below. You can also use Steam login to add the account directly.</string>
     <string name="steam_mafile_code_only_desc">You can continue without SteamID, but this account will only show Steam Guard codes. Confirmations, login approval, authorized devices, and remote removal stay disabled.</string>
@@ -1001,6 +1010,10 @@
     <string name="steam_steamid_completion_code_only_done">SteamID completed. This authenticator still only supports codes because it has no confirmation secret.</string>
     <string name="steam_steamid_completion_duplicate">This Steam account already exists in Monica.</string>
     <string name="steam_steamid_completion_missing_account">This Steam authenticator is no longer available.</string>
+    <string name="steam_account_rebind_action">Rebind account</string>
+    <string name="steam_account_rebind_login_title">Rebind Steam account</string>
+    <string name="steam_account_rebind_login_message">Log in to the Steam account that belongs to this authenticator. Monica will refresh SteamID, device and session information without replacing the token.</string>
+    <string name="steam_account_rebind_done">Steam account rebound. The authenticator token was not replaced.</string>
     <string name="steam_import_button">Import</string>
     <string name="steam_login_title">Steam login</string>
     <string name="steam_qr_login_import_title">Steam QR login</string>
@@ -1019,6 +1032,9 @@
     <string name="steam_activation_email_message">Steam sent an activation code by email. Enter it to finish binding Steam Guard.</string>
     <string name="steam_activation_sms_message">Steam sent an SMS activation code. Enter it to finish binding Steam Guard.</string>
     <string name="steam_code_label">Code</string>
+    <string name="steam_use_monica_code">Use Monica code</string>
+    <string name="steam_authenticator_code_picker_title">Select Steam authenticator</string>
+    <string name="steam_authenticator_code_picker_empty">No Steam authenticators in Monica</string>
     <string name="steam_submit_code_button">Submit</string>
     <string name="steam_account_imported">Steam account imported</string>
     <string name="steam_account_imported_code_only">Steam code-only authenticator imported</string>

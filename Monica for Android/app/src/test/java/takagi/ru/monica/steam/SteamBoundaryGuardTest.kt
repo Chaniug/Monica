@@ -744,6 +744,217 @@ class SteamBoundaryGuardTest {
     }
 
     @Test
+    fun steamLoginChallengeCanPickExistingMonicaSteamCode() {
+        val screenSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+        val loginServiceSource = projectFile("app/src/main/java/takagi/ru/monica/steam/service/SteamLoginImportService.kt")
+            .readText()
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+
+        assertTrue(screenSource.contains("availableCodeAccounts = uiState.accounts"))
+        assertTrue(viewModelSource.contains("val canUseMonicaCode: Boolean"))
+        assertTrue(viewModelSource.contains("canUseMonicaCode = SteamLoginImportService.isSteamGuardCodeChallengeType(confirmationType)"))
+
+        val steamGuardTypeBlock = loginServiceSource
+            .substringAfter("fun isSteamGuardCodeChallengeType(confirmationType: Int): Boolean")
+            .substringBefore("fun isPollingChallengeType")
+        assertTrue(steamGuardTypeBlock.contains("AUTH_CODE_TYPE_DEVICE"))
+        assertTrue(steamGuardTypeBlock.contains("LEGACY_CODE_TYPE_TWO_FACTOR"))
+        assertFalse(steamGuardTypeBlock.contains("AUTH_CODE_TYPE_EMAIL"))
+        assertFalse(steamGuardTypeBlock.contains("ADD_AUTHENTICATOR_SMS_ACTIVATION_CODE"))
+        assertFalse(steamGuardTypeBlock.contains("ADD_AUTHENTICATOR_EMAIL_ACTIVATION_CODE"))
+
+        val qrLoginDialog = screenSource
+            .substringAfter("private fun SteamQrLoginImportDialog(")
+            .substringBefore("@Composable\nprivate fun SteamAuthenticatorCodePickerBottomSheet(")
+        assertTrue(qrLoginDialog.contains("availableCodeAccounts: List<SteamAccount>"))
+        assertTrue(qrLoginDialog.contains("legacyTotpItems by passwordDatabase.secureItemDao()"))
+        assertTrue(qrLoginDialog.contains("getActiveItemsByType(ItemType.TOTP)"))
+        assertTrue(qrLoginDialog.contains("var showMonicaCodePicker by remember"))
+        assertTrue(qrLoginDialog.contains("pendingChallenge?.canUseMonicaCode == true"))
+        assertTrue(qrLoginDialog.contains("hasLegacySteamCode"))
+        assertTrue(qrLoginDialog.contains("R.string.steam_use_monica_code"))
+        assertTrue(qrLoginDialog.contains("SteamAuthenticatorCodePickerBottomSheet("))
+        assertTrue(qrLoginDialog.contains("legacyTotpItems = legacyTotpItems"))
+        assertTrue(qrLoginDialog.contains("challengeCode = code"))
+
+        val loginDialog = screenSource
+            .substringAfter("private fun SteamLoginImportDialog(")
+            .substringBefore("if (showSteamPasswordPicker && pendingChallenge == null)")
+        assertTrue(loginDialog.contains("availableCodeAccounts: List<SteamAccount>"))
+        assertTrue(loginDialog.contains("legacyTotpItems by passwordDatabase.secureItemDao()"))
+        assertTrue(loginDialog.contains("getActiveItemsByType(ItemType.TOTP)"))
+        assertTrue(loginDialog.contains("var showMonicaCodePicker by remember"))
+        assertTrue(loginDialog.contains("pendingChallenge?.canUseMonicaCode == true"))
+        assertTrue(loginDialog.contains("hasLegacySteamCode"))
+        assertTrue(loginDialog.contains("R.string.steam_use_monica_code"))
+        assertTrue(loginDialog.contains("SteamAuthenticatorCodePickerBottomSheet("))
+        assertTrue(loginDialog.contains("legacyTotpItems = legacyTotpItems"))
+        assertTrue(loginDialog.contains("challengeCode = code"))
+
+        val codePicker = screenSource
+            .substringAfter("private fun SteamAuthenticatorCodePickerBottomSheet(")
+            .substringBefore("@Composable\nprivate fun SteamQrLoginCodeImage(")
+        assertTrue(codePicker.contains("MonicaModalBottomSheet("))
+        assertTrue(codePicker.contains("rememberTotpTickerMillis(smooth = true)"))
+        assertTrue(codePicker.contains("SteamTotp.generateAuthCode(account.sharedSecret, currentSeconds)"))
+        assertTrue(codePicker.contains("SteamAvatarImage(account = account"))
+        assertTrue(codePicker.contains("legacyTotpItems: List<SecureItem>"))
+        assertTrue(codePicker.contains("toLegacySteamAuthenticatorCodeSource(securityManager, currentSeconds)"))
+        assertTrue(codePicker.contains("LegacySteamAuthenticatorCodePickerRow("))
+        assertTrue(codePicker.contains("TotpDataResolver.parseStoredItemData"))
+        assertTrue(codePicker.contains("TotpGenerator.generateOtp(normalized, currentSeconds = currentSeconds)"))
+        assertTrue(codePicker.contains("normalized.otpType != OtpType.STEAM"))
+        assertTrue(codePicker.contains("length == 5 && any { it.isLetter() }"))
+        assertTrue(codePicker.contains("Icons.Default.Search"))
+        assertTrue(codePicker.contains("R.string.search_authenticator"))
+        assertTrue(codePicker.contains("R.string.steam_authenticator_code_picker_title"))
+        assertTrue(codePicker.contains("R.string.steam_authenticator_code_picker_empty"))
+
+        assertTrue(defaultStrings.contains("steam_use_monica_code"))
+        assertTrue(defaultStrings.contains("steam_authenticator_code_picker_title"))
+        assertTrue(zhStrings.contains("steam_use_monica_code"))
+        assertTrue(zhStrings.contains("steam_authenticator_code_picker_title"))
+    }
+
+    @Test
+    fun steamDetailCanRebindAccountWithoutReplacingToken() {
+        val screenSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+
+        val detailTopBarCall = screenSource
+            .substringAfter("SteamDetailTopBar(")
+            .substringBefore(")\\n                } else")
+        assertTrue(detailTopBarCall.contains("onRebindAccount = animatedDetailAccount?.let"))
+        assertTrue(detailTopBarCall.contains("steamAccountRebindAccountId = account.id"))
+
+        val detailTopBar = screenSource
+            .substringAfter("private fun SteamDetailTopBar(")
+            .substringBefore("@Composable\nprivate fun SteamTopActionsMenu(")
+        assertTrue(detailTopBar.contains("onRebindAccount: (() -> Unit)? = null"))
+        assertTrue(detailTopBar.contains("Icons.Default.Login"))
+        assertTrue(detailTopBar.contains("R.string.steam_account_rebind_action"))
+        assertTrue(detailTopBar.indexOf("if (onRebindAccount != null)") < detailTopBar.indexOf("if (onRemoveAuthenticator != null)"))
+
+        val rebindDialog = screenSource
+            .substringAfter("steamAccountRebindAccount?.let { account ->")
+            .substringBefore("uiState.pendingMaFileSteamIdRequest")
+        assertTrue(rebindDialog.contains("SteamLoginImportDialog("))
+        assertTrue(rebindDialog.contains("viewModel.beginSteamAccountRebindLogin(account.id, userName, password)"))
+        assertTrue(rebindDialog.contains("R.string.steam_account_rebind_login_title"))
+        assertTrue(rebindDialog.contains("R.string.steam_account_rebind_login_message"))
+        assertTrue(rebindDialog.contains("showRemarkField = false"))
+
+        assertTrue(viewModelSource.contains("fun beginSteamAccountRebindLogin(accountId: Long, userName: String, password: String)"))
+        assertTrue(viewModelSource.contains("pendingLoginRebindAccount = true"))
+        assertTrue(viewModelSource.contains("loginImportService.beginSessionLogin(userName, password)"))
+        assertTrue(viewModelSource.contains("val isRebind = pendingLoginRebindAccount"))
+        assertTrue(viewModelSource.contains("if (account.hasRealSteamId && !isRebind)"))
+        assertTrue(viewModelSource.contains("replaceExistingBinding = isRebind"))
+        assertTrue(viewModelSource.contains("return R.string.steam_account_rebind_done"))
+        assertTrue(viewModelSource.contains("sharedSecret = account.sharedSecret"))
+        assertTrue(viewModelSource.contains("identitySecret = account.identitySecret ?: loginPayload.identitySecret"))
+        assertTrue(viewModelSource.contains("val resolvedDeviceId = if (replaceExistingBinding)"))
+        assertTrue(viewModelSource.contains("persistCompletedSteamIdAccount(completed)"))
+
+        assertTrue(defaultStrings.contains("steam_account_rebind_action"))
+        assertTrue(defaultStrings.contains("steam_account_rebind_done"))
+        assertTrue(zhStrings.contains("steam_account_rebind_action"))
+        assertTrue(zhStrings.contains("steam_account_rebind_done"))
+    }
+
+    @Test
+    fun steamErrorsExplainMissingQrAndConfirmationRequirements() {
+        val screenSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val scannerSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamQrScannerScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+
+        assertTrue(screenSource.contains("steamLoginApprovalUnavailableText(account)"))
+        assertTrue(screenSource.contains("steamConfirmationUnavailableText(account)"))
+        assertTrue(screenSource.contains("loginApprovalUnavailableReason"))
+        assertTrue(screenSource.contains("enabled = loginApprovalUnavailableReason == null"))
+        assertTrue(scannerSource.contains("steamQrUnavailableText()"))
+        assertTrue(scannerSource.contains("R.string.steam_no_login_missing_shared_secret"))
+        assertTrue(scannerSource.contains("R.string.steam_no_login_missing_session_detail"))
+
+        assertTrue(viewModelSource.contains("private fun SteamAccount.loginApprovalUnavailableMessage(): String?"))
+        assertTrue(viewModelSource.contains("private fun SteamAccount.confirmationUnavailableMessage(): String?"))
+        assertTrue(viewModelSource.contains("sharedSecret.isBlank() -> appContext.getString(R.string.steam_no_login_missing_shared_secret)"))
+        assertTrue(viewModelSource.contains("identitySecret.isNullOrBlank() -> appContext.getString(R.string.steam_no_confirmation_missing_identity_secret)"))
+        assertTrue(viewModelSource.contains("account.loginApprovalUnavailableMessage()?.let"))
+        assertTrue(viewModelSource.contains("account.confirmationUnavailableMessage()?.let"))
+
+        listOf(
+            "steam_no_login_missing_shared_secret",
+            "steam_no_login_missing_session_detail",
+            "steam_no_confirmation_missing_identity_secret",
+            "steam_no_confirmation_missing_session_detail"
+        ).forEach { key ->
+            assertTrue(defaultStrings.contains(key))
+            assertTrue(zhStrings.contains(key))
+        }
+    }
+
+    @Test
+    fun steamAddDialogCanImportCodeOnlyFromSharedSecret() {
+        val screenSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val viewModelSource = projectFile("app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt")
+            .readText()
+            .replace("\r\n", "\n")
+        val defaultStrings = projectFile("app/src/main/res/values/strings.xml").readText()
+        val zhStrings = projectFile("app/src/main/res/values-zh/strings.xml").readText()
+
+        assertTrue(screenSource.contains("KEY_ONLY"))
+        assertTrue(screenSource.contains("onSelectKeyOnly = {"))
+        assertTrue(screenSource.contains("addAccountMethod = SteamAddAccountMethod.KEY_ONLY"))
+        assertTrue(screenSource.contains("SteamKeyOnlyImportDialog("))
+        assertTrue(screenSource.contains("viewModel.importCodeOnlyKey(displayName, accountName, sharedSecret)"))
+        assertTrue(screenSource.contains("R.string.steam_add_method_key_only"))
+        assertTrue(screenSource.contains("R.string.steam_key_only_title"))
+        assertTrue(screenSource.contains("R.string.steam_key_only_desc"))
+        assertTrue(screenSource.contains("R.string.steam_key_only_secret_label"))
+        assertTrue(screenSource.contains("val canImport = accountName.isNotBlank() && sharedSecret.isNotBlank()"))
+
+        assertTrue(viewModelSource.contains("fun importCodeOnlyKey(displayName: String, accountName: String, sharedSecret: String)"))
+        assertTrue(viewModelSource.contains("\"shared_secret\" to JsonPrimitive(sharedSecret.trim())"))
+        assertTrue(viewModelSource.contains("\"monica_missing_steamid\" to JsonPrimitive(true)"))
+        assertTrue(viewModelSource.contains("allowMissingSteamId = true"))
+        assertTrue(viewModelSource.contains("saveMaFilePayload(payload)"))
+        assertTrue(viewModelSource.contains("R.string.steam_account_imported_code_only"))
+
+        listOf(
+            "steam_add_method_key_only",
+            "steam_key_only_title",
+            "steam_key_only_desc",
+            "steam_key_only_secret_label",
+            "steam_key_only_import_button"
+        ).forEach { key ->
+            assertTrue(defaultStrings.contains(key))
+            assertTrue(zhStrings.contains(key))
+        }
+    }
+
+    @Test
     fun steamDockUsesFixedSteamLabelAndControllerIcon() {
         val bottomNavSource = projectFile("app/src/main/java/takagi/ru/monica/ui/main/navigation/BottomNavModel.kt")
             .readText()

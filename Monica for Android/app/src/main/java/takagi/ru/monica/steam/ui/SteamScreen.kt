@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Storage
@@ -162,6 +163,8 @@ import takagi.ru.monica.ui.navigation.easyNotesScreenEnter
 import takagi.ru.monica.ui.navigation.easyNotesScreenExit
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.rememberTotpTickerMillis
+import takagi.ru.monica.util.TotpDataResolver
+import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.SettingsManager
@@ -173,6 +176,12 @@ private const val STEAM_AVATAR_CACHE_TTL_MS = 3L * 24L * 60L * 60L * 1000L
 private const val STEAM_CONFIRMATION_IMAGE_TIMEOUT_MS = 4_000
 private const val STEAM_CONFIRMATION_IMAGE_CACHE_TTL_MS = 3L * 24L * 60L * 60L * 1000L
 
+private data class LegacySteamAuthenticatorCodeSource(
+    val item: SecureItem,
+    val totpData: TotpData,
+    val code: String
+)
+
 private enum class SteamSection(
     @StringRes val labelRes: Int,
     val icon: ImageVector
@@ -183,6 +192,7 @@ private enum class SteamSection(
 
 private enum class SteamAddAccountMethod {
     MAFILE,
+    KEY_ONLY,
     LOGIN,
     QR_LOGIN
 }
@@ -254,6 +264,8 @@ fun SteamScreen(
     var addAccountMethod by remember { mutableStateOf<SteamAddAccountMethod?>(null) }
     var steamIdCompletionAccountId by rememberSaveable { mutableStateOf<Long?>(null) }
     val steamIdCompletionAccount = uiState.accounts.firstOrNull { it.id == steamIdCompletionAccountId }
+    var steamAccountRebindAccountId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val steamAccountRebindAccount = uiState.accounts.firstOrNull { it.id == steamAccountRebindAccountId }
     var selectedTokenAccountIds by rememberSaveable { mutableStateOf<List<Long>>(emptyList()) }
     var lastSteamQrAccountId by remember { mutableStateOf(readLastSteamQrAccountId(context)) }
     var deleteRequest by remember { mutableStateOf<SteamDeleteAccountsRequest?>(null) }
@@ -440,6 +452,9 @@ fun SteamScreen(
     LaunchedEffect(uiState.message) {
         uiState.message?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            if (message == context.getString(R.string.steam_account_rebind_done)) {
+                steamAccountRebindAccountId = null
+            }
             viewModel.clearMessage()
         }
     }
@@ -504,6 +519,10 @@ fun SteamScreen(
                 showAddAccountDialog = false
                 addAccountMethod = SteamAddAccountMethod.MAFILE
             },
+            onSelectKeyOnly = {
+                showAddAccountDialog = false
+                addAccountMethod = SteamAddAccountMethod.KEY_ONLY
+            },
             onSelectLogin = {
                 showAddAccountDialog = false
                 addAccountMethod = SteamAddAccountMethod.LOGIN
@@ -525,8 +544,16 @@ fun SteamScreen(
                 )
             }
         }
+        SteamAddAccountMethod.KEY_ONLY -> SteamKeyOnlyImportDialog(
+            onDismissRequest = { addAccountMethod = null },
+            onImport = { displayName, accountName, sharedSecret ->
+                viewModel.importCodeOnlyKey(displayName, accountName, sharedSecret)
+                addAccountMethod = null
+            }
+        )
         SteamAddAccountMethod.LOGIN -> SteamLoginImportDialog(
             pendingChallenge = uiState.pendingLoginChallenge,
+            availableCodeAccounts = uiState.accounts,
             onDismissRequest = {
                 viewModel.cancelSteamLoginChallenge()
                 addAccountMethod = null
@@ -537,6 +564,7 @@ fun SteamScreen(
         SteamAddAccountMethod.QR_LOGIN -> SteamQrLoginImportDialog(
             pendingQrChallenge = uiState.pendingQrLoginChallenge,
             pendingChallenge = uiState.pendingLoginChallenge,
+            availableCodeAccounts = uiState.accounts,
             loading = uiState.loading,
             onDismissRequest = {
                 viewModel.cancelSteamLoginChallenge()
@@ -551,6 +579,7 @@ fun SteamScreen(
     steamIdCompletionAccount?.let { account ->
         SteamLoginImportDialog(
             pendingChallenge = uiState.pendingLoginChallenge,
+            availableCodeAccounts = uiState.accounts,
             onDismissRequest = {
                 viewModel.cancelSteamLoginChallenge()
                 steamIdCompletionAccountId = null
@@ -561,6 +590,24 @@ fun SteamScreen(
             onSubmitLoginCode = viewModel::submitSteamLoginCode,
             titleRes = R.string.steam_steamid_completion_login_title,
             descriptionRes = R.string.steam_steamid_completion_login_message,
+            showRemarkField = false
+        )
+    }
+
+    steamAccountRebindAccount?.let { account ->
+        SteamLoginImportDialog(
+            pendingChallenge = uiState.pendingLoginChallenge,
+            availableCodeAccounts = uiState.accounts,
+            onDismissRequest = {
+                viewModel.cancelSteamLoginChallenge()
+                steamAccountRebindAccountId = null
+            },
+            onBeginLogin = { userName, password, _ ->
+                viewModel.beginSteamAccountRebindLogin(account.id, userName, password)
+            },
+            onSubmitLoginCode = viewModel::submitSteamLoginCode,
+            titleRes = R.string.steam_account_rebind_login_title,
+            descriptionRes = R.string.steam_account_rebind_login_message,
             showRemarkField = false
         )
     }
@@ -839,6 +886,9 @@ fun SteamScreen(
                         },
                         onRemoveAuthenticator = animatedDetailAccount?.let { account ->
                             { removeAuthenticatorRequest = account }
+                        },
+                        onRebindAccount = animatedDetailAccount?.let { account ->
+                            { steamAccountRebindAccountId = account.id }
                         }
                     )
                 } else {
@@ -1095,7 +1145,8 @@ fun SteamScreen(
 private fun SteamDetailTopBar(
     title: String,
     onNavigateBack: () -> Unit,
-    onRemoveAuthenticator: (() -> Unit)? = null
+    onRemoveAuthenticator: (() -> Unit)? = null,
+    onRebindAccount: (() -> Unit)? = null
 ) {
     TopAppBar(
         title = {
@@ -1115,6 +1166,15 @@ private fun SteamDetailTopBar(
             }
         },
         actions = {
+            if (onRebindAccount != null) {
+                IconButton(onClick = onRebindAccount) {
+                    Icon(
+                        imageVector = Icons.Default.Login,
+                        contentDescription = stringResource(R.string.steam_account_rebind_action),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             if (onRemoveAuthenticator != null) {
                 IconButton(onClick = onRemoveAuthenticator) {
                     Icon(
@@ -2420,13 +2480,7 @@ private fun SteamConfirmationsContent(
                 if (account == null || !account.canUseConfirmations) {
                     item {
                         EmptyState(
-                            stringResource(
-                                if (account != null && !account.hasRealSteamId) {
-                                    R.string.steam_no_confirmation_missing_steamid
-                                } else {
-                                    R.string.steam_no_confirmation_session
-                                }
-                            )
+                            steamConfirmationUnavailableText(account)
                         )
                     }
                 } else if (confirmations.isEmpty()) {
@@ -2975,6 +3029,11 @@ private fun SteamLoginApprovalSection(
     var pendingAction by remember { mutableStateOf<LoginActionRequest?>(null) }
     var pendingQrAction by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var scannedQrAction by remember { mutableStateOf<String?>(null) }
+    val loginApprovalUnavailableReason = if (account.canApproveLogins) {
+        null
+    } else {
+        steamLoginApprovalUnavailableText(account)
+    }
 
     LaunchedEffect(pendingScannedQr) {
         val qr = pendingScannedQr?.trim().orEmpty()
@@ -3037,14 +3096,24 @@ private fun SteamLoginApprovalSection(
                 )
             },
             text = {
-                Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    loginApprovalUnavailableReason?.let { reason ->
+                        Text(
+                            text = reason,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         onRespondQr(rawQr, approve)
                         pendingQrAction = null
-                    }
+                    },
+                    enabled = loginApprovalUnavailableReason == null
                 ) {
                     Text(stringResource(if (approve) R.string.steam_approve else R.string.steam_reject))
                 }
@@ -3062,7 +3131,16 @@ private fun SteamLoginApprovalSection(
             onDismissRequest = { scannedQrAction = null },
             title = { Text(stringResource(R.string.steam_qr_login_title)) },
             text = {
-                Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    loginApprovalUnavailableReason?.let { reason ->
+                        Text(
+                            text = reason,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3070,7 +3148,8 @@ private fun SteamLoginApprovalSection(
                         onClick = {
                             onRespondQr(rawQr, false)
                             scannedQrAction = null
-                        }
+                        },
+                        enabled = loginApprovalUnavailableReason == null
                     ) {
                         Text(stringResource(R.string.steam_reject))
                     }
@@ -3078,7 +3157,8 @@ private fun SteamLoginApprovalSection(
                         onClick = {
                             onRespondQr(rawQr, true)
                             scannedQrAction = null
-                        }
+                        },
+                        enabled = loginApprovalUnavailableReason == null
                     ) {
                         Text(stringResource(R.string.steam_approve))
                     }
@@ -3120,13 +3200,7 @@ private fun SteamLoginApprovalSection(
 
             if (!account.canApproveLogins) {
                 EmptyState(
-                    stringResource(
-                        if (account.hasRealSteamId) {
-                            R.string.steam_no_login_session
-                        } else {
-                            R.string.steam_no_login_missing_steamid
-                        }
-                    )
+                    steamLoginApprovalUnavailableText(account)
                 )
             } else if (pendingLogins.isEmpty()) {
                 EmptyState(stringResource(R.string.steam_no_pending_logins))
@@ -3274,6 +3348,7 @@ private fun SteamEmptyAccountContent(
 private fun SteamAddMethodDialog(
     onDismissRequest: () -> Unit,
     onSelectMaFile: () -> Unit,
+    onSelectKeyOnly: () -> Unit,
     onSelectLogin: () -> Unit,
     onSelectQrLogin: () -> Unit
 ) {
@@ -3289,6 +3364,14 @@ private fun SteamAddMethodDialog(
                     Icon(Icons.Default.UploadFile, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.steam_add_method_mafile))
+                }
+                OutlinedButton(
+                    onClick = onSelectKeyOnly,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Key, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.steam_add_method_key_only))
                 }
                 OutlinedButton(
                     onClick = onSelectLogin,
@@ -3309,6 +3392,72 @@ private fun SteamAddMethodDialog(
             }
         },
         confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SteamKeyOnlyImportDialog(
+    onDismissRequest: () -> Unit,
+    onImport: (String, String, String) -> Unit
+) {
+    var displayName by remember { mutableStateOf("") }
+    var accountName by remember { mutableStateOf("") }
+    var sharedSecret by remember { mutableStateOf("") }
+    val canImport = accountName.isNotBlank() && sharedSecret.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(stringResource(R.string.steam_key_only_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.steam_key_only_desc),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text(stringResource(R.string.steam_remark_optional_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = accountName,
+                    onValueChange = { accountName = it },
+                    label = { Text(stringResource(R.string.steam_login_account_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = sharedSecret,
+                    onValueChange = { sharedSecret = it },
+                    label = { Text(stringResource(R.string.steam_key_only_secret_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onImport(displayName.trim(), accountName.trim(), sharedSecret.trim())
+                },
+                enabled = canImport
+            ) {
+                Text(stringResource(R.string.steam_key_only_import_button))
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismissRequest) {
                 Text(stringResource(R.string.cancel))
             }
@@ -3500,17 +3649,57 @@ private fun String.isValidSteamIdOrAccountId(): Boolean {
 }
 
 @Composable
+private fun steamLoginApprovalUnavailableText(account: SteamAccount?): String {
+    return when {
+        account == null -> stringResource(R.string.steam_no_login_session)
+        !account.hasRealSteamId -> stringResource(R.string.steam_no_login_missing_steamid)
+        account.sharedSecret.isBlank() -> stringResource(R.string.steam_no_login_missing_shared_secret)
+        account.accessToken.isNullOrBlank() && account.refreshToken.isNullOrBlank() ->
+            stringResource(R.string.steam_no_login_missing_session_detail)
+        else -> stringResource(R.string.steam_no_login_session)
+    }
+}
+
+@Composable
+private fun steamConfirmationUnavailableText(account: SteamAccount?): String {
+    return when {
+        account == null -> stringResource(R.string.steam_no_confirmation_session)
+        !account.hasRealSteamId -> stringResource(R.string.steam_no_confirmation_missing_steamid)
+        account.identitySecret.isNullOrBlank() -> stringResource(R.string.steam_no_confirmation_missing_identity_secret)
+        account.accessToken.isNullOrBlank() && account.refreshToken.isNullOrBlank() ->
+            stringResource(R.string.steam_no_confirmation_missing_session_detail)
+        else -> stringResource(R.string.steam_no_confirmation_session)
+    }
+}
+
+@Composable
 private fun SteamQrLoginImportDialog(
     pendingQrChallenge: SteamQrLoginChallengeUi?,
     pendingChallenge: SteamLoginChallengeUi?,
+    availableCodeAccounts: List<SteamAccount>,
     loading: Boolean,
     onDismissRequest: () -> Unit,
     onRestart: () -> Unit,
     onSubmitLoginCode: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val pickerSecurityManager = remember(context) { SecurityManager(context) }
+    val passwordDatabase = remember(context) { PasswordDatabase.getDatabase(context) }
+    val legacyTotpItems by passwordDatabase.secureItemDao()
+        .getActiveItemsByType(ItemType.TOTP)
+        .collectAsState(initial = emptyList())
     var challengeCode by remember { mutableStateOf("") }
+    var showMonicaCodePicker by remember { mutableStateOf(false) }
     val waitingForCode = pendingChallenge != null
     val requiresCode = pendingChallenge?.requiresCode == true
+    val hasLegacySteamCode = remember(legacyTotpItems, pickerSecurityManager, pendingChallenge?.pendingSessionId) {
+        val currentSeconds = System.currentTimeMillis() / 1000L
+        legacyTotpItems.any {
+            it.toLegacySteamAuthenticatorCodeSource(pickerSecurityManager, currentSeconds) != null
+        }
+    }
+    val canUseMonicaCode = pendingChallenge?.canUseMonicaCode == true &&
+        (availableCodeAccounts.any { it.sharedSecret.isNotBlank() } || hasLegacySteamCode)
 
     LaunchedEffect(pendingChallenge?.pendingSessionId, pendingChallenge?.confirmationType) {
         challengeCode = ""
@@ -3566,6 +3755,16 @@ private fun SteamQrLoginImportDialog(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+                        if (canUseMonicaCode) {
+                            OutlinedButton(
+                                onClick = { showMonicaCodePicker = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Key, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.steam_use_monica_code))
+                            }
+                        }
                     }
                 } else {
                     Text(
@@ -3617,6 +3816,361 @@ private fun SteamQrLoginImportDialog(
             }
         }
     )
+
+    if (showMonicaCodePicker) {
+        SteamAuthenticatorCodePickerBottomSheet(
+            accounts = availableCodeAccounts,
+            legacyTotpItems = legacyTotpItems,
+            securityManager = pickerSecurityManager,
+            preferredSteamId = pendingChallenge?.steamId,
+            onSelectCode = { code ->
+                challengeCode = code
+                showMonicaCodePicker = false
+            },
+            onDismissRequest = { showMonicaCodePicker = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SteamAuthenticatorCodePickerBottomSheet(
+    accounts: List<SteamAccount>,
+    legacyTotpItems: List<SecureItem>,
+    securityManager: SecurityManager,
+    preferredSteamId: String?,
+    onSelectCode: (String) -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    val currentMillis = rememberTotpTickerMillis(smooth = true)
+    val currentSeconds = currentMillis / 1000L
+    val secondsRemaining = SteamTotp.secondsRemaining(currentSeconds)
+    var authenticatorQuery by rememberSaveable { mutableStateOf("") }
+    val codeAccounts = remember(accounts, preferredSteamId) {
+        accounts
+            .filter { it.sharedSecret.isNotBlank() }
+            .sortedWith(
+                compareByDescending<SteamAccount> { it.matchesSteamId(preferredSteamId) }
+                    .thenBy { it.sortOrder }
+                    .thenBy { it.id }
+            )
+    }
+    val legacyCodeItems = remember(legacyTotpItems, securityManager, currentSeconds) {
+        legacyTotpItems
+            .mapNotNull { item ->
+                item.toLegacySteamAuthenticatorCodeSource(securityManager, currentSeconds)
+            }
+            .sortedWith(compareBy<LegacySteamAuthenticatorCodeSource> { it.item.sortOrder }.thenBy { it.item.id })
+    }
+    val filteredAccounts = remember(codeAccounts, authenticatorQuery) {
+        val query = authenticatorQuery.trim()
+        if (query.isBlank()) {
+            codeAccounts
+        } else {
+            codeAccounts.filter { account ->
+                listOf(
+                    account.displayName,
+                    account.accountName,
+                    account.visibleSteamId,
+                    account.steamId
+                ).any { it.contains(query, ignoreCase = true) }
+            }
+        }
+    }
+    val filteredLegacyCodeItems = remember(legacyCodeItems, authenticatorQuery) {
+        val query = authenticatorQuery.trim()
+        if (query.isBlank()) {
+            legacyCodeItems
+        } else {
+            legacyCodeItems.filter { source ->
+                listOf(
+                    source.item.title,
+                    source.totpData.issuer,
+                    source.totpData.accountName
+                ).any { it.contains(query, ignoreCase = true) }
+            }
+        }
+    }
+    val filteredCount = filteredAccounts.size + filteredLegacyCodeItems.size
+
+    MonicaModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.steam_authenticator_code_picker_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(R.string.password_picker_results_count, filteredCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = authenticatorQuery,
+                onValueChange = { authenticatorQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(stringResource(R.string.search_authenticator)) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp)
+            )
+
+            if (filteredCount == 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 36.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.steam_authenticator_code_picker_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredAccounts, key = { it.id }) { account ->
+                        val code = remember(account.sharedSecret, currentSeconds) {
+                            runCatching {
+                                SteamTotp.generateAuthCode(account.sharedSecret, currentSeconds)
+                            }.getOrDefault("")
+                        }
+                        SteamAuthenticatorCodePickerRow(
+                            account = account,
+                            code = code,
+                            secondsRemaining = secondsRemaining,
+                            highlighted = account.matchesSteamId(preferredSteamId),
+                            onClick = {
+                                if (code.isNotBlank()) {
+                                    onSelectCode(code)
+                                }
+                            }
+                        )
+                    }
+                    items(filteredLegacyCodeItems, key = { "legacy-${it.item.id}" }) { source ->
+                        LegacySteamAuthenticatorCodePickerRow(
+                            source = source,
+                            secondsRemaining = secondsRemaining,
+                            onClick = {
+                                if (source.code.isNotBlank()) {
+                                    onSelectCode(source.code)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SteamAuthenticatorCodePickerRow(
+    account: SteamAccount,
+    code: String,
+    secondsRemaining: Int,
+    highlighted: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = code.isNotBlank(), onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SteamAvatarImage(account = account, size = 38.dp)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = account.displayName.ifBlank { account.accountName }
+                        .ifBlank { account.visibleSteamId }
+                        .ifBlank { "Steam" },
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = account.accountName.ifBlank { account.visibleSteamId }
+                        .ifBlank { account.steamId },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = code.ifBlank { "-" },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.steam_seconds_remaining, secondsRemaining),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegacySteamAuthenticatorCodePickerRow(
+    source: LegacySteamAuthenticatorCodeSource,
+    secondsRemaining: Int,
+    onClick: () -> Unit
+) {
+    val title = source.item.title
+        .ifBlank { source.totpData.accountName }
+        .ifBlank { source.totpData.issuer }
+        .ifBlank { stringResource(R.string.otp_type_steam) }
+    val subtitle = listOf(
+        source.totpData.accountName,
+        source.totpData.issuer,
+        stringResource(R.string.authenticator)
+    )
+        .map { it.trim() }
+        .filter { it.isNotBlank() && it != title }
+        .distinct()
+        .joinToString(" / ")
+        .ifBlank { stringResource(R.string.otp_type_steam) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = source.code.isNotBlank(), onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(38.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.VerifiedUser,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = source.code.ifBlank { "-" },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.steam_seconds_remaining, secondsRemaining),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private fun SecureItem.toLegacySteamAuthenticatorCodeSource(
+    securityManager: SecurityManager,
+    currentSeconds: Long
+): LegacySteamAuthenticatorCodeSource? {
+    val totpData = TotpDataResolver.parseStoredItemData(
+        itemData = itemData,
+        fallbackIssuer = title,
+        fallbackAccountName = title,
+        decryptIfNeeded = { raw -> securityManager.decryptData(raw) }
+    ) ?: return null
+
+    val normalized = TotpDataResolver.normalizeTotpData(totpData)
+    if (normalized.otpType != OtpType.STEAM) return null
+
+    val code = runCatching {
+        TotpGenerator.generateOtp(normalized, currentSeconds = currentSeconds)
+    }.getOrDefault("").trim()
+    if (!code.isSteamGuardFiveCharacterCode()) return null
+
+    return LegacySteamAuthenticatorCodeSource(
+        item = this,
+        totpData = normalized,
+        code = code
+    )
+}
+
+private fun String.isSteamGuardFiveCharacterCode(): Boolean {
+    return length == 5 && any { it.isLetter() }
+}
+
+private fun SteamAccount.matchesSteamId(steamIdCandidate: String?): Boolean {
+    val candidate = steamIdCandidate?.trim().orEmpty()
+    return candidate.isNotBlank() && (steamId == candidate || visibleSteamId == candidate)
 }
 
 @Composable
@@ -3680,6 +4234,7 @@ private fun createSteamQrLoginBitmap(content: String, size: Int = 768): ImageBit
 @Composable
 private fun SteamLoginImportDialog(
     pendingChallenge: SteamLoginChallengeUi?,
+    availableCodeAccounts: List<SteamAccount>,
     onDismissRequest: () -> Unit,
     onBeginLogin: (String, String, String) -> Unit,
     onSubmitLoginCode: (String) -> Unit,
@@ -3693,13 +4248,25 @@ private fun SteamLoginImportDialog(
     val passwordEntriesForPicker by passwordDatabase.passwordEntryDao()
         .getAllPasswordEntries()
         .collectAsState(initial = emptyList())
+    val legacyTotpItems by passwordDatabase.secureItemDao()
+        .getActiveItemsByType(ItemType.TOTP)
+        .collectAsState(initial = emptyList())
     var loginName by remember { mutableStateOf("") }
     var loginPassword by remember { mutableStateOf("") }
     var loginDisplayName by remember { mutableStateOf("") }
     var challengeCode by remember { mutableStateOf("") }
     var showSteamPasswordPicker by remember { mutableStateOf(false) }
+    var showMonicaCodePicker by remember { mutableStateOf(false) }
     val waitingForCode = pendingChallenge != null
     val requiresCode = pendingChallenge?.requiresCode == true
+    val hasLegacySteamCode = remember(legacyTotpItems, pickerSecurityManager, pendingChallenge?.pendingSessionId) {
+        val currentSeconds = System.currentTimeMillis() / 1000L
+        legacyTotpItems.any {
+            it.toLegacySteamAuthenticatorCodeSource(pickerSecurityManager, currentSeconds) != null
+        }
+    }
+    val canUseMonicaCode = pendingChallenge?.canUseMonicaCode == true &&
+        (availableCodeAccounts.any { it.sharedSecret.isNotBlank() } || hasLegacySteamCode)
 
     LaunchedEffect(pendingChallenge?.pendingSessionId, pendingChallenge?.confirmationType) {
         challengeCode = ""
@@ -3795,6 +4362,16 @@ private fun SteamLoginImportDialog(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+                        if (canUseMonicaCode) {
+                            OutlinedButton(
+                                onClick = { showMonicaCodePicker = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Key, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.steam_use_monica_code))
+                            }
+                        }
                     }
                 }
             }
@@ -3833,6 +4410,20 @@ private fun SteamLoginImportDialog(
             }
         }
     )
+
+    if (showMonicaCodePicker) {
+        SteamAuthenticatorCodePickerBottomSheet(
+            accounts = availableCodeAccounts,
+            legacyTotpItems = legacyTotpItems,
+            securityManager = pickerSecurityManager,
+            preferredSteamId = pendingChallenge?.steamId,
+            onSelectCode = { code ->
+                challengeCode = code
+                showMonicaCodePicker = false
+            },
+            onDismissRequest = { showMonicaCodePicker = false }
+        )
+    }
 
     if (showSteamPasswordPicker && pendingChallenge == null) {
         PasswordEntryPickerBottomSheet(
