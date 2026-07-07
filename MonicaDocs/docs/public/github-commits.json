@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-06T21:46:54.848Z",
+  "generatedAt": "2026-07-07T21:40:17.366Z",
   "range": {
-    "from": "2025-07-07",
-    "to": "2026-07-06"
+    "from": "2025-07-08",
+    "to": "2026-07-07"
   },
   "activity": [
-    {
-      "date": "2025-07-07",
-      "count": 0
-    },
     {
       "date": "2025-07-08",
       "count": 0
@@ -1345,147 +1341,196 @@
     },
     {
       "date": "2026-06-06",
-      "count": 10
+      "count": 9
     },
     {
       "date": "2026-06-07",
-      "count": 4
+      "count": 2
     },
     {
       "date": "2026-06-08",
-      "count": 6
+      "count": 3
     },
     {
       "date": "2026-06-09",
-      "count": 4
+      "count": 2
     },
     {
       "date": "2026-06-10",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-11",
-      "count": 3
+      "count": 1
     },
     {
       "date": "2026-06-12",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-13",
-      "count": 4
+      "count": 2
     },
     {
       "date": "2026-06-14",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-15",
-      "count": 3
+      "count": 1
     },
     {
       "date": "2026-06-16",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-17",
-      "count": 7
-    },
-    {
-      "date": "2026-06-18",
-      "count": 1
-    },
-    {
-      "date": "2026-06-19",
-      "count": 1
-    },
-    {
-      "date": "2026-06-20",
       "count": 3
     },
     {
+      "date": "2026-06-18",
+      "count": 0
+    },
+    {
+      "date": "2026-06-19",
+      "count": 0
+    },
+    {
+      "date": "2026-06-20",
+      "count": 1
+    },
+    {
       "date": "2026-06-21",
-      "count": 13
+      "count": 7
     },
     {
       "date": "2026-06-22",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-23",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-24",
-      "count": 4
+      "count": 2
     },
     {
       "date": "2026-06-25",
-      "count": 11
+      "count": 5
     },
     {
       "date": "2026-06-26",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-27",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-28",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-29",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-06-30",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-07-01",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-07-02",
-      "count": 1
+      "count": 0
     },
     {
       "date": "2026-07-03",
-      "count": 63
+      "count": 49
     },
     {
       "date": "2026-07-04",
-      "count": 14
+      "count": 9
     },
     {
       "date": "2026-07-05",
-      "count": 9
+      "count": 5
     },
     {
       "date": "2026-07-06",
       "count": 0
+    },
+    {
+      "date": "2026-07-07",
+      "count": 7
     }
   ],
   "latest": [
     {
-      "sha": "80feb0314b01eedf6e116fda4c2e8daa1829f862",
-      "shortSha": "80feb03",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T21:19:18Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/80feb0314b01eedf6e116fda4c2e8daa1829f862"
+      "sha": "15c07cfb2bb16d7974b48df3b326052c05bb903c",
+      "shortSha": "15c07cf",
+      "message": "Merge pull request #66 from Mrmiaomrzh/main",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-07T03:43:04Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/15c07cfb2bb16d7974b48df3b326052c05bb903c"
     },
     {
-      "sha": "feb615b5c66206b29fdb0f5184403397f80950e9",
-      "shortSha": "feb615b",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T16:47:50Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/feb615b5c66206b29fdb0f5184403397f80950e9"
+      "sha": "26df547050e5b4cb01937a4a8dfeb6848eb0dfb1",
+      "shortSha": "26df547",
+      "message": "Merge branch 'main' into main",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-07-07T03:00:45Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/26df547050e5b4cb01937a4a8dfeb6848eb0dfb1"
+    },
+    {
+      "sha": "838db6b6931b5931c5aa92bafaa8ce3bbe962706",
+      "shortSha": "838db6b",
+      "message": "Merge branch 'main' of https://github.com/Mrmiaomrzh/Monica",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-07-07T02:54:26Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/838db6b6931b5931c5aa92bafaa8ce3bbe962706"
+    },
+    {
+      "sha": "d4bb31c9abbcd469acbd94dc7f77958c730e80b9",
+      "shortSha": "d4bb31c",
+      "message": "chore: update github commit data to reflect accurate counts and structure",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-07-07T02:52:33Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d4bb31c9abbcd469acbd94dc7f77958c730e80b9"
+    },
+    {
+      "sha": "23a2107081b67ab7e37c5b27c197d4128efbffe3",
+      "shortSha": "23a2107",
+      "message": "chore: update github commit data and adjust date ranges",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-07-07T02:29:27Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/23a2107081b67ab7e37c5b27c197d4128efbffe3"
+    },
+    {
+      "sha": "ee857d50cf238561a449dca5ef9cf5884a7ec72c",
+      "shortSha": "ee857d5",
+      "message": "chore: update documentation links and configurations",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-07-07T02:28:13Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/ee857d50cf238561a449dca5ef9cf5884a7ec72c"
+    },
+    {
+      "sha": "1505326ad92cdc280003120ae956864e6790fc9a",
+      "shortSha": "1505326",
+      "message": "Improve Steam account binding and token import",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-07T00:40:07Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/1505326ad92cdc280003120ae956864e6790fc9a"
     },
     {
       "sha": "4f1d7c0f75b49757dd040e02f4c769eb6536a6e3",
@@ -1513,34 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-05T15:22:08Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/958b28a603ba6c1e3ddbefe3c2c4fa4a3e356a14"
-    },
-    {
-      "sha": "e82850daa93d50ec233a35ed92d8ac0165013b98",
-      "shortSha": "e82850d",
-      "message": "Fix Steam ID completion login flow",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-05T14:55:55Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/e82850daa93d50ec233a35ed92d8ac0165013b98"
-    },
-    {
-      "sha": "68446a4f7b2171e56e720ad4f84908129cd53601",
-      "shortSha": "68446a4",
-      "message": "Improve Steam maFile storage and recovery",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-05T14:25:45Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/68446a4f7b2171e56e720ad4f84908129cd53601"
-    },
-    {
-      "sha": "463fc7e3009f19bf556a96677bcf122720f6f9ab",
-      "shortSha": "463fc7e",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T21:13:32Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/463fc7e3009f19bf556a96677bcf122720f6f9ab"
     }
   ]
 }
-
