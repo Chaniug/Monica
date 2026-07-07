@@ -21,6 +21,7 @@ export const teekConfig = defineTeekConfig({
   articleShare: { enabled: true },
   vitePlugins: {
     sidebarOption: {
+      resolveRule: "rewrites",
       initItems: false,
     },
   },

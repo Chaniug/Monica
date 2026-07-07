@@ -12,16 +12,10 @@ hero:
   actions:
     - theme: brand
       text: Android版をダウンロード
-      link: https://github.com/Monica-Pass/Monica/releases
-    - theme: brand
-      text: Windows版
-      link: https://github.com/Monica-Pass/Monica-by-Avalonia
-    - theme: brand
-      text: iOS版
-      link: https://github.com/Monica-Pass/Monica-for-iOS
+      link: https://github.com/JoyinJoester/Monica/releases
     - theme: alt
-      text: プロジェクト紹介
-      link: /ja/guide/intro
+      text: ブラウザ拡張機能
+      link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
     - theme: alt
       text: ドキュメント
       link: /ja/reference/catalogue

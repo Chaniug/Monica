@@ -41,19 +41,19 @@ const { lang } = useData();
 
 const localeText = {
   zh: {
-    title: "GitHub \u63d0\u4ea4",
-    fallbackDescription: "Monica-Pass/Monica \u7684\u63d0\u4ea4\u6d3b\u8dc3\u5ea6",
-    commitsInLastYear: "\u8fc7\u53bb\u4e00\u5e74\u63d0\u4ea4",
-    updated: "\u66f4\u65b0\u4e8e",
-    loading: "\u6b63\u5728\u52a0\u8f7d GitHub \u63d0\u4ea4...",
-    unavailable: "GitHub \u63d0\u4ea4\u6570\u636e\u6682\u4e0d\u53ef\u7528\u3002",
-    noData: "\u6682\u65e0\u63d0\u4ea4\u6d3b\u8dc3\u6570\u636e\u3002",
-    less: "\u5c11",
-    more: "\u591a",
-    weekdayMon: "\u4e00",
-    weekdayWed: "\u4e09",
-    weekdayFri: "\u4e94",
-    commits: "\u6b21\u63d0\u4ea4",
+    title: "GitHub 提交",
+    fallbackDescription: "Monica-Pass/Monica 的提交活跃度",
+    commitsInLastYear: "过去一年提交",
+    updated: "更新于",
+    loading: "正在加载 GitHub 提交...",
+    unavailable: "GitHub 提交数据暂不可用。",
+    noData: "暂无提交活跃数据。",
+    less: "少",
+    more: "多",
+    weekdayMon: "一",
+    weekdayWed: "三",
+    weekdayFri: "五",
+    commits: "次提交",
   },
   en: {
     title: "GitHub Commits",
@@ -71,49 +71,49 @@ const localeText = {
     commits: "commits",
   },
   ja: {
-    title: "GitHub \u30b3\u30df\u30c3\u30c8",
-    fallbackDescription: "Monica-Pass/Monica \u306e\u30b3\u30df\u30c3\u30c8\u30a2\u30af\u30c6\u30a3\u30d3\u30c6\u30a3",
-    commitsInLastYear: "\u904e\u53bb1\u5e74\u9593\u306e\u30b3\u30df\u30c3\u30c8",
-    updated: "\u66f4\u65b0",
-    loading: "GitHub \u30b3\u30df\u30c3\u30c8\u3092\u8aad\u307f\u8fbc\u307f\u4e2d...",
-    unavailable: "GitHub \u30b3\u30df\u30c3\u30c8\u30c7\u30fc\u30bf\u3092\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002",
-    noData: "\u30b3\u30df\u30c3\u30c8\u30a2\u30af\u30c6\u30a3\u30d3\u30c6\u30a3\u30c7\u30fc\u30bf\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093\u3002",
-    less: "\u5c11",
-    more: "\u591a",
-    weekdayMon: "\u6708",
-    weekdayWed: "\u6c34",
-    weekdayFri: "\u91d1",
-    commits: "\u30b3\u30df\u30c3\u30c8",
+    title: "GitHub コミット",
+    fallbackDescription: "Monica-Pass/Monica のコミットアクティビティ",
+    commitsInLastYear: "過去1年間のコミット",
+    updated: "更新",
+    loading: "GitHub コミットを読み込み中...",
+    unavailable: "GitHub コミットデータを利用できません。",
+    noData: "コミットアクティビティデータはまだありません。",
+    less: "少",
+    more: "多",
+    weekdayMon: "月",
+    weekdayWed: "水",
+    weekdayFri: "金",
+    commits: "コミット",
   },
   vi: {
     title: "Commit GitHub",
-    fallbackDescription: "Ho\u1ea1t \u0111\u1ed9ng commit c\u1ee7a Monica-Pass/Monica",
-    commitsInLastYear: "commit trong n\u0103m qua",
-    updated: "C\u1eadp nh\u1eadt",
-    loading: "\u0110ang t\u1ea3i commit GitHub...",
-    unavailable: "D\u1eef li\u1ec7u commit GitHub hi\u1ec7n kh\u00f4ng kh\u1ea3 d\u1ee5ng.",
-    noData: "Ch\u01b0a c\u00f3 d\u1eef li\u1ec7u ho\u1ea1t \u0111\u1ed9ng commit.",
-    less: "\u00cdt",
-    more: "Nhi\u1ec1u",
+    fallbackDescription: "Hoạt động commit của Monica-Pass/Monica",
+    commitsInLastYear: "commit trong năm qua",
+    updated: "Cập nhật",
+    loading: "Đang tải commit GitHub...",
+    unavailable: "Dữ liệu commit GitHub hiện không khả dụng.",
+    noData: "Chưa có dữ liệu hoạt động commit.",
+    less: "Ít",
+    more: "Nhiều",
     weekdayMon: "T2",
     weekdayWed: "T4",
     weekdayFri: "T6",
     commits: "commit",
   },
   ru: {
-    title: "\u041a\u043e\u043c\u043c\u0438\u0442\u044b GitHub",
-    fallbackDescription: "\u0410\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u044c \u043a\u043e\u043c\u043c\u0438\u0442\u043e\u0432 Monica-Pass/Monica",
-    commitsInLastYear: "\u043a\u043e\u043c\u043c\u0438\u0442\u043e\u0432 \u0437\u0430 \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0439 \u0433\u043e\u0434",
-    updated: "\u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e",
-    loading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043e\u043c\u043c\u0438\u0442\u043e\u0432 GitHub...",
-    unavailable: "\u0414\u0430\u043d\u043d\u044b\u0435 \u043a\u043e\u043c\u043c\u0438\u0442\u043e\u0432 GitHub \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b.",
-    noData: "\u0414\u0430\u043d\u043d\u044b\u0445 \u043e\u0431 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u0438 \u043a\u043e\u043c\u043c\u0438\u0442\u043e\u0432 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442.",
-    less: "\u041c\u0435\u043d\u044c\u0448\u0435",
-    more: "\u0411\u043e\u043b\u044c\u0448\u0435",
-    weekdayMon: "\u041f\u043d",
-    weekdayWed: "\u0421\u0440",
-    weekdayFri: "\u041f\u0442",
-    commits: "\u043a\u043e\u043c\u043c\u0438\u0442\u043e\u0432",
+    title: "Коммиты GitHub",
+    fallbackDescription: "Активность коммитов Monica-Pass/Monica",
+    commitsInLastYear: "коммитов за последний год",
+    updated: "Обновлено",
+    loading: "Загрузка коммитов GitHub...",
+    unavailable: "Данные коммитов GitHub недоступны.",
+    noData: "Данных об активности коммитов пока нет.",
+    less: "Меньше",
+    more: "Больше",
+    weekdayMon: "Пн",
+    weekdayWed: "Ср",
+    weekdayFri: "Пт",
+    commits: "коммитов",
   },
 };
 
@@ -157,9 +157,7 @@ const monthLabels = computed(() => {
   let previousMonth = "";
 
   calendarCells.value.forEach((item, index) => {
-    if (index % 7 !== 0) return;
-
-    if (item.isPadding) return;
+    if (index % 7 !== 0 || item.isPadding) return;
 
     const date = new Date(`${item.date}T00:00:00Z`);
     const month = date.toLocaleString(dateLocale.value, { month: "short", timeZone: "UTC" });
@@ -315,7 +313,7 @@ function commitTitle(day: CalendarCell) {
             <span>{{ commit.authorName }} · {{ formatDate(commit.date) }}</span>
           </span>
 
-          <code>{{ commit.shortSha }}</code>
+          <code class="github-commit__sha">{{ commit.shortSha }}</code>
         </a>
       </div>
     </template>
@@ -552,10 +550,24 @@ function commitTitle(day: CalendarCell) {
   line-height: 1.45;
 }
 
-.github-commit code {
+.github-commit__sha {
+  justify-self: end;
+  padding: 3px 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  color: var(--vp-c-text-2);
+  background: color-mix(in srgb, var(--vp-c-bg) 78%, var(--vp-c-brand-soft));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.github-commit:hover .github-commit__sha {
+  border-color: var(--vp-c-brand-1);
   color: var(--vp-c-brand-1);
   background: var(--vp-c-brand-soft);
-  font-size: 12px;
 }
 
 @media (max-width: 640px) {
@@ -582,7 +594,7 @@ function commitTitle(day: CalendarCell) {
     height: 28px;
   }
 
-  .github-commit code {
+  .github-commit__sha {
     grid-column: 2;
     width: max-content;
   }

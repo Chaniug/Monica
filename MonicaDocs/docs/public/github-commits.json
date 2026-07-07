@@ -1461,23 +1461,14 @@
     },
     {
       "date": "2026-07-04",
-      "count": 16
+      "count": 14
     },
     {
       "date": "2026-07-05",
-      "count": 8
+      "count": 5
     }
   ],
   "latest": [
-    {
-      "sha": "feb615b5c66206b29fdb0f5184403397f80950e9",
-      "shortSha": "feb615b",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T16:47:50Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/feb615b5c66206b29fdb0f5184403397f80950e9"
-    },
     {
       "sha": "4f1d7c0f75b49757dd040e02f4c769eb6536a6e3",
       "shortSha": "4f1d7c0",
@@ -1486,15 +1477,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-05T16:45:50Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/4f1d7c0f75b49757dd040e02f4c769eb6536a6e3"
-    },
-    {
-      "sha": "ce184e311141d5bca7f10a6bcaabb853231a2b12",
-      "shortSha": "ce184e3",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T15:42:22Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/ce184e311141d5bca7f10a6bcaabb853231a2b12"
     },
     {
       "sha": "e992b9eca2470fd18d0e61978ee0277d8c6a08c3",
@@ -1524,15 +1506,6 @@
       "url": "https://github.com/Monica-Pass/Monica/commit/e82850daa93d50ec233a35ed92d8ac0165013b98"
     },
     {
-      "sha": "8ece2e753274a6a1f2926b71586da9dd5e191adf",
-      "shortSha": "8ece2e7",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-05T14:28:03Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/8ece2e753274a6a1f2926b71586da9dd5e191adf"
-    },
-    {
       "sha": "68446a4f7b2171e56e720ad4f84908129cd53601",
       "shortSha": "68446a4",
       "message": "Improve Steam maFile storage and recovery",
@@ -1540,24 +1513,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-05T14:25:45Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/68446a4f7b2171e56e720ad4f84908129cd53601"
-    },
-    {
-      "sha": "463fc7e3009f19bf556a96677bcf122720f6f9ab",
-      "shortSha": "463fc7e",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T21:13:32Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/463fc7e3009f19bf556a96677bcf122720f6f9ab"
-    },
-    {
-      "sha": "348ca0e23fc6b7274baed4aa2f1146208649ffa6",
-      "shortSha": "348ca0e",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-07-04T14:53:05Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/348ca0e23fc6b7274baed4aa2f1146208649ffa6"
     }
   ]
 }

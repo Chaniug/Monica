@@ -13,15 +13,9 @@ hero:
     - theme: brand
       text: Download for Android
       link: https://github.com/Monica-Pass/Monica/releases
-    - theme: brand
-      text: Windows Version
-      link: https://github.com/Monica-Pass/Monica-by-Avalonia
-    - theme: brand
-      text: iOS Version
-      link: https://github.com/Monica-Pass/Monica-for-iOS
     - theme: alt
-      text: Project Introduction
-      link: /en/guide/intro
+      text: Browser Extension
+      link: https://github.com/Monica-Pass/Monica/tree/main/Monica%20for%20Browser
     - theme: alt
       text: Documentation
       link: /en/reference/catalogue

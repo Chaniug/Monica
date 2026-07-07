@@ -1,6 +1,6 @@
 import Teek from "vitepress-theme-teek";
 import TeekLayoutProvider from "./components/TeekLayoutProvider.vue";
-import ContributeChart from "./components/ContributeChart.vue";
+import EcosystemLanding from "./components/EcosystemLanding.vue";
 import { h } from "vue";
 
 import "vitepress-theme-teek/index.css";
@@ -20,10 +20,61 @@ import "vitepress-theme-teek/theme-chalk/tk-fade-up-animation.css"; // 首次加
 import "./styles/code-bg.scss";
 import "./styles/iframe.scss";
 
+const setupRootLocaleNavigation = () => {
+  const selector = ".VPNavBarTranslations a, .VPNavBarExtra a";
+
+  const isRootLocaleLink = (link: HTMLAnchorElement) =>
+    link.textContent?.trim() === "简体中文" && link.origin === window.location.origin;
+
+  const forceDocumentNavigation = (link: HTMLAnchorElement) => {
+    if (!isRootLocaleLink(link)) return;
+
+    link.target = "_self";
+
+    if (link.pathname !== window.location.pathname || link.search !== window.location.search || link.hash !== window.location.hash) {
+      window.location.assign(link.href);
+    }
+  };
+
+  const normalizeRootLocaleLinks = () => {
+    document.querySelectorAll<HTMLAnchorElement>(selector).forEach((link) => {
+      if (isRootLocaleLink(link)) link.target = "_self";
+    });
+  };
+
+  normalizeRootLocaleLinks();
+
+  const observer = new MutationObserver(normalizeRootLocaleLinks);
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  window.addEventListener(
+    "click",
+    (event) => {
+      if (event.button !== 0 || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
+
+      const target = event.target instanceof Element ? event.target : null;
+      const link = target?.closest(selector);
+      if (!(link instanceof HTMLAnchorElement) || !isRootLocaleLink(link)) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setTimeout(() => forceDocumentNavigation(link), 0);
+    },
+    true
+  );
+};
+
 export default {
   extends: Teek,
-  Layout: () =>
-    h(TeekLayoutProvider, null, {
-      "teek-archives-top-before": () => h(ContributeChart),
-    }),
+  Layout: () => h(TeekLayoutProvider),
+  enhanceApp(ctx) {
+    Teek.enhanceApp?.(ctx);
+    ctx.app.component("EcosystemLanding", EcosystemLanding);
+
+    if (typeof window === "undefined") return;
+
+    setupRootLocaleNavigation();
+  },
 };
+
+

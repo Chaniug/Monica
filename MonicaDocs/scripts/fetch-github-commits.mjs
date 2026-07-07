@@ -13,6 +13,10 @@ const repo = `${repoOwner}/${repoName}`;
 const repoUrl = `https://github.com/${repo}`;
 const apiBase = `https://api.github.com/repos/${repo}`;
 const latestLimit = 10;
+const ignoredAutomationMessages = new Set([
+  "chore: update github commit data",
+  "Update contributor flag SVG",
+]);
 
 const headers = {
   Accept: "application/vnd.github+json",
@@ -44,6 +48,8 @@ try {
     if (!Array.isArray(commits) || commits.length === 0) break;
 
     for (const commit of commits) {
+      if (shouldIgnoreCommit(commit)) continue;
+
       const commitDate = commit.commit?.author?.date || commit.commit?.committer?.date;
       const dayKey = toDateKey(commitDate);
 
@@ -104,6 +110,18 @@ function toLatestCommit(commit) {
     date: commitAuthor.date || commit.commit?.committer?.date || "",
     url: commit.html_url || `${repoUrl}/commit/${sha}`,
   };
+}
+
+function shouldIgnoreCommit(commit) {
+  const message = firstLine(commit.commit?.message || "").trim();
+  const authorLogin = commit.author?.login || "";
+  const committerLogin = commit.committer?.login || "";
+  const committerName = commit.commit?.committer?.name || "";
+
+  return (
+    ignoredAutomationMessages.has(message) &&
+    [authorLogin, committerLogin, committerName].some(value => value === "github-actions[bot]")
+  );
 }
 
 function firstLine(value) {
