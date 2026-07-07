@@ -1461,22 +1461,16 @@
     },
     {
       "date": "2026-07-05",
-<<<<<<< HEAD
-      "count": 5
-=======
       "count": 9
     },
     {
       "date": "2026-07-06",
       "count": 1
->>>>>>> 57f7cfb523abf155a4e0104778d596df466d70c5
     }
   ],
   "latest": [
     {
-<<<<<<< HEAD
-=======
-      "sha": "41271bcbb84b795e85a1940b21443a1d2d34c93b",
+"sha": "41271bcbb84b795e85a1940b21443a1d2d34c93b",
       "shortSha": "41271bc",
       "message": "chore: update github commit data",
       "authorName": "github-actions[bot]",
@@ -1501,9 +1495,8 @@
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
       "date": "2026-07-05T16:47:50Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/feb615b5c66206b29fdb0f5184403397f80950e9"
-    },
+        },
     {
->>>>>>> 57f7cfb523abf155a4e0104778d596df466d70c5
       "sha": "4f1d7c0f75b49757dd040e02f4c769eb6536a6e3",
       "shortSha": "4f1d7c0",
       "message": "Fix Steam confirmation switching and update downloads",
@@ -1550,3 +1543,4 @@
     }
   ]
 }
+
