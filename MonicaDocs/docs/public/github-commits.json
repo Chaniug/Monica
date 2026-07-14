@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-13T21:12:31.595Z",
+  "generatedAt": "2026-07-14T21:14:13.985Z",
   "range": {
-    "from": "2025-07-14",
-    "to": "2026-07-13"
+    "from": "2025-07-15",
+    "to": "2026-07-14"
   },
   "activity": [
-    {
-      "date": "2025-07-14",
-      "count": 0
-    },
     {
       "date": "2025-07-15",
       "count": 0
@@ -1466,9 +1462,22 @@
     {
       "date": "2026-07-13",
       "count": 1
+    },
+    {
+      "date": "2026-07-14",
+      "count": 1
     }
   ],
   "latest": [
+    {
+      "sha": "d9ee80f2e6c1d8c12b7f29f2a9e3013b77c08f98",
+      "shortSha": "d9ee80f",
+      "message": "fix(android): stabilize QR scanning and simplify Plus",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-14T17:24:30Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d9ee80f2e6c1d8c12b7f29f2a9e3013b77c08f98"
+    },
     {
       "sha": "ad503a453600e8608f9c4d704faf0f4d91cbfc0a",
       "shortSha": "ad503a4",
@@ -1549,15 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-05T16:45:50Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/4f1d7c0f75b49757dd040e02f4c769eb6536a6e3"
-    },
-    {
-      "sha": "e992b9eca2470fd18d0e61978ee0277d8c6a08c3",
-      "shortSha": "e992b9e",
-      "message": "Show Steam recovery code in details",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-05T15:41:47Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/e992b9eca2470fd18d0e61978ee0277d8c6a08c3"
     }
   ]
 }
