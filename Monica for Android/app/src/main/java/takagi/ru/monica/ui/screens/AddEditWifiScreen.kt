@@ -62,12 +62,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
-import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -85,12 +82,8 @@ import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.OutlinedTextField
-import takagi.ru.monica.ui.components.PlusBlurEntryTypeTopBar
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
-import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.WifiQrParser
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -259,16 +252,6 @@ fun AddEditWifiScreen(
 
     val isEditing = passwordId != null && passwordId > 0L
     val canSave = initialLoadDone && (title.isNotBlank() || ssid.isNotBlank())
-    val settingsManager = remember { SettingsManager(context) }
-    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-    val wifiTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = settings,
-        enabledForThisSurface = !isEditing
-    )
-    val wifiTopBarHazeState = remember { HazeState() }
-    val wifiTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
-    val wifiBlurTopBarHeight =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
     val topBarTitle = stringResource(if (isEditing) R.string.edit_wifi_title else R.string.add_wifi_title)
 
     // 自定义字段状态
@@ -328,8 +311,7 @@ fun AddEditWifiScreen(
 
     Scaffold(
         topBar = {
-            if (!wifiTopBarBlurEnabled) {
-                TopAppBar(
+            TopAppBar(
                     title = {
                         Text(
                             topBarTitle,
@@ -369,8 +351,7 @@ fun AddEditWifiScreen(
                         scrolledContainerColor = Color.Transparent,
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -382,15 +363,6 @@ fun AddEditWifiScreen(
             }
         }
     ) { innerPadding ->
-        val contentPadding = if (wifiTopBarBlurEnabled) {
-            PaddingValues(
-                top = wifiBlurTopBarHeight + 10.dp,
-                bottom = innerPadding.calculateBottomPadding()
-            )
-        } else {
-            innerPadding
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -399,19 +371,9 @@ fun AddEditWifiScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (wifiTopBarBlurEnabled) {
-                            Modifier.haze(
-                                state = wifiTopBarHazeState,
-                                style = wifiTopBarHazeStyle
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
             ) {
                 WifiFormBody(
-                    innerPadding = contentPadding,
+                    innerPadding = innerPadding,
                     selectedStorageTargets = selectedStorageTargets,
                     existingReplicaTargetKeys = existingReplicaTargetKeys,
                     categories = categories,
@@ -435,28 +397,6 @@ fun AddEditWifiScreen(
                     onCustomFieldsChange = { updated ->
                         customFields.clear()
                         customFields.addAll(updated)
-                    }
-                )
-            }
-
-            if (wifiTopBarBlurEnabled) {
-                PlusBlurEntryTypeTopBar(
-                    settings = settings,
-                    hazeState = wifiTopBarHazeState,
-                    hazeStyle = wifiTopBarHazeStyle,
-                    currentEntryType = EntryTypeChipOption.WIFI,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    entryTypeEnabled = !isEditing,
-                    isFavorite = isFavorite,
-                    onNavigateBack = onNavigateBack,
-                    onFavoriteChange = { isFavorite = it },
-                    onEntryTypeSelect = { option ->
-                        when (option) {
-                            EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
-                            EntryTypeChipOption.SSH_KEY -> onNavigateToSshKey?.invoke()
-                            EntryTypeChipOption.WIFI -> Unit
-                            EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
-                        }
                     }
                 )
             }

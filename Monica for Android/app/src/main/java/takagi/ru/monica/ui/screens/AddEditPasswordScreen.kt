@@ -44,7 +44,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -70,8 +69,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.CustomFieldDraft
@@ -116,12 +113,9 @@ import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.components.NotePickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
-import takagi.ru.monica.ui.components.PlusBlurEntryTypeTopBar
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.keepassBlockReasonLabel
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -1767,16 +1761,6 @@ fun AddEditPasswordScreen(
         setSelectedStorageTargets(listOf(defaultTarget))
     }
 
-    val addPasswordTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = settings,
-        enabledForThisSurface = !isEditing
-    )
-    val addPasswordTopBarHazeState = remember { HazeState() }
-    val addPasswordTopBarHazeStyle =
-        rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
-    val layoutDirection = LocalLayoutDirection.current
-    val addPasswordBlurTopBarHeight =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
     val topBarTitle = stringResource(
         when {
             isBarcodeMode && isEditing -> R.string.edit_barcode_title
@@ -1788,8 +1772,7 @@ fun AddEditPasswordScreen(
 
     Scaffold(
         topBar = {
-            if (!addPasswordTopBarBlurEnabled) {
-                TopAppBar(
+            TopAppBar(
                     title = {
                         Text(
                             topBarTitle,
@@ -1841,8 +1824,7 @@ fun AddEditPasswordScreen(
                         scrolledContainerColor = Color.Transparent,
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -1872,43 +1854,17 @@ fun AddEditPasswordScreen(
             }
         }
     ) { paddingValues ->
-        val contentWindowPadding = if (addPasswordTopBarBlurEnabled) {
-            PaddingValues(
-                start = paddingValues.calculateStartPadding(layoutDirection),
-                end = paddingValues.calculateEndPadding(layoutDirection),
-                bottom = paddingValues.calculateBottomPadding()
-            )
-        } else {
-            paddingValues
-        }
-        val listContentPadding = if (addPasswordTopBarBlurEnabled) {
-            PaddingValues(
-                top = addPasswordBlurTopBarHeight + 10.dp,
-                bottom = 120.dp
-            )
-        } else {
-            PaddingValues(bottom = 120.dp)
-        }
+        val listContentPadding = PaddingValues(bottom = 120.dp)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentWindowPadding)
+                .padding(paddingValues)
                 .imePadding()
         ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .then(
-                        if (addPasswordTopBarBlurEnabled) {
-                            Modifier.haze(
-                                state = addPasswordTopBarHazeState,
-                                style = addPasswordTopBarHazeStyle
-                            )
-                        } else {
-                            Modifier
-                        }
-                    ),
+                    .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = listContentPadding
         ) {
@@ -3250,37 +3206,6 @@ fun AddEditPasswordScreen(
             }
             }  // Payment Info if 结束
         }
-            if (addPasswordTopBarBlurEnabled) {
-                PlusBlurEntryTypeTopBar(
-                    settings = settings,
-                    hazeState = addPasswordTopBarHazeState,
-                    hazeStyle = addPasswordTopBarHazeStyle,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    currentEntryType = if (isBarcodeMode) {
-                        EntryTypeChipOption.BARCODE
-                    } else {
-                        EntryTypeChipOption.PASSWORD
-                    },
-                    entryTypeEnabled = !isEditing,
-                    isFavorite = isFavorite,
-                    onNavigateBack = onNavigateBack,
-                    onFavoriteChange = { isFavorite = it },
-                    onEntryTypeSelect = { option ->
-                        when (option) {
-                            EntryTypeChipOption.WIFI ->
-                                onSwitchToWifi?.invoke(if (isEditing) passwordId else null)
-                            EntryTypeChipOption.SSH_KEY ->
-                                onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
-                            EntryTypeChipOption.BARCODE -> {
-                                loginType = LOGIN_TYPE_BARCODE
-                            }
-                            EntryTypeChipOption.PASSWORD -> {
-                                loginType = "PASSWORD"
-                            }
-                        }
-                    }
-                )
-            }
         }
     }
 

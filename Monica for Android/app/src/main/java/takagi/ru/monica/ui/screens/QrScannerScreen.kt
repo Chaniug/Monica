@@ -5,11 +5,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import android.widget.Toast
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,24 +32,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.google.zxing.BarcodeFormat
 import kotlinx.coroutines.delay
 import takagi.ru.monica.R
-import java.util.concurrent.Executors
+import takagi.ru.monica.ui.scanner.QrCameraScanSession
+import takagi.ru.monica.ui.scanner.QrScanRestartReason
+import takagi.ru.monica.ui.scanner.QrScannerDiagnostics
+import takagi.ru.monica.ui.scanner.candidateValues
+import takagi.ru.monica.ui.scanner.createMlKitBarcodeScanner
+import takagi.ru.monica.ui.scanner.toMlKitFormatList
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 private val DEFAULT_SCANNER_FORMATS = listOf(
     BarcodeFormat.QR_CODE,
@@ -191,16 +185,8 @@ private fun QrCodeScanner(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mlKitFormats = remember(allowedFormats) { allowedFormats.toMlKitFormatList() }
-    val scanner = remember(mlKitFormats) { createMlKitBarcodeScanner(mlKitFormats) }
-    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
-    val previewView = remember(context) {
-        PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-        }
-    }
+    val galleryScanner = remember(mlKitFormats) { createMlKitBarcodeScanner(mlKitFormats) }
     val scanConsumed = remember { AtomicBoolean(false) }
-    val processingFrame = remember { AtomicBoolean(false) }
     val diagnostics = remember(diagnosticLabel, onDiagnostic) {
         if (diagnosticLabel != null && onDiagnostic != null) {
             QrScannerDiagnostics(diagnosticLabel, onDiagnostic)
@@ -208,15 +194,55 @@ private fun QrCodeScanner(
             null
         }
     }
-    var showOverlay by remember { mutableStateOf(false) }
-
-    fun acceptResult(raw: String?) {
-        val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return
-        if (resultValidator(value) && scanConsumed.compareAndSet(false, true)) {
-            diagnostics?.logResultAccepted()
-            onQrCodeScanned(value)
+    val currentValidator = rememberUpdatedState(resultValidator)
+    val currentOnQrCodeScanned = rememberUpdatedState(onQrCodeScanned)
+    val currentInvalidResultMessage = rememberUpdatedState(invalidResultMessage)
+    var scanGeneration by remember { mutableIntStateOf(0) }
+    var pendingRestartReason by remember { mutableStateOf<QrScanRestartReason?>(null) }
+    val previewView = remember(context, scanGeneration) {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
     }
+    var showOverlay by remember { mutableStateOf(false) }
+
+    val acceptResult: (String?) -> Unit = acceptResult@{ raw ->
+        val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return@acceptResult
+        if (currentValidator.value(value) && scanConsumed.compareAndSet(false, true)) {
+            diagnostics?.logResultAccepted()
+            currentOnQrCodeScanned.value(value)
+        }
+    }
+
+    val cameraSession = remember(
+        context,
+        lifecycleOwner,
+        previewView,
+        mlKitFormats,
+        scanGeneration,
+        diagnostics
+    ) {
+        QrCameraScanSession(
+            context = context,
+            lifecycleOwner = lifecycleOwner,
+            previewView = previewView,
+            mlKitFormats = mlKitFormats,
+            generation = scanGeneration,
+            diagnostics = diagnostics,
+            onCandidates = { candidates, _, _ ->
+                val value = candidates.firstOrNull(currentValidator.value)
+                value?.let(acceptResult)
+                value != null
+            },
+            onRestartRequested = { reason ->
+                if (!scanConsumed.get() && pendingRestartReason == null) {
+                    pendingRestartReason = reason
+                }
+            }
+        )
+    }
+    val currentCameraSession = rememberUpdatedState(cameraSession)
 
     // 图片选择器 - 使用 GetContent 以兼容所有设备
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -227,14 +253,14 @@ private fun QrCodeScanner(
             processImageWithMlKit(
                 context = context,
                 uri = uri,
-                scanner = scanner,
+                scanner = galleryScanner,
                 diagnostics = diagnostics,
-                resultValidator = resultValidator,
-                onResult = { acceptResult(it) },
+                resultValidator = currentValidator.value,
+                onResult = acceptResult,
                 onInvalid = {
                     Toast.makeText(
                         context,
-                        invalidResultMessage ?: context.getString(R.string.qr_not_found),
+                        currentInvalidResultMessage.value ?: context.getString(R.string.qr_not_found),
                         Toast.LENGTH_SHORT
                     ).show()
                 },
@@ -245,71 +271,27 @@ private fun QrCodeScanner(
         }
     }
 
-    DisposableEffect(previewView, lifecycleOwner, scanner, mlKitFormats) {
-        var boundPreview: Preview? = null
-        val bindStartedAt = SystemClock.elapsedRealtime()
-        diagnostics?.logCameraProviderRequested(mlKitFormats.size)
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-        val analysis = ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-            .also { imageAnalysis ->
-                imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
-                    analyzeFrameWithMlKit(
-                        imageProxy = imageProxy,
-                        scanner = scanner,
-                        processingFrame = processingFrame,
-                        diagnostics = diagnostics,
-                        resultValidator = resultValidator,
-                        onResult = { acceptResult(it) }
-                    )
-                }
-            }
+    DisposableEffect(galleryScanner) {
+        onDispose { runCatching { galleryScanner.close() } }
+    }
 
-        val mainExecutor = ContextCompat.getMainExecutor(context)
-        cameraProviderFuture.addListener(
-            {
-                val cameraProvider = runCatching { cameraProviderFuture.get() }
-                    .onFailure { diagnostics?.logCameraProviderFailed(it) }
-                    .getOrNull()
-                    ?: return@addListener
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-                boundPreview = preview
-                runCatching {
-                    cameraProvider.unbind(preview, analysis)
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        analysis
-                    )
-                }.onSuccess {
-                    diagnostics?.logCameraBindSuccess(SystemClock.elapsedRealtime() - bindStartedAt)
-                }.onFailure {
-                    diagnostics?.logCameraBindFailed(it)
-                }
-            },
-            mainExecutor
-        )
+    DisposableEffect(cameraSession) {
+        cameraSession.start()
+        onDispose { cameraSession.close() }
+    }
 
-        onDispose {
-            diagnostics?.logDispose(processingFrame.get())
-            analysis.clearAnalyzer()
-            runCatching {
-                if (cameraProviderFuture.isDone) {
-                    val cameraProvider = cameraProviderFuture.get()
-                    if (boundPreview != null) {
-                        cameraProvider.unbind(boundPreview, analysis)
-                    } else {
-                        cameraProvider.unbind(analysis)
-                    }
-                }
-            }
-            runCatching { scanner.close() }
-            analysisExecutor.shutdown()
+    LaunchedEffect(cameraSession, scanConsumed) {
+        while (!scanConsumed.get()) {
+            delay(QR_SCAN_HEALTH_TICK_MS)
+            cameraSession.tick()
         }
+    }
+
+    LaunchedEffect(pendingRestartReason) {
+        pendingRestartReason ?: return@LaunchedEffect
+        delay(QR_SCAN_SESSION_RESTART_DELAY_MS)
+        scanGeneration += 1
+        pendingRestartReason = null
     }
 
     LaunchedEffect(diagnostics) {
@@ -320,7 +302,7 @@ private fun QrCodeScanner(
         )
         while (!scanConsumed.get()) {
             delay(QR_SCAN_DIAG_HEARTBEAT_MS)
-            activeDiagnostics.logHeartbeat(processingFrame.get())
+            activeDiagnostics.logHeartbeat(currentCameraSession.value.isProcessingFrame())
         }
     }
 
@@ -565,93 +547,6 @@ private fun ScannerCorner(
     }
 }
 
-private fun Collection<BarcodeFormat>.toMlKitFormatList(): List<Int> {
-    val mapped = mapNotNull { format ->
-        when (format) {
-            BarcodeFormat.QR_CODE -> Barcode.FORMAT_QR_CODE
-            BarcodeFormat.CODE_128 -> Barcode.FORMAT_CODE_128
-            BarcodeFormat.CODE_39 -> Barcode.FORMAT_CODE_39
-            BarcodeFormat.CODE_93 -> Barcode.FORMAT_CODE_93
-            BarcodeFormat.EAN_13 -> Barcode.FORMAT_EAN_13
-            BarcodeFormat.EAN_8 -> Barcode.FORMAT_EAN_8
-            BarcodeFormat.UPC_A -> Barcode.FORMAT_UPC_A
-            BarcodeFormat.UPC_E -> Barcode.FORMAT_UPC_E
-            BarcodeFormat.ITF -> Barcode.FORMAT_ITF
-            BarcodeFormat.CODABAR -> Barcode.FORMAT_CODABAR
-            BarcodeFormat.DATA_MATRIX -> Barcode.FORMAT_DATA_MATRIX
-            BarcodeFormat.AZTEC -> Barcode.FORMAT_AZTEC
-            BarcodeFormat.PDF_417 -> Barcode.FORMAT_PDF417
-            else -> null
-        }
-    }.distinct()
-    return mapped.ifEmpty { listOf(Barcode.FORMAT_ALL_FORMATS) }
-}
-
-private fun createMlKitBarcodeScanner(formats: List<Int>): BarcodeScanner {
-    val builder = BarcodeScannerOptions.Builder()
-    if (formats.size == 1) {
-        builder.setBarcodeFormats(formats.first())
-    } else {
-        builder.setBarcodeFormats(formats.first(), *formats.drop(1).toIntArray())
-    }
-    return BarcodeScanning.getClient(builder.build())
-}
-
-private fun analyzeFrameWithMlKit(
-    imageProxy: ImageProxy,
-    scanner: BarcodeScanner,
-    processingFrame: AtomicBoolean,
-    diagnostics: QrScannerDiagnostics?,
-    resultValidator: (String) -> Boolean,
-    onResult: (String) -> Unit
-) {
-    if (!processingFrame.compareAndSet(false, true)) {
-        diagnostics?.logFrameSkipped()
-        imageProxy.close()
-        return
-    }
-
-    val frameStartedAt = SystemClock.elapsedRealtime()
-    diagnostics?.logFrameStarted(imageProxy.imageInfo.rotationDegrees)
-    val mediaImage = imageProxy.image
-    if (mediaImage == null) {
-        diagnostics?.logFrameMissingImage()
-        processingFrame.set(false)
-        imageProxy.close()
-        return
-    }
-
-    val proxyClosed = AtomicBoolean(false)
-    fun finishFrame() {
-        processingFrame.set(false)
-        if (proxyClosed.compareAndSet(false, true)) {
-            runCatching { imageProxy.close() }
-        }
-    }
-
-    val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-    scanner.process(inputImage)
-        .addOnSuccessListener { barcodes ->
-            val candidates = barcodes
-                .flatMap { it.candidateValues() }
-                .distinct()
-            val value = candidates.firstOrNull(resultValidator)
-            diagnostics?.logFrameSuccess(
-                durationMs = SystemClock.elapsedRealtime() - frameStartedAt,
-                barcodeCount = barcodes.size,
-                candidateCount = candidates.size,
-                matched = value != null
-            )
-            value?.let(onResult)
-        }
-        .addOnFailureListener { error ->
-            diagnostics?.logFrameFailure(error)
-        }
-        .addOnCompleteListener {
-            finishFrame()
-        }
-}
-
 private fun processImageWithMlKit(
     context: Context,
     uri: Uri,
@@ -715,161 +610,6 @@ private fun processImageWithMlKit(
         }
 }
 
-private fun Barcode.candidateValues(): List<String> {
-    return listOfNotNull(
-        rawValue,
-        displayValue,
-        url?.url
-    ).mapNotNull { value ->
-        value.trim().takeIf(String::isNotBlank)
-    }
-}
-
-private class QrScannerDiagnostics(
-    private val label: String,
-    private val sink: (String) -> Unit
-) {
-    private val startedAt = SystemClock.elapsedRealtime()
-    private val framesStarted = AtomicInteger(0)
-    private val framesSkipped = AtomicInteger(0)
-    private val framesCompleted = AtomicInteger(0)
-    private val frameFailures = AtomicInteger(0)
-    private val emptyResults = AtomicInteger(0)
-    private val invalidResults = AtomicInteger(0)
-    private val matchedResults = AtomicInteger(0)
-    private val lastFrameAt = AtomicLong(0L)
-    private val firstFrameLogged = AtomicBoolean(false)
-    private val firstEmptyLogged = AtomicBoolean(false)
-    private val firstInvalidLogged = AtomicBoolean(false)
-
-    fun logScannerStarted(requestedFormats: Int, mlKitFormats: Int) {
-        log("scanner_started", "requested_formats=$requestedFormats mlkit_formats=$mlKitFormats")
-    }
-
-    fun logCameraProviderRequested(mlKitFormatCount: Int) {
-        log("camera_provider_requested", "mlkit_formats=$mlKitFormatCount")
-    }
-
-    fun logCameraProviderFailed(error: Throwable) {
-        log("camera_provider_failed", "error=${error.safeErrorName()}")
-    }
-
-    fun logCameraBindSuccess(durationMs: Long) {
-        log("camera_bind_success", "duration_ms=$durationMs")
-    }
-
-    fun logCameraBindFailed(error: Throwable) {
-        log("camera_bind_failed", "error=${error.safeErrorName()}")
-    }
-
-    fun logFrameStarted(rotationDegrees: Int) {
-        val count = framesStarted.incrementAndGet()
-        lastFrameAt.set(SystemClock.elapsedRealtime())
-        if (firstFrameLogged.compareAndSet(false, true)) {
-            log("first_frame", "rotation=$rotationDegrees")
-        } else if (count % FRAME_MILESTONE_INTERVAL == 0) {
-            log("frame_milestone", "frames_started=$count rotation=$rotationDegrees")
-        }
-    }
-
-    fun logFrameSkipped() {
-        val count = framesSkipped.incrementAndGet()
-        if (count == 1 || count % SKIP_MILESTONE_INTERVAL == 0) {
-            log("frame_skipped_busy", "skipped=$count")
-        }
-    }
-
-    fun logFrameMissingImage() {
-        frameFailures.incrementAndGet()
-        log("frame_missing_image")
-    }
-
-    fun logFrameSuccess(durationMs: Long, barcodeCount: Int, candidateCount: Int, matched: Boolean) {
-        framesCompleted.incrementAndGet()
-        when {
-            matched -> {
-                val count = matchedResults.incrementAndGet()
-                log("frame_match", "matches=$count duration_ms=$durationMs barcodes=$barcodeCount candidates=$candidateCount")
-            }
-            candidateCount > 0 -> {
-                val count = invalidResults.incrementAndGet()
-                if (firstInvalidLogged.compareAndSet(false, true) || count % INVALID_MILESTONE_INTERVAL == 0) {
-                    log("frame_invalid_candidates", "invalid=$count duration_ms=$durationMs barcodes=$barcodeCount candidates=$candidateCount")
-                }
-            }
-            else -> {
-                val count = emptyResults.incrementAndGet()
-                if (firstEmptyLogged.compareAndSet(false, true) || count % EMPTY_MILESTONE_INTERVAL == 0) {
-                    log("frame_empty", "empty=$count duration_ms=$durationMs")
-                }
-            }
-        }
-    }
-
-    fun logFrameFailure(error: Throwable) {
-        val count = frameFailures.incrementAndGet()
-        log("frame_scan_failed", "failures=$count error=${error.safeErrorName()}")
-    }
-
-    fun logResultAccepted() {
-        log("result_accepted", snapshot(processing = false))
-    }
-
-    fun logGalleryStart() {
-        log("gallery_start")
-    }
-
-    fun logGalleryDecodeFailed(error: Throwable) {
-        log("gallery_decode_failed", "error=${error.safeErrorName()}")
-    }
-
-    fun logGalleryScanFailed(error: Throwable) {
-        log("gallery_scan_failed", "error=${error.safeErrorName()}")
-    }
-
-    fun logGalleryResult(
-        durationMs: Long,
-        barcodeCount: Int,
-        candidateCount: Int,
-        matched: Boolean,
-        invalid: Boolean
-    ) {
-        log(
-            "gallery_result",
-            "duration_ms=$durationMs barcodes=$barcodeCount candidates=$candidateCount matched=$matched invalid=$invalid"
-        )
-    }
-
-    fun logHeartbeat(processing: Boolean) {
-        log("heartbeat", snapshot(processing))
-    }
-
-    fun logDispose(processing: Boolean) {
-        log("scanner_dispose", snapshot(processing))
-    }
-
-    private fun snapshot(processing: Boolean): String {
-        val now = SystemClock.elapsedRealtime()
-        val lastFrame = lastFrameAt.get()
-        val lastFrameAge = if (lastFrame > 0L) now - lastFrame else -1L
-        return "uptime_ms=${now - startedAt} frames_started=${framesStarted.get()} frames_completed=${framesCompleted.get()} skipped=${framesSkipped.get()} failures=${frameFailures.get()} empty=${emptyResults.get()} invalid=${invalidResults.get()} matches=${matchedResults.get()} processing=$processing last_frame_age_ms=$lastFrameAge"
-    }
-
-    private fun log(event: String, detail: String = "") {
-        val suffix = detail.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()
-        sink("qr_scan label=$label event=$event$suffix")
-    }
-
-    private fun Throwable.safeErrorName(): String {
-        return javaClass.simpleName.ifBlank { "Throwable" }
-    }
-
-    private companion object {
-        private const val FRAME_MILESTONE_INTERVAL = 300
-        private const val SKIP_MILESTONE_INTERVAL = 50
-        private const val EMPTY_MILESTONE_INTERVAL = 120
-        private const val INVALID_MILESTONE_INTERVAL = 20
-    }
-}
-
 private const val QR_SCAN_DIAG_HEARTBEAT_MS = 30_000L
+private const val QR_SCAN_HEALTH_TICK_MS = 500L
+private const val QR_SCAN_SESSION_RESTART_DELAY_MS = 450L

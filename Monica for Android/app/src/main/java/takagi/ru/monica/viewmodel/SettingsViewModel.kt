@@ -251,18 +251,6 @@ class SettingsViewModel(
         }
     }
 
-    fun updatePlusBlurEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsManager.updatePlusBlurEnabled(enabled)
-        }
-    }
-
-    fun updatePlusBlurReduceOnBatterySaver(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsManager.updatePlusBlurReduceOnBatterySaver(enabled)
-        }
-    }
-
     fun updateNotificationValidatorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateNotificationValidatorEnabled(enabled)

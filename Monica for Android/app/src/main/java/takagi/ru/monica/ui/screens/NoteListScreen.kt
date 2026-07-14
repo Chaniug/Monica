@@ -116,13 +116,10 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import dev.chrisbanes.haze.HazeState
 import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Locale
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -144,12 +141,6 @@ fun NoteListScreen(
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
     val settings by settingsViewModel.settings.collectAsState()
     val isGridLayout = settings.noteGridLayout
-    val plusBlurMenuHazeState = remember { HazeState() }
-    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
-    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = settings,
-        enabledForThisSurface = true
-    )
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Long>()) }
     var isCategorySheetVisible by remember { mutableStateOf(false) }
@@ -586,10 +577,7 @@ fun NoteListScreen(
                             UnifiedCategoryFilterChipMenuDropdown(
                                 expanded = isCategorySheetVisible,
                                 onDismissRequest = { isCategorySheetVisible = false },
-                                offset = UnifiedCategoryFilterChipMenuOffset,
-                                plusBlurSettings = settings.takeIf { plusBlurMenuEnabled },
-                                plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                                plusBlurHazeStyle = plusBlurMenuHazeStyle
+                                offset = UnifiedCategoryFilterChipMenuOffset
                             ) {
                                 UnifiedCategoryFilterChipMenu(
                                     visible = true,
@@ -650,10 +638,7 @@ fun NoteListScreen(
                         }
                         PasswordTopActionsDropdownMenu(
                             expanded = showTopActionsMenu,
-                            onDismissRequest = { showTopActionsMenu = false },
-                            plusBlurSettings = settings.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeStyle = plusBlurMenuHazeStyle
+                            onDismissRequest = { showTopActionsMenu = false }
                         ) {
                             if (showStandaloneSettingsEntry) {
                                 DropdownMenuItem(
@@ -970,8 +955,6 @@ fun NoteListScreen(
                     selectedNoteIds = setOf(noteId)
                 }
             },
-            plusBlurMenuHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-            plusBlurMenuHazeStyle = plusBlurMenuHazeStyle,
             modifier = Modifier.padding(paddingValues)
         )
     }

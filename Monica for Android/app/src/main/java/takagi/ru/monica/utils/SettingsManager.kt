@@ -25,8 +25,6 @@ import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
-import takagi.ru.monica.data.MonicaBlurIntensity
-import takagi.ru.monica.data.MonicaBlurMode
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListQuickFolderStyle
@@ -197,9 +195,6 @@ class SettingsManager(private val context: Context) {
         private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
-        private val PLUS_BLUR_ENABLED_KEY = booleanPreferencesKey("plus_blur_enabled")
-        private val PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY =
-            booleanPreferencesKey("plus_blur_reduce_on_battery_saver")
         private val PLUS_LICENSE_CDK_KEY = stringPreferencesKey("plus_license_cdk")
         private val PLUS_LICENSE_DEVICE_FINGERPRINT_KEY =
             stringPreferencesKey("plus_license_device_fingerprint")
@@ -574,11 +569,6 @@ class SettingsManager(private val context: Context) {
             notificationValidatorAutoMatch = false,
             notificationValidatorId = -1L,
             isPlusActivated = isPlusActivated,
-            plusBlurEnabled = isPlusActivated && (preferences[PLUS_BLUR_ENABLED_KEY] ?: false),
-            plusBlurMode = MonicaBlurMode.DEFAULT,
-            plusBlurIntensity = MonicaBlurIntensity.DEFAULT,
-            plusBlurReduceOnBatterySaver =
-                preferences[PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY] ?: true,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
             passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
             passwordWebsiteStackMatchMode =
@@ -931,22 +921,6 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePlusActivated(activated: Boolean) {
         dataStore.edit { preferences ->
             preferences[IS_PLUS_ACTIVATED_KEY] = activated
-            if (!activated) {
-                preferences[PLUS_BLUR_ENABLED_KEY] = false
-            }
-        }
-    }
-
-    suspend fun updatePlusBlurEnabled(enabled: Boolean) {
-        dataStore.edit { preferences ->
-            val isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false
-            preferences[PLUS_BLUR_ENABLED_KEY] = enabled && isPlusActivated
-        }
-    }
-
-    suspend fun updatePlusBlurReduceOnBatterySaver(enabled: Boolean) {
-        dataStore.edit { preferences ->
-            preferences[PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY] = enabled
         }
     }
 

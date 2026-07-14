@@ -3368,14 +3368,6 @@ fun MonicaContent(
                     navController.navigate(Screen.QuickSetup.route)
                 },
                 isPlusActivated = settings.isPlusActivated,
-                plusBlurEnabled = settings.plusBlurEnabled,
-                onPlusBlurEnabledChange = { enabled ->
-                    settingsViewModel.updatePlusBlurEnabled(enabled)
-                },
-                plusBlurReduceOnBatterySaver = settings.plusBlurReduceOnBatterySaver,
-                onPlusBlurReduceOnBatterySaverChange = { enabled ->
-                    settingsViewModel.updatePlusBlurReduceOnBatterySaver(enabled)
-                },
                 validatorVibrationEnabled = settings.validatorVibrationEnabled,
                 onValidatorVibrationChange = { enabled ->
                     settingsViewModel.updateValidatorVibrationEnabled(enabled)

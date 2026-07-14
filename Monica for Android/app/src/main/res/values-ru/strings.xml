@@ -1973,13 +1973,7 @@
     <string name="extensions_title">Расширения</string>
     <string name="extensions_description">Управление расширениями и интеграциями</string>
     <string name="extensions_account_settings">Настройки аккаунта</string>
-    <string name="extensions_visual_effects">Визуальные эффекты</string>
     <string name="extensions_security_settings">Безопасность</string>
-    <string name="plus_blur_title">Гауссово размытие Plus</string>
-    <string name="plus_blur_desc">Включить размытие в стиле матового стекла на поддерживаемых экранах Plus.</string>
-    <string name="plus_blur_requires_plus">Активируйте Monica Plus, чтобы включить гауссово размытие.</string>
-    <string name="plus_blur_reduce_battery_title">Уменьшать в режиме энергосбережения</string>
-    <string name="plus_blur_reduce_battery_desc">Автоматически отключать размытие, когда включён системный режим энергосбережения.</string>
     <string name="extensions_totp_settings">Настройки аутентификатора</string>
     <string name="extensions_more_coming_soon">Скоро будет больше функций…</string>
     <string name="copy_next_code_when_expiring">Копировать следующий код при истечении</string>
@@ -3215,8 +3209,6 @@
     <string name="local_keepass_key_file_selected">Файл ключа выбран</string>
     <string name="plus_feature_premium_themes_title">Премиум-темы</string>
     <string name="plus_feature_premium_themes_desc">Эксклюзивные цветовые палитры, например Monet.</string>
-    <string name="plus_feature_blur_effects_title">Гауссово размытие Plus</string>
-    <string name="plus_feature_blur_effects_desc">Включайте размытие в стиле матового стекла из расширений.</string>
     <string name="plus_feature_notification_validator_title">Аутентификатор в уведомлениях</string>
     <string name="plus_feature_notification_validator_desc">Закрепите коды TOTP в панели уведомлений.</string>
     <string name="plus_feature_validator_vibration_title">Вибрация аутентификатора</string>

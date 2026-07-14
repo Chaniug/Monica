@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 系统 Splash 使用 Material 3 默认夜间背景色 -->
+    <color name="monica_startup_background">#1C1B1F</color>
+
     <!-- 夜间模式下的自动填充颜色 -->
     <color name="autofill_icon_tint">#D0BCFF</color>
     <color name="autofill_icon_background">#4A4458</color>

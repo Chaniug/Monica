@@ -83,8 +83,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -99,10 +97,7 @@ import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
-import takagi.ru.monica.ui.components.PlusBlurNoteEditTopBar
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.RememberedStorageTarget
@@ -593,23 +588,11 @@ fun AddEditNoteScreen(
             onRemoveTarget = { target -> editorViewModel.removeSelectedStorageTarget(target) }
         )
     }
-    val noteTopBarTitle = stringResource(if (isEditing) R.string.edit_note else R.string.new_note)
-    val noteTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = appSettings,
-        enabledForThisSurface = true
-    )
-    val noteUseBlurTopBar = noteTopBarBlurEnabled && !isFullScreenEditor && !isEditorModeAnimating
-    val noteTopBarHazeState = remember { HazeState() }
-    val noteTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
-    val noteBlurTopBarHeight =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0.dp),
         topBar = {
-            if (!noteUseBlurTopBar) {
-                Box(
+            Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
@@ -681,7 +664,6 @@ fun AddEditNoteScreen(
                             enabled = !isEditorModeAnimating
                         )
                     }
-                }
             }
         },
         floatingActionButton = {
@@ -764,30 +746,11 @@ fun AddEditNoteScreen(
             )
         }
 
-        val contentPadding = if (noteUseBlurTopBar) {
-            PaddingValues(
-                top = noteBlurTopBarHeight + 10.dp,
-                bottom = paddingValues.calculateBottomPadding()
-            )
-        } else {
-            paddingValues
-        }
-
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (noteUseBlurTopBar) {
-                            Modifier.haze(
-                                state = noteTopBarHazeState,
-                                style = noteTopBarHazeStyle
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(contentPadding)
+                    .padding(paddingValues)
             ) {
                 if (isEditorModeAnimating) {
                     NoteEditorModeBody(
@@ -897,22 +860,6 @@ fun AddEditNoteScreen(
                         }
                     )
                 }
-            }
-
-            if (noteUseBlurTopBar) {
-                PlusBlurNoteEditTopBar(
-                    title = noteTopBarTitle,
-                    settings = appSettings,
-                    hazeState = noteTopBarHazeState,
-                    hazeStyle = noteTopBarHazeStyle,
-                    isEditing = isEditing,
-                    isFavorite = editorState.isFavorite,
-                    onNavigateBack = onNavigateBack,
-                    onToggleFavorite = { editorViewModel.toggleFavorite() },
-                    onDelete = { showConfirmDelete = true },
-                    onEnterFullScreen = { animateEditorModeChange(true) },
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
             }
         }
     }

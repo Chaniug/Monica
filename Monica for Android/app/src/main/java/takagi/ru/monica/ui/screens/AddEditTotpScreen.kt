@@ -40,8 +40,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -69,11 +67,8 @@ import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
-import takagi.ru.monica.ui.components.PlusBlurEditTopBar
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -642,19 +637,10 @@ fun AddEditTotpScreen(
     }
     
     val topBarTitle = stringResource(if (isEditing) R.string.edit_totp_title else R.string.add_totp_title)
-    val totpTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = settings,
-        enabledForThisSurface = true
-    )
-    val totpTopBarHazeState = remember { HazeState() }
-    val totpTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
-    val totpBlurTopBarHeight =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
 
     Scaffold(
         topBar = {
-            if (!totpTopBarBlurEnabled) {
-                TopAppBar(
+            TopAppBar(
                     title = { Text(topBarTitle) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
@@ -675,8 +661,7 @@ fun AddEditTotpScreen(
                         scrolledContainerColor = Color.Transparent,
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -706,15 +691,6 @@ fun AddEditTotpScreen(
             }
         }
     ) { paddingValues ->
-        val contentPadding = if (totpTopBarBlurEnabled) {
-            PaddingValues(
-                top = totpBlurTopBarHeight + 10.dp,
-                bottom = paddingValues.calculateBottomPadding()
-            )
-        } else {
-            paddingValues
-        }
-
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -723,17 +699,7 @@ fun AddEditTotpScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (totpTopBarBlurEnabled) {
-                            Modifier.haze(
-                                state = totpTopBarHazeState,
-                                style = totpTopBarHazeStyle
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(contentPadding)
+                    .padding(paddingValues)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(bottom = 32.dp)
@@ -1189,19 +1155,6 @@ fun AddEditTotpScreen(
                     }
                 }
             }
-            }
-
-            if (totpTopBarBlurEnabled) {
-                PlusBlurEditTopBar(
-                    title = topBarTitle,
-                    settings = settings,
-                    hazeState = totpTopBarHazeState,
-                    hazeStyle = totpTopBarHazeStyle,
-                    isFavorite = isFavorite,
-                    onNavigateBack = onNavigateBack,
-                    onFavoriteChange = { isFavorite = it },
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
             }
         }
     }

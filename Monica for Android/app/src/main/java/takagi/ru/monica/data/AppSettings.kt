@@ -490,28 +490,6 @@ enum class PasswordSwipeSelectionMode {
     }
 }
 
-enum class MonicaBlurMode {
-    AUTOMATIC,
-    LIGHTWEIGHT,
-    BACKGROUND_IMAGE,
-    GLASS,
-    COMPATIBLE;
-
-    companion object {
-        val DEFAULT = GLASS
-    }
-}
-
-enum class MonicaBlurIntensity {
-    LIGHT,
-    STANDARD,
-    STRONG;
-
-    companion object {
-        val DEFAULT = LIGHT
-    }
-}
-
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val oledPureBlackEnabled: Boolean = false,
@@ -550,10 +528,6 @@ data class AppSettings(
     val notificationValidatorAutoMatch: Boolean = false, // 通知栏验证器自动匹配
     val notificationValidatorId: Long = -1L, // 通知栏显示的验证器ID
     val isPlusActivated: Boolean = false, // Plus是否已激活
-    val plusBlurEnabled: Boolean = false, // Plus 高级模糊效果，默认关闭
-    val plusBlurMode: MonicaBlurMode = MonicaBlurMode.DEFAULT, // Plus 模糊模式
-    val plusBlurIntensity: MonicaBlurIntensity = MonicaBlurIntensity.DEFAULT, // Plus 模糊强度
-    val plusBlurReduceOnBatterySaver: Boolean = true, // 省电模式下降级模糊
     val stackCardMode: String = "AUTO", // 堆叠卡片模式
     val passwordGroupMode: String = "smart", // 密码分组模式
     val passwordWebsiteStackMatchMode: String = "strict", // 网站自动堆叠匹配模式：strict/relaxed

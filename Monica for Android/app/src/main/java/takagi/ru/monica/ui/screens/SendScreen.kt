@@ -129,8 +129,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.attachments.facade.AttachmentUriMetadata
 import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
@@ -138,15 +136,10 @@ import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.bitwarden.sync.buildHeadline
 import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
-import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.ExpressiveTopBar
-import takagi.ru.monica.ui.components.PlusBlurSimpleTopBar
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
-import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.util.VibrationPatterns
 import java.time.Instant
 import java.time.ZoneId
@@ -1011,39 +1004,27 @@ fun AddEditSendScreen(
         // remember 缓存时序问题导致按钮灰色。
         SendCreateType.File -> selectedFileUri != null && selectedFileMeta != null
     }
-    val settingsManager = remember { SettingsManager(context) }
-    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
     val sendTopBarTitle = stringResource(R.string.send_create_title)
-    val sendTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = settings,
-        enabledForThisSurface = true
-    )
-    val sendTopBarHazeState = remember { HazeState() }
-    val sendTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
-    val sendBlurTopBarHeight =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            if (!sendTopBarBlurEnabled) {
-                TopAppBar(
-                    title = { Text(sendTopBarTitle) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack, enabled = !isSubmitting) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back)
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
-                    )
+            TopAppBar(
+                title = { Text(sendTopBarTitle) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack, enabled = !isSubmitting) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -1103,15 +1084,6 @@ fun AddEditSendScreen(
             }
         }
     ) { paddingValues ->
-        val contentPadding = if (sendTopBarBlurEnabled) {
-            PaddingValues(
-                top = sendBlurTopBarHeight + 10.dp,
-                bottom = paddingValues.calculateBottomPadding()
-            )
-        } else {
-            paddingValues
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1120,17 +1092,7 @@ fun AddEditSendScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (sendTopBarBlurEnabled) {
-                            Modifier.haze(
-                                state = sendTopBarHazeState,
-                                style = sendTopBarHazeStyle
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .padding(contentPadding)
+                    .padding(paddingValues)
                     .padding(horizontal = 16.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1285,18 +1247,6 @@ fun AddEditSendScreen(
                 }
 
                 Spacer(modifier = Modifier.height(76.dp))
-            }
-
-            if (sendTopBarBlurEnabled) {
-                PlusBlurSimpleTopBar(
-                    title = sendTopBarTitle,
-                    settings = settings,
-                    hazeState = sendTopBarHazeState,
-                    hazeStyle = sendTopBarHazeStyle,
-                    onNavigateBack = onNavigateBack,
-                    enabled = !isSubmitting,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
             }
         }
     }

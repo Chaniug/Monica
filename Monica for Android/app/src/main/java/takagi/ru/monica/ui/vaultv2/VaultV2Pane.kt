@@ -89,8 +89,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -173,8 +171,6 @@ import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.gestures.SwipeActions
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
 import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
@@ -1285,12 +1281,6 @@ fun VaultV2Pane(
 	val stackCardMode = remember(appSettings.stackCardMode) {
 		runCatching { StackCardMode.valueOf(appSettings.stackCardMode) }.getOrDefault(StackCardMode.AUTO)
 	}
-	val plusBlurMenuHazeState = remember { HazeState() }
-	val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
-	val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
-		settings = appSettings,
-		enabledForThisSurface = true,
-	)
 
 	val passwordEntries by passwordViewModel.allPasswordsForUi.collectAsState()
 	val categories by passwordViewModel.categories.collectAsState()
@@ -2181,16 +2171,6 @@ fun VaultV2Pane(
 	Box(
 		modifier = modifier
 			.fillMaxSize()
-			.then(
-				if (plusBlurMenuEnabled) {
-					Modifier.haze(
-						state = plusBlurMenuHazeState,
-						style = plusBlurMenuHazeStyle,
-					)
-				} else {
-					Modifier
-				}
-			)
 	) {
 		Column(modifier = Modifier.fillMaxSize()) {
 			ExpressiveTopBar(
@@ -2209,13 +2189,10 @@ fun VaultV2Pane(
 							)
 						}
 						if (appSettings.categorySelectionUiMode == CategorySelectionUiMode.CHIP_MENU) {
-							UnifiedCategoryFilterChipMenuDropdown(
-								expanded = isStorageFilterSheetVisible,
-								onDismissRequest = { isStorageFilterSheetVisible = false },
-								offset = UnifiedCategoryFilterChipMenuOffset,
-								plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-								plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-								plusBlurHazeStyle = plusBlurMenuHazeStyle
+						UnifiedCategoryFilterChipMenuDropdown(
+							expanded = isStorageFilterSheetVisible,
+							onDismissRequest = { isStorageFilterSheetVisible = false },
+							offset = UnifiedCategoryFilterChipMenuOffset
 							) {
 								PasswordListCategoryChipMenu(
 									currentFilter = categoryMenuFilter,
@@ -2360,12 +2337,9 @@ fun VaultV2Pane(
 								contentDescription = stringResource(R.string.more_options),
 							)
 						}
-						PasswordTopActionsDropdownMenu(
-							expanded = isAuthenticated && isTopActionsMenuExpanded,
-							onDismissRequest = { isTopActionsMenuExpanded = false },
-							plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-							plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-							plusBlurHazeStyle = plusBlurMenuHazeStyle
+					PasswordTopActionsDropdownMenu(
+						expanded = isAuthenticated && isTopActionsMenuExpanded,
+						onDismissRequest = { isTopActionsMenuExpanded = false }
 						) {
 							selectedKeePassDatabaseId?.let { keepassDatabaseId ->
 								KeepassRefreshTopActionsMenuItem(

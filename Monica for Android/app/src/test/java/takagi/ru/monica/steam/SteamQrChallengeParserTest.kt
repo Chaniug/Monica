@@ -41,12 +41,30 @@ class SteamQrChallengeParserTest {
     }
 
     @Test
+    fun parsesEntireUnsigned64ClientIdRangeWithoutLosingBits() {
+        assertEquals(
+            Long.MAX_VALUE,
+            SteamQrChallenge.parse("https://s.team/q/1/9223372036854775807")?.clientId
+        )
+        assertEquals(
+            Long.MIN_VALUE,
+            SteamQrChallenge.parse("https://s.team/q/1/9223372036854775808")?.clientId
+        )
+        assertEquals(
+            -1L,
+            SteamQrChallenge.parse("https://s.team/q/1/18446744073709551615")?.clientId
+        )
+    }
+
+    @Test
     fun rejectsNonSteamQrPayloads() {
         assertNull(SteamQrChallenge.parse("1234567890"))
         assertNull(SteamQrChallenge.parse("otpauth://totp/Steam:user?secret=ABC"))
         assertNull(SteamQrChallenge.parse("https://example.com/q/1/123456789"))
         assertNull(SteamQrChallenge.parse("http://s.team/q/1/123456789"))
         assertNull(SteamQrChallenge.parse("https://s.team/q/-1/123456789"))
+        assertNull(SteamQrChallenge.parse("https://s.team/q/1/0"))
         assertNull(SteamQrChallenge.parse("https://s.team/q/1/-123456789"))
+        assertNull(SteamQrChallenge.parse("https://s.team/q/1/18446744073709551616"))
     }
 }

@@ -102,8 +102,6 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
@@ -177,8 +175,6 @@ import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.common.selection.CategoryListItem
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.selection.SelectionModeTopBar
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.main.navigation.BottomNavItem
 import takagi.ru.monica.ui.main.navigation.fullLabelRes
 import takagi.ru.monica.ui.main.navigation.indexToDefaultTabKey
@@ -387,12 +383,6 @@ fun TotpListContent(
     val coroutineScope = rememberCoroutineScope()
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
-    val plusBlurMenuHazeState = remember { HazeState() }
-    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
-    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = appSettings,
-        enabledForThisSurface = true
-    )
     val activity = context as? FragmentActivity
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
@@ -660,16 +650,6 @@ fun TotpListContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .then(
-                if (plusBlurMenuEnabled) {
-                    Modifier.haze(
-                        state = plusBlurMenuHazeState,
-                        style = plusBlurMenuHazeStyle
-                    )
-                } else {
-                    Modifier
-                }
-            )
     ) {
         // M3E Top Bar with integrated search - 根据当前分类过滤器动态显示标题
         val title = when (val filter = currentFilter) {
@@ -738,10 +718,7 @@ fun TotpListContent(
                         UnifiedCategoryFilterChipMenuDropdown(
                             expanded = isCategorySheetVisible,
                             onDismissRequest = { isCategorySheetVisible = false },
-                            offset = UnifiedCategoryFilterChipMenuOffset,
-                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeStyle = plusBlurMenuHazeStyle
+                            offset = UnifiedCategoryFilterChipMenuOffset
                         ) {
                             UnifiedCategoryFilterChipMenu(
                                 visible = true,
@@ -773,10 +750,7 @@ fun TotpListContent(
                     }
                     PasswordTopActionsDropdownMenu(
                         expanded = showTopActionsMenu,
-                        onDismissRequest = { showTopActionsMenu = false },
-                        plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-                        plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                        plusBlurHazeStyle = plusBlurMenuHazeStyle
+                        onDismissRequest = { showTopActionsMenu = false }
                     ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.quick_action_scan_qr)) },

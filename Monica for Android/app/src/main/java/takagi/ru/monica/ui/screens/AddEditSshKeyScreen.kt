@@ -65,14 +65,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
-import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
@@ -92,14 +89,10 @@ import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.OutlinedTextField
-import takagi.ru.monica.ui.components.PlusBlurEntryTypeTopBar
 import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.ClipboardUtils
-import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.SshKeyGenerator
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -255,16 +248,6 @@ fun AddEditSshKeyScreen(
         title.isNotBlank() &&
         publicKey.isNotBlank() &&
         !isGenerating
-    val settingsManager = remember { SettingsManager(context) }
-    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-    val sshTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = settings,
-        enabledForThisSurface = !isEditing
-    )
-    val sshTopBarHazeState = remember { HazeState() }
-    val sshTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
-    val sshBlurTopBarHeight =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
     val topBarTitle = stringResource(
         if (isEditing) R.string.edit_ssh_key_title else R.string.add_ssh_key_title
     )
@@ -349,8 +332,7 @@ fun AddEditSshKeyScreen(
 
     Scaffold(
         topBar = {
-            if (!sshTopBarBlurEnabled) {
-                TopAppBar(
+            TopAppBar(
                     title = {
                         Text(
                             topBarTitle,
@@ -393,8 +375,7 @@ fun AddEditSshKeyScreen(
                         scrolledContainerColor = Color.Transparent,
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                )
-            }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -406,15 +387,6 @@ fun AddEditSshKeyScreen(
             }
         }
     ) { innerPadding ->
-        val contentPadding = if (sshTopBarBlurEnabled) {
-            PaddingValues(
-                top = sshBlurTopBarHeight + 10.dp,
-                bottom = innerPadding.calculateBottomPadding()
-            )
-        } else {
-            innerPadding
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -423,19 +395,9 @@ fun AddEditSshKeyScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (sshTopBarBlurEnabled) {
-                            Modifier.haze(
-                                state = sshTopBarHazeState,
-                                style = sshTopBarHazeStyle
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
             ) {
                 SshKeyFormBody(
-                    innerPadding = contentPadding,
+                    innerPadding = innerPadding,
                     selectedStorageTargets = selectedStorageTargets,
                     existingReplicaTargetKeys = existingReplicaTargetKeys,
                     categories = categories,
@@ -471,28 +433,6 @@ fun AddEditSshKeyScreen(
                         customFields.clear()
                         customFields.addAll(updated)
                             }
-                )
-            }
-
-            if (sshTopBarBlurEnabled) {
-                PlusBlurEntryTypeTopBar(
-                    settings = settings,
-                    hazeState = sshTopBarHazeState,
-                    hazeStyle = sshTopBarHazeStyle,
-                    currentEntryType = EntryTypeChipOption.SSH_KEY,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    entryTypeEnabled = !isEditing,
-                    isFavorite = isFavorite,
-                    onNavigateBack = onNavigateBack,
-                    onFavoriteChange = { isFavorite = it },
-                    onEntryTypeSelect = { option ->
-                        when (option) {
-                            EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
-                            EntryTypeChipOption.WIFI -> onNavigateToWifi()
-                            EntryTypeChipOption.SSH_KEY -> Unit
-                            EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
-                        }
-                    }
                 )
             }
         }

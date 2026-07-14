@@ -79,8 +79,6 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Velocity
 import androidx.fragment.app.FragmentActivity
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,8 +128,6 @@ import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.sync.SyncDiagnostics
@@ -191,12 +187,6 @@ fun CardWalletScreen(
     val settingsManager = remember { SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
-    )
-    val plusBlurMenuHazeState = remember { HazeState() }
-    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
-    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = appSettings,
-        enabledForThisSurface = true
     )
     val savedCategoryFilterState by settingsManager
         .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
@@ -1018,16 +1008,6 @@ fun CardWalletScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .then(
-                if (plusBlurMenuEnabled) {
-                    Modifier.haze(
-                        state = plusBlurMenuHazeState,
-                        style = plusBlurMenuHazeStyle
-                    )
-                } else {
-                    Modifier
-                }
-            )
     ) {
         ExpressiveTopBar(
             title = topBarTitle,
@@ -1075,10 +1055,7 @@ fun CardWalletScreen(
                         UnifiedCategoryFilterChipMenuDropdown(
                             expanded = showCategoryFilterDialog,
                             onDismissRequest = { showCategoryFilterDialog = false },
-                            offset = UnifiedCategoryFilterChipMenuOffset,
-                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeStyle = plusBlurMenuHazeStyle
+                            offset = UnifiedCategoryFilterChipMenuOffset
                         ) {
                             UnifiedCategoryFilterChipMenu(
                                 visible = true,
@@ -1110,10 +1087,7 @@ fun CardWalletScreen(
                     }
                     PasswordTopActionsDropdownMenu(
                         expanded = showTopActionsMenu,
-                        onDismissRequest = { showTopActionsMenu = false },
-                        plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-                        plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                        plusBlurHazeStyle = plusBlurMenuHazeStyle
+                        onDismissRequest = { showTopActionsMenu = false }
                     ) {
                             if (showStandaloneSettingsEntry) {
                                 DropdownMenuItem(

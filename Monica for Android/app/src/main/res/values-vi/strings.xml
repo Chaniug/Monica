@@ -1847,8 +1847,6 @@
     <string name="local_keepass_key_file_selected">Da chon tep khoa</string>
     <string name="plus_feature_premium_themes_title">Chu de cao cap</string>
     <string name="plus_feature_premium_themes_desc">Mo khoa cac bang mau doc quyen nhu Monet.</string>
-    <string name="plus_feature_blur_effects_title">Lam mo Gaussian Plus</string>
-    <string name="plus_feature_blur_effects_desc">Bat lam mo kieu kinh mo tu Tinh nang mo rong.</string>
     <string name="plus_feature_notification_validator_title">Trinh xac thuc tren thong bao</string>
     <string name="plus_feature_notification_validator_desc">Ghim ma TOTP tren thanh thong bao de xem nhanh.</string>
     <string name="plus_feature_validator_vibration_title">Rung khi ma sap doi</string>
@@ -1935,13 +1933,7 @@
     <string name="swipe_mode_continuous">Lien tuc</string>
     <string name="extensions_title">Tinh nang mo rong</string>
     <string name="extensions_description">Quan ly cac tinh nang mo rong va tich hop he thong</string>
-    <string name="extensions_visual_effects">Hieu ung hinh anh</string>
     <string name="extensions_security_settings">Bao mat</string>
-    <string name="plus_blur_title">Lam mo Gaussian Plus</string>
-    <string name="plus_blur_desc">Bat lam mo kieu kinh mo tren cac be mat Plus duoc ho tro.</string>
-    <string name="plus_blur_requires_plus">Kich hoat Monica Plus de dung lam mo Gaussian.</string>
-    <string name="plus_blur_reduce_battery_title">Giam khi tiet kiem pin</string>
-    <string name="plus_blur_reduce_battery_desc">Tu dong tat lam mo khi che do tiet kiem pin cua he thong dang bat.</string>
     <string name="extensions_totp_settings">Cai dat xac thuc</string>
     <string name="extensions_more_coming_soon">Them nhieu tinh nang sap ra mat…</string>
     <string name="copy_next_code_when_expiring">Sao chep ma moi khi sap het han</string>

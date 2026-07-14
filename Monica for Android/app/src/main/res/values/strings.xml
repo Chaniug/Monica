@@ -2451,13 +2451,7 @@
     <string name="extensions_title">Extensions</string>
     <string name="extensions_description">Manage extensions and system integrations</string>
     <string name="extensions_account_settings">Account Settings</string>
-    <string name="extensions_visual_effects">Visual effects</string>
     <string name="extensions_security_settings">Security</string>
-    <string name="plus_blur_title">Plus Gaussian blur</string>
-    <string name="plus_blur_desc">Enable frosted glass blur on supported Plus surfaces.</string>
-    <string name="plus_blur_requires_plus">Activate Monica Plus to unlock Gaussian blur.</string>
-    <string name="plus_blur_reduce_battery_title">Reduce in battery saver</string>
-    <string name="plus_blur_reduce_battery_desc">Automatically disable blur when system battery saver is active.</string>
     <string name="clipboard_auto_clear_title">Clear clipboard</string>
     <string name="clipboard_auto_clear_description">Automatically clear copied usernames and passwords from the clipboard.</string>
     <string name="clipboard_auto_clear_never">Never</string>
@@ -3734,8 +3728,6 @@
     <string name="local_keepass_key_file_selected">Key file selected</string>
     <string name="plus_feature_premium_themes_title">Premium themes</string>
     <string name="plus_feature_premium_themes_desc">Unlock exclusive theme palettes such as Monet.</string>
-    <string name="plus_feature_blur_effects_title">Plus Gaussian blur</string>
-    <string name="plus_feature_blur_effects_desc">Enable frosted glass blur from Extensions.</string>
     <string name="plus_feature_notification_validator_title">Notification authenticator</string>
     <string name="plus_feature_notification_validator_desc">Pin TOTP codes in the notification shade for quick access.</string>
     <string name="plus_feature_validator_vibration_title">Authenticator vibration</string>

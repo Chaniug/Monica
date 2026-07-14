@@ -33,10 +33,6 @@ fun ExtensionsScreen(
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToQuickSetup: () -> Unit = {},
     isPlusActivated: Boolean = false,
-    plusBlurEnabled: Boolean = false,
-    onPlusBlurEnabledChange: (Boolean) -> Unit = {},
-    plusBlurReduceOnBatterySaver: Boolean = true,
-    onPlusBlurReduceOnBatterySaverChange: (Boolean) -> Unit = {},
     validatorVibrationEnabled: Boolean = false,
     onValidatorVibrationChange: (Boolean) -> Unit = {},
     copyNextCodeWhenExpiring: Boolean = false,
@@ -241,34 +237,6 @@ fun ExtensionsScreen(
                     description = stringResource(R.string.re_quick_init_desc),
                     onClick = onNavigateToQuickSetup
                 )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            ExtensionSection(title = stringResource(R.string.extensions_visual_effects)) {
-                if (isPlusActivated) {
-                    ExtensionSwitchItem(
-                        icon = Icons.Default.AutoAwesome,
-                        title = stringResource(R.string.plus_blur_title),
-                        description = stringResource(R.string.plus_blur_desc),
-                        checked = plusBlurEnabled,
-                        onCheckedChange = onPlusBlurEnabledChange
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    ExtensionSwitchItem(
-                        icon = Icons.Default.BatterySaver,
-                        title = stringResource(R.string.plus_blur_reduce_battery_title),
-                        description = stringResource(R.string.plus_blur_reduce_battery_desc),
-                        checked = plusBlurReduceOnBatterySaver,
-                        onCheckedChange = onPlusBlurReduceOnBatterySaverChange
-                    )
-                } else {
-                    ExtensionClickableItem(
-                        icon = Icons.Default.AutoAwesome,
-                        title = stringResource(R.string.plus_blur_title),
-                        description = stringResource(R.string.plus_blur_requires_plus),
-                        onClick = onNavigateToMonicaPlus
-                    )
-                }
             }
 
             ExtensionSection(title = stringResource(R.string.extensions_security_settings)) {

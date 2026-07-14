@@ -52,9 +52,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
@@ -76,8 +73,6 @@ fun NoteListContent(
     selectedNoteIds: Set<Long>,
     onNoteClick: (Long) -> Unit,
     onNoteLongClick: (Long) -> Unit,
-    plusBlurMenuHazeState: HazeState? = null,
-    plusBlurMenuHazeStyle: HazeStyle = HazeStyle.Unspecified,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -386,14 +381,6 @@ fun NoteListContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .then(
-                plusBlurMenuHazeState?.let {
-                    Modifier.haze(
-                        state = it,
-                        style = plusBlurMenuHazeStyle
-                    )
-                } ?: Modifier
-            )
     ) {
         if (notes.isEmpty()) {
             Box(

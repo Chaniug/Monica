@@ -55,8 +55,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -113,8 +111,6 @@ import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
-import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
-import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
@@ -290,12 +286,6 @@ fun PasskeyListScreen(
     var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
-    )
-    val plusBlurMenuHazeState = remember { HazeState() }
-    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
-    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
-        settings = appSettings,
-        enabledForThisSurface = true
     )
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = remember(appSettings.biometricEnabled) {
@@ -1019,16 +1009,6 @@ fun PasskeyListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .then(
-                if (plusBlurMenuEnabled) {
-                    Modifier.haze(
-                        state = plusBlurMenuHazeState,
-                        style = plusBlurMenuHazeStyle
-                    )
-                } else {
-                    Modifier
-                }
-            )
     ) {
         // ExpressiveTopBar（与密码列表完全一致）
         if (!hideTopBar) {
@@ -1103,10 +1083,7 @@ fun PasskeyListScreen(
                             UnifiedCategoryFilterChipMenuDropdown(
                                 expanded = showCategoryFilterDialog,
                                 onDismissRequest = { showCategoryFilterDialog = false },
-                                offset = UnifiedCategoryFilterChipMenuOffset,
-                                plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-                                plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                                plusBlurHazeStyle = plusBlurMenuHazeStyle
+                                offset = UnifiedCategoryFilterChipMenuOffset
                             ) {
                                 UnifiedCategoryFilterChipMenu(
                                     visible = true,
@@ -1142,10 +1119,7 @@ fun PasskeyListScreen(
                         }
                         PasswordTopActionsDropdownMenu(
                             expanded = showTopActionsMenu,
-                            onDismissRequest = { showTopActionsMenu = false },
-                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
-                            plusBlurHazeStyle = plusBlurMenuHazeStyle
+                            onDismissRequest = { showTopActionsMenu = false }
                         ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.nav_settings)) },

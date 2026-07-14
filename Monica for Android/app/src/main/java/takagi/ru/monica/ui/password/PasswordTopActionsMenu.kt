@@ -30,11 +30,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
 import takagi.ru.monica.R
-import takagi.ru.monica.data.AppSettings
-import takagi.ru.monica.ui.effects.blur.MonicaPlusBlurPopupMenu
 
 internal val PasswordTopActionsMenuOffset = DpOffset(x = 48.dp, y = 6.dp)
 private val PasswordTopActionsMenuShape = RoundedCornerShape(20.dp)
@@ -48,36 +44,16 @@ internal fun PasswordTopActionsDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
-    plusBlurSettings: AppSettings? = null,
-    plusBlurHazeState: HazeState? = null,
-    plusBlurHazeStyle: HazeStyle = HazeStyle.Unspecified,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (!expanded) return
 
-    val usePlusBlurSurface = plusBlurSettings != null
     MaterialTheme(
         shapes = MaterialTheme.shapes.copy(
             extraSmall = RoundedCornerShape(20.dp),
             small = RoundedCornerShape(20.dp)
         )
     ) {
-        if (usePlusBlurSurface) {
-            MonicaPlusBlurPopupMenu(
-                expanded = expanded,
-                onDismissRequest = onDismissRequest,
-                settings = requireNotNull(plusBlurSettings),
-                hazeState = plusBlurHazeState,
-                hazeStyle = plusBlurHazeStyle,
-                offset = PasswordTopActionsMenuOffset,
-                shape = PasswordTopActionsMenuShape,
-                modifier = passwordTopActionsMenuLayoutModifier(modifier)
-            ) {
-                content()
-            }
-            return@MaterialTheme
-        }
-
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = onDismissRequest,

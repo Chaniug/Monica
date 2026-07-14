@@ -1689,6 +1689,24 @@ private fun SteamAccountDetailContent(
     val clipboard = LocalClipboardManager.current
     val totpItem = remember(account) { account.toSteamTotpUiItem() }
     val totpData = remember(account) { account.toSteamTotpUiData() }
+    var scannedQrAction by remember(account.id) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingScannedQr, account.id) {
+        val qr = pendingScannedQr?.trim().orEmpty()
+        if (qr.isNotBlank()) {
+            scannedQrAction = qr
+            onScannedQrHandled()
+        }
+    }
+
+    scannedQrAction?.let { rawQr ->
+        SteamScannedQrActionDialog(
+            account = account,
+            rawQr = rawQr,
+            onDismiss = { scannedQrAction = null },
+            onRespondQr = onRespondQr
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1735,8 +1753,6 @@ private fun SteamAccountDetailContent(
                 SteamLoginApprovalSection(
                     account = account,
                     pendingLogins = pendingLogins,
-                    pendingScannedQr = pendingScannedQr,
-                    onScannedQrHandled = onScannedQrHandled,
                     onRefresh = onRefreshLogins,
                     onRespondPending = onRespondPending,
                     onRespondQr = onRespondQr
@@ -3227,11 +3243,66 @@ private fun SteamConfirmationItemImage(confirmation: SteamConfirmation) {
 }
 
 @Composable
+private fun SteamScannedQrActionDialog(
+    account: SteamAccount,
+    rawQr: String,
+    onDismiss: () -> Unit,
+    onRespondQr: (String, Boolean) -> Unit
+) {
+    val unavailableReason = if (account.canApproveLogins) {
+        null
+    } else {
+        steamLoginApprovalUnavailableText(account)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.steam_qr_login_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                unavailableReason?.let { reason ->
+                    Text(
+                        text = reason,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        onRespondQr(rawQr, false)
+                        onDismiss()
+                    },
+                    enabled = unavailableReason == null
+                ) {
+                    Text(stringResource(R.string.steam_reject))
+                }
+                TextButton(
+                    onClick = {
+                        onRespondQr(rawQr, true)
+                        onDismiss()
+                    },
+                    enabled = unavailableReason == null
+                ) {
+                    Text(stringResource(R.string.steam_approve))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
 private fun SteamLoginApprovalSection(
     account: SteamAccount,
     pendingLogins: List<SteamPendingLogin>,
-    pendingScannedQr: String?,
-    onScannedQrHandled: () -> Unit,
     onRefresh: () -> Unit,
     onRespondPending: (SteamPendingLogin, Boolean) -> Unit,
     onRespondQr: (String, Boolean) -> Unit
@@ -3239,20 +3310,10 @@ private fun SteamLoginApprovalSection(
     var qrText by remember { mutableStateOf("") }
     var pendingAction by remember { mutableStateOf<LoginActionRequest?>(null) }
     var pendingQrAction by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
-    var scannedQrAction by remember { mutableStateOf<String?>(null) }
     val loginApprovalUnavailableReason = if (account.canApproveLogins) {
         null
     } else {
         steamLoginApprovalUnavailableText(account)
-    }
-
-    LaunchedEffect(pendingScannedQr) {
-        val qr = pendingScannedQr?.trim().orEmpty()
-        if (qr.isNotBlank()) {
-            qrText = qr
-            scannedQrAction = qr
-            onScannedQrHandled()
-        }
     }
 
     pendingAction?.let { request ->
@@ -3331,52 +3392,6 @@ private fun SteamLoginApprovalSection(
             },
             dismissButton = {
                 TextButton(onClick = { pendingQrAction = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
-
-    scannedQrAction?.let { rawQr ->
-        AlertDialog(
-            onDismissRequest = { scannedQrAction = null },
-            title = { Text(stringResource(R.string.steam_qr_login_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(rawQr, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                    loginApprovalUnavailableReason?.let { reason ->
-                        Text(
-                            text = reason,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = {
-                            onRespondQr(rawQr, false)
-                            scannedQrAction = null
-                        },
-                        enabled = loginApprovalUnavailableReason == null
-                    ) {
-                        Text(stringResource(R.string.steam_reject))
-                    }
-                    TextButton(
-                        onClick = {
-                            onRespondQr(rawQr, true)
-                            scannedQrAction = null
-                        },
-                        enabled = loginApprovalUnavailableReason == null
-                    ) {
-                        Text(stringResource(R.string.steam_approve))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { scannedQrAction = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
