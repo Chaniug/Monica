@@ -26,6 +26,7 @@
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">Xác minh để tự động điền</string>
+    <string name="autofill_unlock_monica">Mở khóa Monica để tự động điền</string>
     <string name="autofill_auth_subtitle">Sử dụng vân tay hoặc mật khẩu</string>
     <string name="autofill_auth_description">Tự động điền sau khi xác minh</string>
     

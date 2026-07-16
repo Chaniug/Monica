@@ -12,6 +12,7 @@ class AutofillAuthResultLaunchModeRegressionGuardTest {
         val authResultActivities = listOf(
             ".autofill_ng.BiometricAuthActivity",
             ".autofill_ng.AutofillAuthenticationActivity",
+            ".autofill_ng.AutofillUnlockActivity",
             ".autofill_ng.AutofillCipherCallbackActivity",
             ".autofill_ng.AutofillPickerActivity",
             ".autofill_ng.AutofillPickerActivityV2",

@@ -56,6 +56,7 @@ class AutofillProcessorNg(
             filledData = filledData,
             passwordSuggestionEnabled = passwordSuggestionEnabled,
             requireAuthentication = requireAuthentication,
+            matchedPasswords = passwords,
         )
     }
 }

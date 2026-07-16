@@ -2,7 +2,10 @@ package takagi.ru.monica.autofill_ng
 
 import android.app.PendingIntent
 import android.app.assist.AssistStructure
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.CancellationSignal
 import android.service.autofill.AutofillService
@@ -14,6 +17,7 @@ import android.service.autofill.SaveRequest
 import android.view.View
 import android.view.autofill.AutofillId
 import android.view.inputmethod.InlineSuggestionsRequest
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +32,9 @@ import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.ParsedItem
 import takagi.ru.monica.autofill_ng.processor.AutofillProcessorNg
+import takagi.ru.monica.autofill_ng.auth.AutofillGrantContext
+import takagi.ru.monica.autofill_ng.auth.AutofillSessionGrants
+import takagi.ru.monica.autofill_ng.auth.AutofillUnlockRequests
 import takagi.ru.monica.autofill_ng.core.AutofillDiagnostics
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.core.safeTextOrNull
@@ -87,6 +94,16 @@ class MonicaAutofillServiceNg : AutofillService() {
     private val parser = EnhancedAutofillStructureParserV2()
     private val matcher = BitwardenLikeAutofillMatcherNg()
     private val bwCompatProcessor by lazy { AutofillProcessorNg(applicationContext) }
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                AutofillSessionGrants.clear()
+                AutofillUnlockRequests.clear()
+                AutofillLogger.i("AUTH", "Temporary autofill grant cleared on screen off")
+            }
+        }
+    }
+    private var screenOffReceiverRegistered = false
     @Volatile
     private var recentFillSuggestions: RecentFillSuggestions? = null
 
@@ -99,6 +116,13 @@ class MonicaAutofillServiceNg : AutofillService() {
         autofillPreferences = AutofillPreferences(applicationContext)
         settingsManager = SettingsManager(applicationContext)
         diagnostics = AutofillDiagnostics(applicationContext)
+        ContextCompat.registerReceiver(
+            this,
+            screenOffReceiver,
+            IntentFilter(Intent.ACTION_SCREEN_OFF),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        screenOffReceiverRegistered = true
         scope.launch {
             runCatching { autofillPreferences.ensureBitwardenV2EngineMode() }
                 .onFailure { AutofillLogger.w("AF", "Failed to enforce V2 engine mode: ${it.message}") }
@@ -108,6 +132,11 @@ class MonicaAutofillServiceNg : AutofillService() {
     }
 
     override fun onDestroy() {
+        AutofillSessionGrants.clear()
+        if (screenOffReceiverRegistered) {
+            runCatching { unregisterReceiver(screenOffReceiver) }
+            screenOffReceiverRegistered = false
+        }
         scope.cancel()
         super.onDestroy()
     }
@@ -469,6 +498,28 @@ class MonicaAutofillServiceNg : AutofillService() {
             null
         }
         val autofillAuthRequired = settingsManager.settingsFlow.first().autofillAuthRequired
+        val grantContext = AutofillGrantContext(
+            packageName = packageName,
+            webDomain = webDomain,
+            interactionIdentifier = primaryInteractionIdentifier,
+            fieldSignatureKey = fieldSignatureKey,
+        )
+        val grantActive = autofillAuthRequired && AutofillSessionGrants.isGranted(grantContext)
+        if (!autofillAuthRequired) {
+            AutofillSessionGrants.clear()
+        }
+        val effectiveAuthenticationRequired = autofillAuthRequired && !grantActive
+        AutofillLogger.i(
+            "AUTH",
+            "Autofill authentication policy resolved",
+            metadata = mapOf(
+                "settingEnabled" to autofillAuthRequired,
+                "grantActive" to grantActive,
+                "authenticationRequired" to effectiveAuthenticationRequired,
+                "packageName" to packageName,
+                "webDomain" to (webDomain ?: "none"),
+            )
+        )
         val response = bwCompatProcessor.process(
             packageName = packageName,
             uri = requestUri,
@@ -479,7 +530,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             fieldSignatureKey = fieldSignatureKey,
             preferDirectAutoFill = isPasswordOnlyLogin && passwordsForResponse.size == 1,
             passwordSuggestionEnabled = autofillPreferences.isPasswordSuggestionEnabled.first(),
-            requireAuthentication = autofillAuthRequired,
+            requireAuthentication = effectiveAuthenticationRequired,
         )
 
         if (response == null) {
@@ -1080,6 +1131,7 @@ class MonicaAutofillServiceNg : AutofillService() {
     }
 
     override fun onDisconnected() {
+        AutofillSessionGrants.clear()
         super.onDisconnected()
         AutofillLogger.i("AF", "Service disconnected")
     }

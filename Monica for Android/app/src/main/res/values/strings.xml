@@ -125,6 +125,7 @@
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">Verify to Autofill</string>
+    <string name="autofill_unlock_monica">Unlock Monica to autofill</string>
     <string name="autofill_auth_subtitle">Use fingerprint or password</string>
     <string name="autofill_auth_description">Autofill after verification</string>
     

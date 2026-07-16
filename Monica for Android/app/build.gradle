@@ -14,9 +14,6 @@ android {
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
     def appVersionCode = 10
     def baseVersionName = previewVersionSuffix ? "1.0.293-${previewVersionSuffix}" : "1.0.293"
-    def workspaceRootDir = rootDir?.parentFile ?: rootDir
-    def buildBakRootDir = new File(workspaceRootDir, 'Build bak')
-
     def normalizeTwoDigits = { raw ->
         def value = raw?.toString()?.trim()?.replaceAll('\\D', '')
         if (!value) {
@@ -67,7 +64,6 @@ android {
     def findNextDailySeqForVersion = { String versionNameTag, String dateTag, String versionTag ->
         def versionPrefix = "${versionNameTag}-${dateTag}${versionTag}"
         def apkNamePattern = java.util.regex.Pattern.compile('^Monica-Android-.+-' + java.util.regex.Pattern.quote(versionPrefix) + '-(\\d{2})\\.[aA][pP][kK]$')
-        def snapshotNamePattern = java.util.regex.Pattern.compile('^Monica-Android-.+-' + java.util.regex.Pattern.quote(versionPrefix) + '-(\\d{2})$')
         def maxSeq = 0
 
         def outputsDir = file("$buildDir/outputs/apk")
@@ -77,21 +73,6 @@ android {
                     return
                 }
                 def matcher = apkNamePattern.matcher(outputFile.name)
-                if (matcher.matches()) {
-                    def seq = matcher.group(1).toInteger()
-                    if (seq > maxSeq) {
-                        maxSeq = seq
-                    }
-                }
-            }
-        }
-
-        if (buildBakRootDir.exists()) {
-            buildBakRootDir.eachFile { snapshotDir ->
-                if (!snapshotDir.isDirectory()) {
-                    return
-                }
-                def matcher = snapshotNamePattern.matcher(snapshotDir.name)
                 if (matcher.matches()) {
                     def seq = matcher.group(1).toInteger()
                     if (seq > maxSeq) {
@@ -183,71 +164,6 @@ android {
             def versionNameTag = sanitizeTag(project.findProperty('apkVersionName') ?: variant.versionName ?: defaultConfig.versionName, '0.0.0')
             def namePrefix = "${apkPrefix}-Android-${archTag}-${versionNameTag}-${buildDateTag}${buildVersionTag}"
             outputFileName = "${namePrefix}-${buildDailySeq}.APK"
-        }
-
-        def variantCap = variant.name.capitalize()
-        def backupTaskName = "backup${variantCap}CodeToBuildBak"
-        tasks.register(backupTaskName) {
-            group = 'build'
-            description = "Copy Monica Android source snapshot to Build bak after ${variant.name} build"
-            doLast {
-                buildBakRootDir.mkdirs()
-                def apkOutputDir = file("$buildDir/outputs/apk/${variant.dirName}")
-                if (!apkOutputDir.exists()) {
-                    println "[Build bak] Skip ${variant.name}: APK output directory not found -> ${apkOutputDir}"
-                    return
-                }
-
-                def apkFiles = apkOutputDir.listFiles()?.findAll {
-                    it.isFile() && it.name ==~ /(?i).*\.apk$/
-                }?.sort { a, b -> a.name <=> b.name } ?: []
-
-                if (apkFiles.isEmpty()) {
-                    println "[Build bak] Skip ${variant.name}: no APK found in ${apkOutputDir}"
-                    return
-                }
-
-                apkFiles.each { apkFile ->
-                    def snapshotName = apkFile.name.replaceFirst('(?i)\\.apk$', '')
-                    def snapshotDir = new File(buildBakRootDir, snapshotName)
-                    if (snapshotDir.exists()) {
-                        snapshotDir.deleteDir()
-                    }
-                    snapshotDir.mkdirs()
-
-                    copy {
-                        from rootDir
-                        into snapshotDir
-                        exclude '.gradle/**',
-                                '.gradle-user-home/**',
-                                '.kotlin/**',
-                                '.idea/**',
-                                'build/**',
-                                'app/build/**',
-                                '**/*.lock',
-                                '**/*.iml',
-                                'local.properties',
-                                '**/*.apk',
-                                '**/*.APK',
-                                '**/*.aab',
-                                '**/*.jks',
-                                '**/*.keystore'
-                    }
-
-                    def metaFile = new File(snapshotDir, 'BUILD_SNAPSHOT_INFO.txt')
-                    metaFile.text = """snapshot_name=${snapshotName}
-full_version=${fullVersionName}
-display_version=${baseVersionName}
-captured_at=${new Date().format('yyyy-MM-dd HH:mm:ss', java.util.TimeZone.getTimeZone('Asia/Shanghai'))}
-source_root=${rootDir.absolutePath}
-"""
-                    println "[Build bak] Snapshot created: ${snapshotDir}"
-                }
-            }
-        }
-
-        tasks.matching { it.name == "assemble${variantCap}" }.configureEach {
-            finalizedBy(backupTaskName)
         }
     }
 

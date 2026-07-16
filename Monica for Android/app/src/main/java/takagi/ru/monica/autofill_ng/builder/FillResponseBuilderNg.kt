@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.service.autofill.FillResponse
 import android.service.autofill.InlinePresentation
+import android.service.autofill.Presentations
 import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
@@ -14,13 +15,19 @@ import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill_ng.AutofillCipherCallbackActivity
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
+import takagi.ru.monica.autofill_ng.AutofillUnlockActivity
 import takagi.ru.monica.autofill_ng.PasswordSuggestionActivity
+import takagi.ru.monica.autofill_ng.auth.AutofillAuthenticationPolicy
+import takagi.ru.monica.autofill_ng.auth.AutofillGrantContext
+import takagi.ru.monica.autofill_ng.auth.AutofillUnlockRequests
+import takagi.ru.monica.autofill_ng.auth.PendingAutofillUnlockRequest
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillView
 import takagi.ru.monica.autofill_ng.model.FilledData
 import takagi.ru.monica.autofill_ng.model.FilledPartition
+import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.utils.PasswordGenerator
 import kotlin.random.Random
 
@@ -37,12 +44,27 @@ class FillResponseBuilderNg(
         filledData: FilledData,
         passwordSuggestionEnabled: Boolean = true,
         requireAuthentication: Boolean = true,
+        matchedPasswords: List<PasswordEntry> = emptyList(),
     ): FillResponse? {
         val fillableAutofillIds = filledData.fillableAutofillIds
         if (fillableAutofillIds.isEmpty()) {
             android.util.Log.w(TAG, "build skipped: no fillableAutofillIds")
             AutofillLogger.w("FILLING", "Build skipped: no fillableAutofillIds")
             return null
+        }
+
+        if (AutofillAuthenticationPolicy.requiresResponseUnlock(
+                authenticationRequired = requireAuthentication,
+                vaultLocked = filledData.isVaultLocked,
+                grantActive = false,
+            )
+        ) {
+            return buildLockedResponse(
+                request = request,
+                filledData = filledData,
+                matchedPasswords = matchedPasswords,
+                passwordSuggestionEnabled = passwordSuggestionEnabled,
+            )
         }
 
         val responseBuilder = FillResponse.Builder()
@@ -57,7 +79,6 @@ class FillResponseBuilderNg(
                         request = request,
                         partition = partition,
                         index = index,
-                        requireAuthentication = requireAuthentication,
                     )
                 )
                 cipherDatasetCount++
@@ -138,11 +159,121 @@ class FillResponseBuilderNg(
         return responseBuilder.build()
     }
 
+    private fun buildLockedResponse(
+        request: AutofillRequest.Fillable,
+        filledData: FilledData,
+        matchedPasswords: List<PasswordEntry>,
+        passwordSuggestionEnabled: Boolean,
+    ): FillResponse {
+        val targetIds = filledData.fillableAutofillIds.distinct()
+        val grantContext = AutofillGrantContext.fromRequestUri(
+            packageName = request.packageName,
+            requestUri = request.uri,
+            interactionIdentifier = request.interactionIdentifier,
+            fieldSignatureKey = request.fieldSignatureKey,
+        )
+        val requestToken = AutofillUnlockRequests.put(
+            PendingAutofillUnlockRequest(
+                request = request,
+                passwordIds = matchedPasswords.map { it.id }.distinct(),
+                passwordSuggestionEnabled = passwordSuggestionEnabled,
+                grantContext = grantContext,
+            )
+        )
+        val unlockIntent = AutofillUnlockActivity.getIntent(context, requestToken)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            Random.nextInt(),
+            unlockIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_CANCEL_CURRENT
+            }
+        )
+        val unlockTitle = context.getString(R.string.autofill_unlock_monica)
+        val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createUnlockPrompt(
+            context = context,
+            message = unlockTitle,
+        )
+        val inlinePresentation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val spec = filledData.vaultItemInlinePresentationSpec
+                ?: request.inlinePresentationSpecs?.firstOrNull()
+            spec?.let {
+                AutofillDatasetBuilder.InlinePresentationBuilder.tryCreate(
+                    context = context,
+                    spec = it,
+                    specs = request.inlinePresentationSpecs,
+                    index = request.inlinePresentationSpecs?.indexOf(it) ?: 0,
+                    pendingIntent = pendingIntent,
+                    title = unlockTitle,
+                    subtitle = grantContext.webDomain ?: request.packageName,
+                    icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
+                        context = context,
+                        packageName = request.packageName,
+                    ),
+                    contentDescription = unlockTitle,
+                )
+            }
+        } else {
+            null
+        }
+
+        val responseBuilder = FillResponse.Builder()
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                val presentations = Presentations.Builder()
+                    .setMenuPresentation(menuPresentation)
+                    .apply {
+                        if (inlinePresentation != null) {
+                            setInlinePresentation(inlinePresentation)
+                        }
+                    }
+                    .build()
+                responseBuilder.setAuthentication(
+                    targetIds.toTypedArray(),
+                    pendingIntent.intentSender,
+                    presentations,
+                )
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                @Suppress("DEPRECATION")
+                responseBuilder.setAuthentication(
+                    targetIds.toTypedArray(),
+                    pendingIntent.intentSender,
+                    menuPresentation,
+                    inlinePresentation,
+                )
+            }
+            else -> {
+                @Suppress("DEPRECATION")
+                responseBuilder.setAuthentication(
+                    targetIds.toTypedArray(),
+                    pendingIntent.intentSender,
+                    menuPresentation,
+                )
+            }
+        }
+        if (filledData.ignoreAutofillIds.isNotEmpty()) {
+            responseBuilder.setIgnoredIds(*filledData.ignoreAutofillIds.toTypedArray())
+        }
+        AutofillLogger.i(
+            "AUTH",
+            "Locked vault response contains one response-level unlock action",
+            metadata = mapOf(
+                "packageName" to request.packageName,
+                "webDomain" to (grantContext.webDomain ?: "none"),
+                "targetCount" to targetIds.size,
+                "passwordCount" to matchedPasswords.size,
+            )
+        )
+        return responseBuilder.build()
+    }
+
     private fun buildCipherDataset(
         request: AutofillRequest.Fillable,
         partition: FilledPartition,
         index: Int,
-        requireAuthentication: Boolean,
     ): android.service.autofill.Dataset {
         val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordEntry(
             context = context,
@@ -158,7 +289,7 @@ class FillResponseBuilderNg(
                 request = request,
                 partition = partition,
                 callbackTargets = callbackTargets,
-                requireAuthentication = requireAuthentication,
+                requireAuthentication = partition.requiresAuthentication,
             )
         } else {
             null

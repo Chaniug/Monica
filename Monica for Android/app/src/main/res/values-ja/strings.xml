@@ -27,6 +27,7 @@
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">自動入力の確認</string>
+    <string name="autofill_unlock_monica">Monica のロックを解除して自動入力</string>
     <string name="autofill_auth_subtitle">指紋またはパスワードを使用</string>
     <string name="autofill_auth_description">確認後に自動入力</string>
     

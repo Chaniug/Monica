@@ -121,6 +121,7 @@
 
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">Подтвердите для автозаполнения</string>
+    <string name="autofill_unlock_monica">Разблокировать Monica для автозаполнения</string>
     <string name="autofill_auth_subtitle">Используйте отпечаток или пароль</string>
     <string name="autofill_auth_description">Автозаполнение после подтверждения</string>
 

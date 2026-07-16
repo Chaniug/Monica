@@ -158,6 +158,7 @@
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_title">验证身份以填充</string>
+    <string name="autofill_unlock_monica">解锁 Monica 进行自动填充</string>
     <string name="autofill_auth_subtitle">使用指纹或密码验证</string>
     <string name="autofill_auth_description">验证后将自动填充密码</string>
     

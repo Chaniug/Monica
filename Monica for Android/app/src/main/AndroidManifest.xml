@@ -368,6 +368,14 @@
             android:excludeFromRecents="true" />
 
         <activity
+            android:name=".autofill_ng.AutofillUnlockActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Monica.AutofillCallback"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="" />
+
+        <activity
             android:name=".autofill_ng.AutofillCipherCallbackActivity"
             android:exported="false"
             android:theme="@style/Theme.Monica.AutofillCallback"
