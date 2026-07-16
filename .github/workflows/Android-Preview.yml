@@ -2,7 +2,7 @@ name: Android Preview Build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, dev ]
     paths:
       - 'Monica for Android/**/*.kt'
       - 'Monica for Android/**/*.java'
@@ -11,7 +11,7 @@ on:
       - 'Monica for Android/**/*.kts'
       - 'Monica for Android/gradle/**'
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, dev ]
     paths:
       - 'Monica for Android/**/*.kt'
       - 'Monica for Android/**/*.java'
