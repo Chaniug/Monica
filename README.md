@@ -1,5 +1,11 @@
 <h1 align="center">Monica 本地密码库</h1>
 
+> 🍴 **本仓库是上游 [`Monica-Pass/Monica`](https://github.com/Monica-Pass/Monica) 的一个 Fork**
+>
+> 首先感谢原作者 **[JoyinJoester](https://github.com/JoyinJoester)** 以及 Monica-Pass 团队，做出了这款优秀的本地优先密码库。🙏
+>
+> 我 Fork 本仓库是为了**个人维护与功能修复**，重点解决原版在某些非浏览器 App 中无法自动填充凭据的问题（相关修复见 `dev` 分支）。如果改动成熟，我会尽量向上游提交 Pull Request 回馈社区。
+
 <div align="center">
 
 **中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](README_Nya.md)
