@@ -3,19 +3,36 @@ package takagi.ru.monica.service
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
+import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.text.InputType
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.TextView
+import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
+import takagi.ru.monica.autofill_ng.service.AutofillTileService
 
 class MonicaAccessibilityService : AccessibilityService() {
     private var lastPackageName: String = ""
     private var lastUrl: String = ""
     private var lastScanTime = 0L
+
+    // 非浏览器 App 的悬浮填充按钮（TYPE_ACCESSIBILITY_OVERLAY，免 SYSTEM_ALERT_WINDOW 权限）
+    private var fillOverlayView: View? = null
+    private var overlayPackageName: String? = null
+    private val wm by lazy { getSystemService(Context.WINDOW_SERVICE) as WindowManager }
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     companion object {
         private const val TAG = "MonicaAccessibility"
@@ -147,36 +164,125 @@ class MonicaAccessibilityService : AccessibilityService() {
             if (event.eventType !in trackedEventTypes) return
 
             val packageName = event.packageName?.toString().orEmpty()
-            val browserSpec = browserSpecsByPackage[packageName] ?: return
+            // 自家界面不弹悬浮按钮
+            if (packageName == applicationContext.packageName) {
+                hideFillOverlay()
+                return
+            }
 
+            val browserSpec = browserSpecsByPackage[packageName]
             val now = System.currentTimeMillis()
             if (packageName == lastPackageName && now - lastScanTime < SCAN_THROTTLE_MS) return
             lastScanTime = now
 
             val root = rootInActiveWindow ?: event.source ?: return
-            val url = findBrowserUrl(root, browserSpec) ?: return
 
-            if (packageName == lastPackageName && url == lastUrl) return
-
-            lastPackageName = packageName
-            lastUrl = url
-            BrowserAutofillContextStore.update(packageName, url)
-            ValidatorContextManager.updateContext(packageName, url)
-            Log.d(TAG, "Updated browser context: pkg=$packageName, hasUrl=${url.isNotBlank()}")
+            if (browserSpec != null) {
+                // 浏览器：继续走原有 URL 上下文追踪（供框架补域名），不弹悬浮按钮
+                val url = findBrowserUrl(root, browserSpec) ?: return
+                if (packageName == lastPackageName && url == lastUrl) return
+                lastPackageName = packageName
+                lastUrl = url
+                BrowserAutofillContextStore.update(packageName, url)
+                ValidatorContextManager.updateContext(packageName, url)
+                Log.d(TAG, "Updated browser context: pkg=$packageName, hasUrl=${url.isNotBlank()}")
+                hideFillOverlay()
+            } else {
+                // 非浏览器 App：检测登录框并弹出悬浮填充按钮（对齐 KeePassDX / Bitwarden）
+                handleNonBrowserLoginDetection(packageName, root)
+            }
         }.onFailure { e ->
             Log.w(TAG, "onAccessibilityEvent failed", e)
         }
     }
 
     override fun onInterrupt() {
+        hideFillOverlay()
         Log.d(TAG, "Accessibility Service Interrupted")
     }
 
     override fun onDestroy() {
+        hideFillOverlay()
         if (activeInstance === this) {
             activeInstance = null
         }
         super.onDestroy()
+    }
+
+    /**
+     * 非浏览器 App：检测当前窗口是否含登录字段（用户名/密码），有则弹出悬浮填充按钮。
+     * 复用已有的 [collectFillCandidates] / [classifyFillCandidate]（本就与 App 无关）。
+     */
+    private fun handleNonBrowserLoginDetection(packageName: String, root: AccessibilityNodeInfo) {
+        mainHandler.post {
+            runCatching {
+                val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+                val candidates = collectFillCandidates(root, focused)
+                val hasLogin = candidates.any { it.type == FillFieldType.PASSWORD }
+                    || candidates.any { it.type == FillFieldType.USERNAME }
+                if (hasLogin) {
+                    if (overlayPackageName != packageName) showFillOverlay(packageName)
+                } else if (overlayPackageName != null) {
+                    hideFillOverlay()
+                }
+            }.onFailure { e -> Log.w(TAG, "handleNonBrowserLoginDetection failed", e) }
+        }
+    }
+
+    private fun showFillOverlay(packageName: String) {
+        hideFillOverlay()
+        runCatching {
+            val ctx = applicationContext
+            val density = ctx.resources.displayMetrics.density
+            val view = TextView(ctx).apply {
+                text = "\uD83D\uDD11 Monica"
+                textSize = 14f
+                setTextColor(0xFFFFFFFF.toInt())
+                val pad = (10 * density).toInt()
+                setPadding(pad, pad, pad, pad)
+                background = GradientDrawable().apply {
+                    setColor(0xFF3B82F6.toInt())
+                    cornerRadius = 60f * density
+                }
+                setOnClickListener {
+                    // 先收起悬浮按钮，再打开手动选择器；选择器会自己 moveTaskToBack 并由
+                    // AutofillPickerActivityV2.scheduleManualAccessibilityFill 走既有 a11y 填充。
+                    hideFillOverlay()
+                    val intent = Intent(applicationContext, AutofillPickerActivityV2::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        putExtra(AutofillTileService.EXTRA_MANUAL_MODE, true)
+                    }
+                    runCatching { startActivity(intent) }
+                }
+            }
+            val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT,
+            )
+            params.gravity = Gravity.TOP or Gravity.END
+            params.x = (16 * density).toInt()
+            params.y = (120 * density).toInt()
+            wm.addView(view, params)
+            fillOverlayView = view
+            overlayPackageName = packageName
+            Log.d(TAG, "Show a11y fill overlay for pkg=$packageName")
+        }.onFailure { e -> Log.w(TAG, "showFillOverlay failed", e) }
+    }
+
+    private fun hideFillOverlay() {
+        runCatching { fillOverlayView?.let { wm.removeView(it) } }
+        fillOverlayView = null
+        overlayPackageName = null
     }
 
     private fun fillCredentialsInActiveWindow(
@@ -475,7 +581,7 @@ class MonicaAccessibilityService : AccessibilityService() {
     private fun nearestCandidate(
         candidates: List<FillCandidate>,
         anchorNode: AccessibilityNodeInfo?,
-        excludedNode: AccessibilityNodeInfo?
+        excludedNode: AccessibilityNodeInfo?,
     ): FillCandidate? {
         val anchor = anchorNode ?: return null
         val anchorRect = Rect().also(anchor::getBoundsInScreen)
