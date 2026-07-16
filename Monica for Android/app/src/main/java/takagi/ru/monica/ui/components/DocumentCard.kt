@@ -18,6 +18,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.security.maskDocumentNumberForPreview
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.bitwarden.sync.SyncStatus
@@ -250,7 +251,10 @@ fun DocumentCard(
                 fontWeight = FontWeight.Medium
             )
             Text(
-                text = maskDocumentNumber(resolvedDocumentData.documentNumber, resolvedDocumentData.documentType),
+                text = maskDocumentNumberForPreview(
+                    resolvedDocumentData.documentNumber,
+                    resolvedDocumentData.documentType
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = contentColor
@@ -308,66 +312,6 @@ private fun emptyDocumentData() = DocumentData(
     issuedDate = "",
     expiryDate = ""
 )
-
-/**
- * 证件号码脱敏处理
- */
-private fun maskDocumentNumber(number: String, type: DocumentType): String {
-    if (number.isBlank()) return "****"
-    
-    return when (type) {
-        DocumentType.ID_CARD -> {
-            // 身份证: 显示前4位和后4位，中间用*代替
-            // 例如: 110101199001011234 -> 1101********1234
-            if (number.length >= 8) {
-                val prefix = number.take(4)
-                val suffix = number.takeLast(4)
-                "$prefix********$suffix"
-            } else {
-                "****"
-            }
-        }
-        DocumentType.PASSPORT -> {
-            // 护照: 显示前2位和后3位
-            // 例如: E12345678 -> E1*****678
-            if (number.length >= 5) {
-                val prefix = number.take(2)
-                val suffix = number.takeLast(3)
-                "$prefix*****$suffix"
-            } else {
-                "****"
-            }
-        }
-        DocumentType.DRIVER_LICENSE -> {
-            // 驾照: 显示前4位和后4位
-            if (number.length >= 8) {
-                val prefix = number.take(4)
-                val suffix = number.takeLast(4)
-                "$prefix****$suffix"
-            } else {
-                "****"
-            }
-        }
-        DocumentType.SOCIAL_SECURITY -> {
-            // 社保卡: 显示前2位和后2位
-            if (number.length >= 4) {
-                val prefix = number.take(2)
-                val suffix = number.takeLast(2)
-                "$prefix******$suffix"
-            } else {
-                "****"
-            }
-        }
-        DocumentType.OTHER -> {
-            // 其他: 只显示最后4位
-            if (number.length >= 4) {
-                "****${number.takeLast(4)}"
-            } else {
-                "****"
-            }
-        }
-    }
-}
 
 /**
  * 获取证件类型名称

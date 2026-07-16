@@ -124,6 +124,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.security.maskDocumentNumberForPreview
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.PasskeyBindingCodec
@@ -3871,7 +3872,9 @@ private fun vaultV2DocumentSubtitle(
 	}
 	return listOf(
 		data.fullName.takeIf { it.isNotBlank() },
-		data.documentNumber.takeIf { it.isNotBlank() }?.let(::vaultV2MaskedDocumentNumber),
+		data.documentNumber.takeIf { it.isNotBlank() }?.let {
+			maskDocumentNumberForPreview(it, data.documentType)
+		},
 		data.issuedBy.takeIf { it.isNotBlank() },
 	).filterNotNull()
 		.joinToString(" · ")
@@ -3883,15 +3886,6 @@ private fun vaultV2MaskedCardNumber(cardNumber: String): String? {
 	if (compact.isBlank()) return null
 	val tail = compact.takeLast(4)
 	return "•••• $tail"
-}
-
-private fun vaultV2MaskedDocumentNumber(documentNumber: String): String {
-	val trimmed = documentNumber.trim()
-	if (trimmed.length <= 4) return trimmed
-	return buildString(trimmed.length) {
-		repeat(trimmed.length - 4) { append('•') }
-		append(trimmed.takeLast(4))
-	}
 }
 
 private fun dedupeExactVaultItems(items: List<VaultV2Item>): List<VaultV2Item> {

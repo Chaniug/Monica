@@ -15,6 +15,7 @@ import takagi.ru.monica.data.model.CardBrand
 import takagi.ru.monica.data.model.CardBrandDetector
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.security.maskDocumentNumberForPreview
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.displayFullName
@@ -286,7 +287,9 @@ private fun appendCardItems(
                 key = "document:${item.id}",
                 entry = item.toAggregatePasswordEntry(
                     subtitlePrimary = data?.displayFullName().orEmpty(),
-                    subtitleSecondary = data?.documentNumber.orEmpty()
+                    subtitleSecondary = data?.let {
+                        maskDocumentNumberForPreview(it.documentNumber, it.documentType)
+                    }.orEmpty()
                 ),
                 type = PasswordPageContentType.CARD_WALLET,
                 badgeText = "card",

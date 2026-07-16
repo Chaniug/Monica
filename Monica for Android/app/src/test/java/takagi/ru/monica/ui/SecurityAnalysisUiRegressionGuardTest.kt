@@ -27,6 +27,26 @@ class SecurityAnalysisUiRegressionGuardTest {
         assertTrue(source.contains("affectedAccountCount"))
     }
 
+    @Test
+    fun duplicateGroupsAreCollapsedByDefaultAndUseCompactEntryRows() {
+        val source = screenSource()
+
+        assertTrue(source.contains("CollapsibleSecurityGroupCard"))
+        assertTrue(source.contains("initiallyExpanded = false"))
+        assertTrue(source.contains("AnimatedVisibility(visible = expanded)"))
+        assertTrue(source.contains("SecurityDetailEntryRow"))
+        assertFalse(source.contains("private fun SecurityDetailEntryCard"))
+    }
+
+    @Test
+    fun detailGroupsUseFilledM3CardsAndPasswordEntriesResolveTheirOwnIcons() {
+        val source = screenSource()
+
+        assertTrue(source.contains("SecurityPasswordEntryIcon(entry = entry)"))
+        assertTrue(source.contains("containerColor = MaterialTheme.colorScheme.surfaceVariant"))
+        assertFalse(source.contains("OutlinedCard("))
+    }
+
     private fun screenSource(): String = projectFile(
         "app/src/main/java/takagi/ru/monica/ui/screens/SecurityAnalysisScreen.kt"
     ).readText()

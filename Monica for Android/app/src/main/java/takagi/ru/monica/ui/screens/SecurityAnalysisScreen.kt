@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
@@ -45,7 +48,6 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,9 +56,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Switch
@@ -71,6 +71,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
@@ -87,11 +88,13 @@ import takagi.ru.monica.data.DuplicateUrlGroup
 import takagi.ru.monica.data.InactivePasskeyAccount
 import takagi.ru.monica.data.No2FAAccount
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.primaryLinkedAppPackageName
 import takagi.ru.monica.data.PasswordStrengthDistribution
 import takagi.ru.monica.data.SecurityAnalysisData
 import takagi.ru.monica.data.SecurityAnalysisScopeOption
 import takagi.ru.monica.data.SecurityAnalysisScopeType
 import kotlinx.coroutines.delay
+import takagi.ru.monica.security.securityPasswordMask
 
 private enum class SecurityIssueType {
     DUPLICATE_PASSWORDS,
@@ -692,46 +695,23 @@ private fun DuplicatePasswordsFlatList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(groups) { group ->
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+        items(groups, key = { it.passwordHash }) { group ->
+            CollapsibleSecurityGroupCard(
+                title = securityPasswordMask(group.entries.firstOrNull()?.password.orEmpty()),
+                subtitle = stringResource(R.string.used_in_accounts, group.count),
+                icon = Icons.Default.ContentCopy,
+                stateKey = group.passwordHash,
+                initiallyExpanded = false
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.used_in_accounts, group.count),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-                        AssistChip(
-                            onClick = {},
-                            enabled = false,
-                            label = { Text("${group.entries.size}") }
-                        )
-                    }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        group.entries.forEach { entry ->
-                            SecurityDetailEntryCard(
+                group.entries.forEachIndexed { index, entry ->
+                    SecurityDetailEntryRow(
+                                entry = entry,
                                 title = entry.title,
                                 subtitle = entry.username,
                                 detail = entry.website,
-                                icon = Icons.Default.VpnKey,
                                 onClick = { onNavigateToPassword(entry.id) }
                             )
-                        }
-                    }
+                    if (index < group.entries.lastIndex) HorizontalDivider()
                 }
             }
         }
@@ -758,50 +738,95 @@ private fun DuplicateUrlsFlatList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(groups) { group ->
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+        items(groups, key = { it.url }) { group ->
+            CollapsibleSecurityGroupCard(
+                title = group.url,
+                subtitle = stringResource(R.string.used_in_accounts, group.count),
+                icon = Icons.Default.Public,
+                stateKey = group.url,
+                initiallyExpanded = false
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Public,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = group.url,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        AssistChip(
-                            onClick = {},
-                            enabled = false,
-                            label = { Text("${group.count}") }
-                        )
-                    }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        group.entries.forEach { entry ->
-                            SecurityDetailEntryCard(
+                group.entries.forEachIndexed { index, entry ->
+                    SecurityDetailEntryRow(
+                                entry = entry,
                                 title = entry.title,
                                 subtitle = entry.username,
                                 detail = entry.website,
-                                icon = Icons.Default.Link,
                                 onClick = { onNavigateToPassword(entry.id) }
                             )
-                        }
-                    }
+                    if (index < group.entries.lastIndex) HorizontalDivider()
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleSecurityGroupCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    stateKey: String,
+    initiallyExpanded: Boolean,
+    content: @Composable () -> Unit
+) {
+    var expanded by rememberSaveable(stateKey) { mutableStateOf(initiallyExpanded) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .heightIn(min = 64.dp)
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = { expanded = !expanded }) {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand)
+                )
+            }
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column {
+                HorizontalDivider()
+                content()
             }
         }
     }
@@ -828,11 +853,11 @@ private fun CompromisedFlatList(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(items) { item ->
-            SecurityDetailEntryCard(
+            SecurityDetailEntryRow(
+                entry = item.entry,
                 title = item.entry.title,
                 subtitle = item.entry.username,
                 detail = stringResource(R.string.breached_times, item.breachCount),
-                icon = Icons.Default.Warning,
                 onClick = { onNavigateToPassword(item.entry.id) }
             )
         }
@@ -860,11 +885,11 @@ private fun No2faFlatList(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(items) { item ->
-            SecurityDetailEntryCard(
+            SecurityDetailEntryRow(
+                entry = item.entry,
                 title = item.entry.title,
                 subtitle = item.entry.username,
                 detail = item.domain,
-                icon = Icons.Default.Lock,
                 onClick = { onNavigateToPassword(item.entry.id) }
             )
         }
@@ -892,11 +917,11 @@ private fun InactivePasskeyFlatList(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(items) { item ->
-            SecurityDetailEntryCard(
+            SecurityDetailEntryRow(
+                entry = item.entry,
                 title = item.entry.title,
                 subtitle = item.entry.username,
                 detail = item.domain,
-                icon = Icons.Default.VpnKey,
                 onClick = { onNavigateToPassword(item.entry.id) }
             )
         }
@@ -904,77 +929,110 @@ private fun InactivePasskeyFlatList(
 }
 
 @Composable
-private fun SecurityDetailEntryCard(
+private fun SecurityDetailEntryRow(
+    entry: PasswordEntry,
     title: String,
     subtitle: String?,
     detail: String?,
-    icon: ImageVector,
     onClick: () -> Unit
 ) {
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
-        )
+            .clickable(onClick = onClick)
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        ListItem(
-            leadingContent = {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                            shape = RoundedCornerShape(10.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            },
-            headlineContent = {
+        SecurityPasswordEntryIcon(entry = entry)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title.ifBlank { "—" },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (!subtitle.isNullOrBlank()) {
                 Text(
-                    text = title.ifBlank { "—" },
+                    text = subtitle,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            },
-            supportingContent = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (!subtitle.isNullOrBlank()) {
-                        Text(
-                            text = subtitle,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    if (!detail.isNullOrBlank()) {
-                        Text(
-                            text = detail,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            trailingContent = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (!detail.isNullOrBlank()) {
+                Text(
+                    text = detail,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun SecurityPasswordEntryIcon(entry: PasswordEntry) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val simpleIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+        takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+            slug = entry.customIconValue,
+            tintColor = primaryColor
+        )
+    } else null
+    val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+        takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
+    } else null
+    val appPackageName = entry.primaryLinkedAppPackageName()
+    val appIcon = if (appPackageName.isNotBlank()) {
+        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(appPackageName)
+    } else null
+    val autoMatchedIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
+        website = entry.website,
+        title = entry.title,
+        appPackageName = appPackageName,
+        tintColor = primaryColor,
+        enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
+    )
+    val favicon = if (entry.website.isNotBlank()) {
+        takagi.ru.monica.autofill_ng.ui.rememberFavicon(
+            url = entry.website,
+            enabled = autoMatchedIcon.resolved && autoMatchedIcon.slug == null
+        )
+    } else null
+    val bitmap = simpleIcon ?: uploadedIcon ?: autoMatchedIcon.bitmap ?: favicon ?: appIcon
+
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(32.dp).padding(2.dp)
+            )
+        } else {
+            Text(
+                text = entry.title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "#",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
     }
 }
 
