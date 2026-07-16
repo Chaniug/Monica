@@ -1410,6 +1410,10 @@ fun SettingsScreen(
 
     if (showUpdateCheckDialog) {
         val result = updateCheckResult
+        val updateDialogScrollState = rememberScrollState()
+        val updateDialogContentMaxHeight = (
+            LocalConfiguration.current.screenHeightDp * 0.52f
+        ).dp.coerceIn(180.dp, 520.dp)
         AlertDialog(
             onDismissRequest = { showUpdateCheckDialog = false },
             icon = {
@@ -1433,88 +1437,71 @@ fun SettingsScreen(
                 )
             },
             text = {
-                Column {
-                    when {
-                        updateCheckError != null -> {
-                            Text(
-                                text = stringResource(
-                                    R.string.update_check_failed_message,
-                                    updateCheckError.orEmpty()
-                                ),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        result != null -> {
-                            Text(
-                                text = if (result.isUpdateAvailable) {
-                                    stringResource(R.string.update_check_update_available_message)
-                                } else {
-                                    stringResource(R.string.update_check_no_update_message)
-                                },
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = stringResource(
-                                    R.string.update_check_current_version,
-                                    result.currentVersion
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = stringResource(
-                                    R.string.update_check_latest_version,
-                                    result.latestVersion
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            result.releaseName?.let { releaseName ->
-                                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier.heightIn(max = updateDialogContentMaxHeight)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .verticalScroll(updateDialogScrollState)
+                    ) {
+                        when {
+                            updateCheckError != null -> {
                                 Text(
-                                    text = releaseName,
-                                    style = MaterialTheme.typography.titleSmall
+                                    text = stringResource(
+                                        R.string.update_check_failed_message,
+                                        updateCheckError.orEmpty()
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                             }
-                            result.releaseNotes?.let { notes ->
-                                Spacer(modifier = Modifier.height(8.dp))
+                            result != null -> {
                                 Text(
-                                    text = notes.take(700) + if (notes.length > 700) "..." else "",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (isDownloadingUpdate) {
-                                val progress = updateDownloadProgress
-                                Spacer(modifier = Modifier.height(16.dp))
-                                if (progress?.hasTotal == true) {
-                                    LinearProgressIndicator(
-                                        progress = { progress.fraction.coerceIn(0f, 1f) },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                } else {
-                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = if (progress?.hasTotal == true) {
-                                        stringResource(
-                                            R.string.update_download_progress_known,
-                                            formatUpdateDownloadBytes(progress.bytesRead),
-                                            formatUpdateDownloadBytes(progress.totalBytes)
-                                        )
+                                    text = if (result.isUpdateAvailable) {
+                                        stringResource(R.string.update_check_update_available_message)
                                     } else {
-                                        stringResource(
-                                            R.string.update_download_progress_unknown,
-                                            formatUpdateDownloadBytes(progress?.bytesRead ?: 0L)
-                                        )
+                                        stringResource(R.string.update_check_no_update_message)
                                     },
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = stringResource(
+                                        R.string.update_check_current_version,
+                                        result.currentVersion
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Text(
+                                    text = stringResource(
+                                        R.string.update_check_latest_version,
+                                        result.latestVersion
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                result.releaseName?.let { releaseName ->
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = releaseName,
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                }
+                                result.releaseNotes?.let { notes ->
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = notes,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
+                    }
+
+                    if (result != null && isDownloadingUpdate) {
+                        UpdateDownloadProgressSection(progress = updateDownloadProgress)
                     }
                 }
             },
@@ -1993,6 +1980,42 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun UpdateDownloadProgressSection(progress: UpdateDownloadProgress?) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        HorizontalDivider()
+        if (progress?.hasTotal == true) {
+            LinearProgressIndicator(
+                progress = { progress.fraction.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        Text(
+            text = if (progress?.hasTotal == true) {
+                stringResource(
+                    R.string.update_download_progress_known,
+                    formatUpdateDownloadBytes(progress.bytesRead),
+                    formatUpdateDownloadBytes(progress.totalBytes)
+                )
+            } else {
+                stringResource(
+                    R.string.update_download_progress_unknown,
+                    formatUpdateDownloadBytes(progress?.bytesRead ?: 0L)
+                )
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
