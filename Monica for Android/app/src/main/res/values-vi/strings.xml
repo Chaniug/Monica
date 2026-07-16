@@ -3471,4 +3471,10 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="steam_steamid_completion_duplicate">Tài khoản Steam này đã tồn tại trong Monica.</string>
     <string name="steam_steamid_completion_missing_account">Trình xác thực Steam này không còn khả dụng.</string>
     <string name="steam_qr_invalid_link">Lien ket QR Steam khong hop le</string>
+    <string name="security_score_out_of_100">Điểm bảo mật trên 100</string>
+    <string name="security_accounts_need_attention">%1$d tài khoản cần chú ý</string>
+    <string name="security_no_accounts_need_attention">Không có tài khoản nào cần chú ý</string>
+    <string name="security_score_good">Bảo vệ tốt</string>
+    <string name="security_score_fair">Có thể cải thiện</string>
+    <string name="security_score_needs_attention">Cần chú ý</string>
 </resources>

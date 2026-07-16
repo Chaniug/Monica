@@ -31,6 +31,8 @@ import takagi.ru.monica.data.SecurityAnalysisScopeType
 import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.security.SecurityScoreCalculator
+import takagi.ru.monica.security.SecurityScoreInput
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.PasskeySupportCatalog
@@ -684,23 +686,22 @@ class SecurityAnalysisViewModel(
         compromisedPasswords: List<CompromisedPassword>,
         inactivePasskeyAccounts: List<InactivePasskeyAccount>
     ): Int {
-        val duplicatePasswordPenalty = duplicatePasswords.sumOf { (it.count - 1).coerceAtLeast(0) } * 6
-        val duplicateUrlPenalty = duplicateUrls.sumOf { (it.count - 1).coerceAtLeast(0) } * 2
-        val twoFaPenalty = no2FAAccounts.count { it.supports2FA } * 2
-        val weakPenalty = distribution.weak * 4
-        val mediumPenalty = distribution.medium * 2
-        val compromisedPenalty = compromisedPasswords.size * 10
-        val inactivePasskeyPenalty = inactivePasskeyAccounts.size * 2
-
-        val totalPenalty = duplicatePasswordPenalty +
-            duplicateUrlPenalty +
-            twoFaPenalty +
-            weakPenalty +
-            mediumPenalty +
-            compromisedPenalty +
-            inactivePasskeyPenalty
-
-        return (100 - totalPenalty).coerceIn(0, 100)
+        return SecurityScoreCalculator.calculate(
+            SecurityScoreInput(
+                totalPasswords = distribution.total,
+                duplicatePasswordExtras = duplicatePasswords.sumOf {
+                    (it.count - 1).coerceAtLeast(0)
+                },
+                duplicateUrlExtras = duplicateUrls.sumOf {
+                    (it.count - 1).coerceAtLeast(0)
+                },
+                weakPasswords = distribution.weak,
+                mediumPasswords = distribution.medium,
+                compromisedPasswords = compromisedPasswords.size,
+                accountsMissing2FA = no2FAAccounts.count { it.supports2FA },
+                inactivePasskeys = inactivePasskeyAccounts.size,
+            )
+        )
     }
 
     private suspend fun loadBoundPasskeyPasswordIds(scopedPasswordIdSet: Set<Long>?): Set<Long> {

@@ -3554,4 +3554,10 @@
     <string name="steam_steamid_completion_duplicate">Этот Steam-аккаунт уже есть в Monica.</string>
     <string name="steam_steamid_completion_missing_account">Этот Steam-аутентификатор больше недоступен.</string>
     <string name="steam_qr_invalid_link">Недействительная QR-ссылка Steam</string>
+    <string name="security_score_out_of_100">Оценка безопасности из 100</string>
+    <string name="security_accounts_need_attention">Требуют внимания: %1$d</string>
+    <string name="security_no_accounts_need_attention">Нет аккаунтов, требующих внимания</string>
+    <string name="security_score_good">Хорошая защита</string>
+    <string name="security_score_fair">Можно улучшить</string>
+    <string name="security_score_needs_attention">Требует внимания</string>
 </resources>

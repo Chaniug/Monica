@@ -3907,4 +3907,10 @@
     <string name="attachment_move_dialog_cancel">取消</string>
     <string name="attachment_move_dialog_details">查看详情</string>
     <string name="mdbx_unresolved_conflicts">未解决冲突：%1$d 个</string>
+    <string name="security_score_out_of_100">安全评分，满分 100</string>
+    <string name="security_accounts_need_attention">%1$d 个账号需要处理</string>
+    <string name="security_no_accounts_need_attention">没有账号需要处理</string>
+    <string name="security_score_good">防护良好</string>
+    <string name="security_score_fair">仍可改进</string>
+    <string name="security_score_needs_attention">需要处理</string>
 </resources>

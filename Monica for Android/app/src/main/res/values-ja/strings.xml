@@ -3458,4 +3458,10 @@
     <string name="steam_steamid_completion_duplicate">この Steam アカウントはすでに Monica に存在します。</string>
     <string name="steam_steamid_completion_missing_account">この Steam 認証子は利用できなくなりました。</string>
     <string name="steam_qr_invalid_link">無効な Steam QR リンクです</string>
+    <string name="security_score_out_of_100">100点満点のセキュリティスコア</string>
+    <string name="security_accounts_need_attention">%1$d 件のアカウントに対応が必要です</string>
+    <string name="security_no_accounts_need_attention">対応が必要なアカウントはありません</string>
+    <string name="security_score_good">良好な保護</string>
+    <string name="security_score_fair">改善できます</string>
+    <string name="security_score_needs_attention">対応が必要です</string>
 </resources>

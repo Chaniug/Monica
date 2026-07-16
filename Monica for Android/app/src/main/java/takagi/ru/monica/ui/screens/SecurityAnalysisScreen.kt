@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -12,7 +11,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,7 +31,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -52,6 +49,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,7 +71,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
@@ -125,7 +122,13 @@ fun SecurityAnalysisScreen(
     val compromisedCount = analysisData.compromisedPasswords.size
     val no2faCount = analysisData.no2FAAccounts.count { it.supports2FA }
     val inactivePasskeyCount = analysisData.inactivePasskeyAccounts.size
-    val totalRiskCount = duplicatePasswordItemCount + duplicateUrlItemCount + compromisedCount + no2faCount + inactivePasskeyCount
+    val affectedAccountCount = buildSet {
+        analysisData.duplicatePasswords.flatMap { it.entries }.forEach { add(it.id) }
+        analysisData.duplicateUrls.flatMap { it.entries }.forEach { add(it.id) }
+        analysisData.compromisedPasswords.forEach { add(it.entry.id) }
+        analysisData.no2FAAccounts.filter { it.supports2FA }.forEach { add(it.entry.id) }
+        analysisData.inactivePasskeyAccounts.forEach { add(it.entry.id) }
+    }.size
     var showAnalyzingUi by remember { mutableStateOf(analysisData.isAnalyzing) }
     LaunchedEffect(analysisData.isAnalyzing) {
         if (analysisData.isAnalyzing) {
@@ -158,7 +161,7 @@ fun SecurityAnalysisScreen(
             topBar = {
                 Column {
                     TopAppBar(
-                        title = {},
+                        title = { Text(stringResource(R.string.security_analysis)) },
                         navigationIcon = {
                             IconButton(onClick = onNavigateBack) {
                                 Icon(
@@ -168,13 +171,6 @@ fun SecurityAnalysisScreen(
                             }
                         },
                         actions = {
-                            if (showAnalyzingUi) {
-                                AssistChip(
-                                    onClick = {},
-                                    enabled = false,
-                                    label = { Text(stringResource(R.string.security_analysis_in_progress_short)) }
-                                )
-                            }
                             IconButton(onClick = onStartAnalysis) {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
@@ -204,9 +200,62 @@ fun SecurityAnalysisScreen(
             item {
                 SecurityOverviewHeader(
                     score = analysisData.securityScore,
-                    riskCount = totalRiskCount,
-                    isAnalyzing = showAnalyzingUi,
-                    progress = effectiveProgress
+                    affectedAccountCount = affectedAccountCount,
+                    isAnalyzing = showAnalyzingUi
+                )
+            }
+
+            item {
+                SecurityIssueGrid(
+                    items = listOf(
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.Warning,
+                            title = stringResource(R.string.compromised_passwords),
+                            count = compromisedCount,
+                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, compromisedCount),
+                            issueType = SecurityIssueType.COMPROMISED
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = stringResource(R.string.duplicate_passwords),
+                            count = duplicatePasswordItemCount,
+                            subtitle = stringResource(
+                                R.string.security_issue_duplicate_password_subtitle,
+                                duplicatePasswordGroupCount,
+                                duplicatePasswordItemCount
+                            ),
+                            issueType = SecurityIssueType.DUPLICATE_PASSWORDS
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.Security,
+                            title = stringResource(R.string.no_twofa),
+                            count = no2faCount,
+                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, no2faCount),
+                            issueType = SecurityIssueType.NO_2FA
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.VpnKey,
+                            title = stringResource(R.string.inactive_passkeys),
+                            count = inactivePasskeyCount,
+                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, inactivePasskeyCount),
+                            issueType = SecurityIssueType.INACTIVE_PASSKEY
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.Link,
+                            title = stringResource(R.string.duplicate_urls),
+                            count = duplicateUrlItemCount,
+                            subtitle = stringResource(
+                                R.string.security_issue_duplicate_url_subtitle,
+                                duplicateUrlGroupCount,
+                                duplicateUrlItemCount
+                            ),
+                            issueType = SecurityIssueType.DUPLICATE_URLS
+                        )
+                    ),
+                    onSelectIssue = {
+                        lastSelectedIssue = it
+                        selectedIssue = it
+                    }
                 )
             }
 
@@ -228,60 +277,6 @@ fun SecurityAnalysisScreen(
                 AutoAnalysisToggleCard(
                     autoAnalysisEnabled = autoAnalysisEnabled,
                     onAutoAnalysisEnabledChange = onAutoAnalysisEnabledChange
-                )
-            }
-
-            item {
-                SecurityIssueGrid(
-                    items = listOf(
-                        SecurityIssueGridItem(
-                            icon = Icons.Default.ContentCopy,
-                            title = stringResource(R.string.duplicate_passwords),
-                            count = duplicatePasswordItemCount,
-                            subtitle = stringResource(
-                                R.string.security_issue_duplicate_password_subtitle,
-                                duplicatePasswordGroupCount,
-                                duplicatePasswordItemCount
-                            ),
-                            issueType = SecurityIssueType.DUPLICATE_PASSWORDS
-                        ),
-                        SecurityIssueGridItem(
-                            icon = Icons.Default.Link,
-                            title = stringResource(R.string.duplicate_urls),
-                            count = duplicateUrlItemCount,
-                            subtitle = stringResource(
-                                R.string.security_issue_duplicate_url_subtitle,
-                                duplicateUrlGroupCount,
-                                duplicateUrlItemCount
-                            ),
-                            issueType = SecurityIssueType.DUPLICATE_URLS
-                        ),
-                        SecurityIssueGridItem(
-                            icon = Icons.Default.Warning,
-                            title = stringResource(R.string.compromised_passwords),
-                            count = compromisedCount,
-                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, compromisedCount),
-                            issueType = SecurityIssueType.COMPROMISED
-                        ),
-                        SecurityIssueGridItem(
-                            icon = Icons.Default.Security,
-                            title = stringResource(R.string.no_twofa),
-                            count = no2faCount,
-                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, no2faCount),
-                            issueType = SecurityIssueType.NO_2FA
-                        ),
-                        SecurityIssueGridItem(
-                            icon = Icons.Default.VpnKey,
-                            title = stringResource(R.string.inactive_passkeys),
-                            count = inactivePasskeyCount,
-                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, inactivePasskeyCount),
-                            issueType = SecurityIssueType.INACTIVE_PASSKEY
-                        )
-                    ),
-                    onSelectIssue = {
-                        lastSelectedIssue = it
-                        selectedIssue = it
-                    }
                 )
             }
         }
@@ -320,184 +315,95 @@ private fun AutoAnalysisToggleCard(
     onAutoAnalysisEnabledChange: (Boolean) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Card(
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = colorScheme.surfaceVariant.copy(alpha = 0.22f)
-        )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Security,
-                contentDescription = null,
-                tint = colorScheme.primary,
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(colorScheme.primaryContainer.copy(alpha = 0.72f), CircleShape)
-                    .padding(9.dp)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = stringResource(R.string.security_analysis_auto_toggle_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
             )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = stringResource(R.string.security_analysis_auto_toggle_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = stringResource(R.string.security_analysis_auto_toggle_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = autoAnalysisEnabled,
-                onCheckedChange = onAutoAnalysisEnabledChange
+            Text(
+                text = stringResource(R.string.security_analysis_auto_toggle_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = colorScheme.onSurfaceVariant
             )
         }
+        Switch(
+            checked = autoAnalysisEnabled,
+            onCheckedChange = onAutoAnalysisEnabledChange
+        )
     }
 }
 
 @Composable
 private fun SecurityOverviewHeader(
     score: Int,
-    riskCount: Int,
-    isAnalyzing: Boolean,
-    progress: Float
+    affectedAccountCount: Int,
+    isAnalyzing: Boolean
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val animatedScore by animateFloatAsState(
-        targetValue = score.coerceIn(0, 100) / 100f,
-        animationSpec = tween(durationMillis = 700),
-        label = "security_score_progress"
-    )
     val scoreColor = when {
         score >= 80 -> Color(0xFF22C55E)
         score >= 55 -> Color(0xFFF59E0B)
         else -> colorScheme.error
     }
-
-    AnimatedVisibility(
-        visible = true,
-        enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 4 }
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant.copy(alpha = 0.22f)),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Card(
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                colorScheme.primaryContainer.copy(alpha = 0.42f),
-                                colorScheme.secondaryContainer.copy(alpha = 0.20f),
-                                colorScheme.surface.copy(alpha = 0.10f)
-                            )
-                        )
-                    )
-                    .padding(20.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = stringResource(R.string.security_analysis),
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = if (isAnalyzing) {
-                                    stringResource(R.string.security_analysis_in_progress_short)
-                                } else {
-                                    stringResource(R.string.security_analysis_realtime)
-                                },
-                                style = MaterialTheme.typography.labelLarge,
-                                color = colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(86.dp)
-                                .clip(CircleShape)
-                                .background(scoreColor.copy(alpha = 0.16f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        Brush.sweepGradient(
-                                            0f to scoreColor,
-                                            animatedScore to scoreColor,
-                                            animatedScore to colorScheme.outline.copy(alpha = 0.20f),
-                                            1f to colorScheme.outline.copy(alpha = 0.20f)
-                                        )
-                                    )
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(62.dp)
-                                    .clip(CircleShape)
-                                    .background(colorScheme.surface),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = score.coerceIn(0, 100).toString(),
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = scoreColor
-                                )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = if (isAnalyzing) "—" else score.coerceIn(0, 100).toString(),
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isAnalyzing) colorScheme.onSurfaceVariant else scoreColor
+                )
+                Text(
+                    text = stringResource(R.string.security_score_out_of_100),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colorScheme.onSurfaceVariant
+                )
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = if (isAnalyzing) {
+                        stringResource(R.string.security_analysis_in_progress_short)
+                    } else {
+                        stringResource(
+                            when {
+                                score >= 80 -> R.string.security_score_good
+                                score >= 55 -> R.string.security_score_fair
+                                else -> R.string.security_score_needs_attention
                             }
-                        }
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OverviewPill(
-                            label = stringResource(R.string.security_risk_cards_title),
-                            value = riskCount.toString(),
-                            color = if (riskCount == 0) Color(0xFF22C55E) else colorScheme.error
                         )
-                        OverviewPill(
-                            label = stringResource(R.string.security_overview),
-                            value = if (score >= 80) "OK" else "!",
-                            color = scoreColor
-                        )
-                    }
-
-                    if (isAnalyzing) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.security_analysis_in_progress_short),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colorScheme.primary
-                                )
-                            }
-                            LinearProgressIndicator(
-                                progress = { progress.coerceIn(0f, 1f) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(RoundedCornerShape(999.dp)),
-                                color = scoreColor,
-                                trackColor = colorScheme.outline.copy(alpha = 0.18f)
-                            )
-                        }
-                    }
-                }
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (affectedAccountCount == 0) {
+                        stringResource(R.string.security_no_accounts_need_attention)
+                    } else {
+                        stringResource(R.string.security_accounts_need_attention, affectedAccountCount)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End
+                )
             }
         }
     }
@@ -512,13 +418,7 @@ private fun ScopeSelectorCard(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    Card(
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = stringResource(R.string.security_analysis_scope_title),
                 style = MaterialTheme.typography.titleSmall,
@@ -529,44 +429,13 @@ private fun ScopeSelectorCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 scopes.forEach { scope ->
-                    ScopeChip(
-                        text = "${scopeDisplayName(scope, context)} ${scope.itemCount}",
+                    FilterChip(
                         selected = scope.key == selectedScopeKey,
-                        onClick = { onSelectScope(scope.key) }
+                        onClick = { onSelectScope(scope.key) },
+                        label = { Text("${scopeDisplayName(scope, context)} ${scope.itemCount}") }
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ScopeChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (selected) {
-                    colorScheme.primary.copy(alpha = 0.22f)
-                } else {
-                    colorScheme.surface.copy(alpha = 0.72f)
-                }
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) colorScheme.primary else colorScheme.onSurfaceVariant,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1
-        )
     }
 }
 
@@ -621,82 +490,42 @@ private fun SecurityStrengthDistributionCard(
                 }
             }
 
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StrengthLegendChip(
-                    label = stringResource(R.string.strength_weak),
-                    count = distribution.weak,
-                    color = colorScheme.error
-                )
-                StrengthLegendChip(
-                    label = stringResource(R.string.security_strength_medium),
-                    count = distribution.medium,
-                    color = colorScheme.tertiary
-                )
-                StrengthLegendChip(
-                    label = stringResource(R.string.strength_strong),
-                    count = distribution.strong,
-                    color = colorScheme.secondary
-                )
-                StrengthLegendChip(
-                    label = stringResource(R.string.security_strength_very_strong),
-                    count = distribution.veryStrong,
-                    color = colorScheme.primary
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    StrengthStatistic(stringResource(R.string.strength_weak), distribution.weak, colorScheme.error, Modifier.weight(1f))
+                    StrengthStatistic(stringResource(R.string.security_strength_medium), distribution.medium, colorScheme.tertiary, Modifier.weight(1f))
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    StrengthStatistic(stringResource(R.string.strength_strong), distribution.strong, colorScheme.secondary, Modifier.weight(1f))
+                    StrengthStatistic(stringResource(R.string.security_strength_very_strong), distribution.veryStrong, colorScheme.primary, Modifier.weight(1f))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun StrengthLegendChip(
+private fun StrengthStatistic(
     label: String,
     count: Int,
-    color: Color
-) {
-    Box(
-        modifier = Modifier
-            .background(
-                color = color.copy(alpha = 0.16f),
-                shape = RoundedCornerShape(8.dp)
-            )
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text = "$label $count",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun OverviewPill(
-    label: String,
-    value: String,
-    color: Color
+    color: Color,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
-            .background(color.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = modifier.padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = value,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = color
+            text = count.toString(),
+            style = MaterialTheme.typography.titleMedium,
+            color = color,
+            fontWeight = FontWeight.Bold
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -720,84 +549,61 @@ private fun SecurityIssueGrid(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.ExtraBold
         )
-        items.chunked(2).forEachIndexed { rowIndex, rowItems ->
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(tween(180 + rowIndex * 80)) + slideInVertically(tween(220 + rowIndex * 80)) { it / 5 }
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    rowItems.forEach { item ->
-                        SecurityIssueTile(
-                            item = item,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onSelectIssue(item.issueType) }
-                        )
-                    }
-                    if (rowItems.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
+        items.forEach { item ->
+            SecurityIssueRow(
+                item = item,
+                onClick = { onSelectIssue(item.issueType) }
+            )
         }
     }
 }
 
 @Composable
-private fun SecurityIssueTile(
+private fun SecurityIssueRow(
     item: SecurityIssueGridItem,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val accent = if (item.count == 0) Color(0xFF22C55E) else colorScheme.error
-    Card(
-        modifier = modifier
-            .heightIn(min = 168.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = colorScheme.surfaceVariant.copy(alpha = 0.20f)
-        )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+                .size(40.dp)
+                .background(accent.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = item.icon,
                 contentDescription = null,
-                tint = accent.copy(alpha = 0.10f),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(72.dp)
+                tint = accent,
+                modifier = Modifier.size(22.dp)
             )
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = item.count.toString(),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = item.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = item.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(text = item.count.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = colorScheme.onSurfaceVariant
+        )
     }
 }
 

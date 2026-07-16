@@ -4077,4 +4077,10 @@
     <string name="previous">Previous</string>
     <string name="next">Next</string>
     <string name="mdbx_unresolved_conflicts">Unresolved conflicts: %1$d</string>
+    <string name="security_score_out_of_100">Security score out of 100</string>
+    <string name="security_accounts_need_attention">%1$d accounts need attention</string>
+    <string name="security_no_accounts_need_attention">No accounts need attention</string>
+    <string name="security_score_good">Good protection</string>
+    <string name="security_score_fair">Can be improved</string>
+    <string name="security_score_needs_attention">Needs attention</string>
 </resources>
