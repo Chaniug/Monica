@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-16T21:15:12.762Z",
+  "generatedAt": "2026-07-17T21:07:09.074Z",
   "range": {
-    "from": "2025-07-17",
-    "to": "2026-07-16"
+    "from": "2025-07-18",
+    "to": "2026-07-17"
   },
   "activity": [
-    {
-      "date": "2025-07-17",
-      "count": 0
-    },
     {
       "date": "2025-07-18",
       "count": 0
@@ -1466,9 +1462,31 @@
     {
       "date": "2026-07-16",
       "count": 4
+    },
+    {
+      "date": "2026-07-17",
+      "count": 2
     }
   ],
   "latest": [
+    {
+      "sha": "5ecdaabcda29b04bfc62211e452c437ae408d5ad",
+      "shortSha": "5ecdaab",
+      "message": "docs: add automated Afdian sponsor list",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-17T08:45:13Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/5ecdaabcda29b04bfc62211e452c437ae408d5ad"
+    },
+    {
+      "sha": "b9a5eed6f98e90a93d68364d5937673eb6007077",
+      "shortSha": "b9a5eed",
+      "message": "feat(android): unify Steam top bar search and menu",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-17T06:18:29Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/b9a5eed6f98e90a93d68364d5937673eb6007077"
+    },
     {
       "sha": "a97efafcf58266044bf7c773ff62f6e426e881b3",
       "shortSha": "a97efaf",
@@ -1540,24 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
       "date": "2026-07-07T03:00:45Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/26df547050e5b4cb01937a4a8dfeb6848eb0dfb1"
-    },
-    {
-      "sha": "838db6b6931b5931c5aa92bafaa8ce3bbe962706",
-      "shortSha": "838db6b",
-      "message": "Merge branch 'main' of https://github.com/Mrmiaomrzh/Monica",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-07-07T02:54:26Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/838db6b6931b5931c5aa92bafaa8ce3bbe962706"
-    },
-    {
-      "sha": "d4bb31c9abbcd469acbd94dc7f77958c730e80b9",
-      "shortSha": "d4bb31c",
-      "message": "chore: update github commit data to reflect accurate counts and structure",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-07-07T02:52:33Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/d4bb31c9abbcd469acbd94dc7f77958c730e80b9"
     }
   ]
 }
