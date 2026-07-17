@@ -3913,4 +3913,6 @@
     <string name="security_score_good">防护良好</string>
     <string name="security_score_fair">仍可改进</string>
     <string name="security_score_needs_attention">需要处理</string>
+    <string name="steam_search_tokens_hint">搜索 Steam 账号</string>
+    <string name="steam_search_confirmations_hint">搜索确认项目</string>
 </resources>

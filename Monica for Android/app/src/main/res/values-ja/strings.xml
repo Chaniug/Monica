@@ -3464,4 +3464,6 @@
     <string name="security_score_good">良好な保護</string>
     <string name="security_score_fair">改善できます</string>
     <string name="security_score_needs_attention">対応が必要です</string>
+    <string name="steam_search_tokens_hint">Steam アカウントを検索</string>
+    <string name="steam_search_confirmations_hint">確認を検索</string>
 </resources>

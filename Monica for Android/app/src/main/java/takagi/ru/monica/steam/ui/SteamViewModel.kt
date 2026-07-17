@@ -696,6 +696,11 @@ class SteamViewModel(
         }
     }
 
+    fun selectConfirmations(ids: Set<String>) {
+        val visibleIds = ids.intersect(_uiState.value.confirmations.map { it.id }.toSet())
+        _uiState.value = _uiState.value.copy(selectedConfirmationIds = visibleIds)
+    }
+
     fun clearSelectedConfirmations() {
         _uiState.value = _uiState.value.copy(selectedConfirmationIds = emptySet())
     }

@@ -3477,4 +3477,6 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="security_score_good">Bảo vệ tốt</string>
     <string name="security_score_fair">Có thể cải thiện</string>
     <string name="security_score_needs_attention">Cần chú ý</string>
+    <string name="steam_search_tokens_hint">Tìm tài khoản Steam</string>
+    <string name="steam_search_confirmations_hint">Tìm xác nhận</string>
 </resources>

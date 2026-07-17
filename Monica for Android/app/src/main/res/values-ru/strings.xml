@@ -3560,4 +3560,6 @@
     <string name="security_score_good">Хорошая защита</string>
     <string name="security_score_fair">Можно улучшить</string>
     <string name="security_score_needs_attention">Требует внимания</string>
+    <string name="steam_search_tokens_hint">Поиск аккаунтов Steam</string>
+    <string name="steam_search_confirmations_hint">Поиск подтверждений</string>
 </resources>

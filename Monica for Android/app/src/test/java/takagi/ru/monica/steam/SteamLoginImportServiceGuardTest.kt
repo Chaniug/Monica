@@ -67,16 +67,22 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(viewModelSource.contains("?: codeChallenge?.confirmationType"))
         assertTrue(viewModelSource.contains("pendingLoginDisplayName"))
         assertTrue(viewModelSource.contains("pendingLoginCompletionAccountId"))
-        assertTrue(viewModelSource.contains("fun beginSteamIdCompletionLogin(accountId: Long, userName: String, password: String)"))
-        assertTrue(viewModelSource.contains("saveCompletedSteamIdAccount(account, payload)"))
+        assertTrue(viewModelSource.contains("fun beginSteamIdCompletionLogin("))
+        assertTrue(viewModelSource.contains("accountId: Long,"))
+        assertTrue(viewModelSource.contains("userName: String,"))
+        assertTrue(viewModelSource.contains("password: String"))
+        assertTrue(viewModelSource.contains("saveCompletedSteamIdAccount("))
+        assertTrue(viewModelSource.contains("account = account,"))
+        assertTrue(viewModelSource.contains("loginPayload = payload,"))
         assertTrue(viewModelSource.contains("SteamMaFileBackupCodec.encode(completedBase)"))
         assertTrue(viewModelSource.contains("repository.replaceAccount(account)"))
         assertTrue(viewModelSource.contains("displayNameOverride = displayNameOverride"))
         assertTrue(viewModelSource.contains("requiresCode && canPoll"))
-        assertTrue(viewModelSource.contains("fun beginSteamLogin(userName: String, password: String, displayName: String = \"\")"))
+        assertTrue(viewModelSource.contains("fun beginSteamLogin("))
+        assertTrue(viewModelSource.contains("displayName: String = \"\""))
         assertFalse(viewModelSource.contains("fun submitSteamLoginCode(code: String, displayName"))
 
-        assertTrue(loginDialogSource.contains("onBeginLogin: (String, String, String) -> Unit"))
+        assertTrue(loginDialogSource.contains("onBeginLogin: (String, String, String, Long?) -> Unit"))
         assertTrue(loginDialogSource.contains("onSubmitLoginCode: (String) -> Unit"))
         assertTrue(loginDialogSource.contains("pendingChallenge.canPoll"))
         assertTrue(loginDialogSource.contains("PasswordDatabase.getDatabase(context)"))
@@ -94,7 +100,11 @@ class SteamLoginImportServiceGuardTest {
         assertTrue(loginDialogSource.contains("showRemarkField"))
         assertTrue(loginDialogSource.contains("descriptionRes?.let"))
         assertTrue(loginDialogSource.contains("R.string.steam_remark_optional_label"))
-        assertTrue(loginDialogSource.contains("onBeginLogin(loginName, loginPassword, loginDisplayName)"))
+        assertTrue(
+            loginDialogSource.contains(
+                "onBeginLogin(loginName, loginPassword, loginDisplayName, selectedPasswordEntryId)"
+            )
+        )
         assertFalse(loginDialogSource.contains("steam_display_name_label"))
 
         val repositorySource = projectFile(
@@ -114,7 +124,7 @@ class SteamLoginImportServiceGuardTest {
             "app/src/main/java/takagi/ru/monica/steam/ui/SteamViewModel.kt"
         ).readText()
         val completionLoginSource = viewModelSource.substringAfter(
-            "fun beginSteamIdCompletionLogin(accountId: Long, userName: String, password: String)"
+            "fun beginSteamIdCompletionLogin("
         ).substringBefore("fun beginSteamQrLogin")
 
         assertTrue(serviceSource.contains("private enum class LoginPurpose"))

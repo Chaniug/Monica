@@ -22,6 +22,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -78,6 +80,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -103,6 +106,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -115,6 +121,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.fragment.app.FragmentActivity
@@ -148,6 +155,10 @@ import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
+import takagi.ru.monica.ui.common.pull.PullActionVisualState
+import takagi.ru.monica.ui.common.pull.PullGestureIndicator
+import takagi.ru.monica.ui.common.pull.PullToSearchStateHandle
+import takagi.ru.monica.ui.common.pull.rememberPullToSearchState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.MonicaModalBottomSheet
@@ -184,10 +195,22 @@ private data class LegacySteamAuthenticatorCodeSource(
 
 private enum class SteamSection(
     @StringRes val labelRes: Int,
-    val icon: ImageVector
+    val icon: ImageVector,
+    @StringRes val searchHintRes: Int,
+    val supportsRefresh: Boolean
 ) {
-    CODE(R.string.steam_section_code, Icons.Default.Key),
-    CONFIRMATIONS(R.string.steam_section_confirmations, Icons.Default.VerifiedUser)
+    CODE(
+        labelRes = R.string.steam_section_code,
+        icon = Icons.Default.Key,
+        searchHintRes = R.string.steam_search_tokens_hint,
+        supportsRefresh = false
+    ),
+    CONFIRMATIONS(
+        labelRes = R.string.steam_section_confirmations,
+        icon = Icons.Default.VerifiedUser,
+        searchHintRes = R.string.steam_search_confirmations_hint,
+        supportsRefresh = true
+    )
 }
 
 private enum class SteamAddAccountMethod {
@@ -258,6 +281,8 @@ fun SteamScreen(
     var detailAccountId by rememberSaveable { mutableStateOf<Long?>(null) }
     val detailAccount = uiState.accounts.firstOrNull { it.id == detailAccountId }
     var selectedSection by rememberSaveable { mutableStateOf(SteamSection.CODE) }
+    var steamSearchQuery by rememberSaveable { mutableStateOf("") }
+    var isSteamSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var showStorageSourceMenu by remember { mutableStateOf(false) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
@@ -284,6 +309,21 @@ fun SteamScreen(
     } else {
         0
     }
+    val filteredSteamAccounts = remember(uiState.accounts, steamSearchQuery) {
+        filterSteamAccounts(uiState.accounts, steamSearchQuery)
+    }
+    val filteredSteamConfirmations = remember(uiState.confirmations, steamSearchQuery) {
+        filterSteamConfirmations(uiState.confirmations, steamSearchQuery)
+    }
+    val density = LocalDensity.current
+    val steamSearchTriggerDistance = remember(density) { with(density) { 40.dp.toPx() } }
+    val steamSearchMaxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
+    val pullToSearch = rememberPullToSearchState(
+        isSearchExpanded = isSteamSearchExpanded,
+        searchTriggerDistance = steamSearchTriggerDistance,
+        maxDragDistance = steamSearchMaxDragDistance,
+        onSearchTriggered = { isSteamSearchExpanded = true }
+    )
     val tokenQrAccount = remember(
         uiState.accounts,
         lastSteamQrAccountId,
@@ -308,6 +348,22 @@ fun SteamScreen(
     fun rememberLastSteamQrAccount(accountId: Long?) {
         lastSteamQrAccountId = accountId
         saveLastSteamQrAccountId(context, accountId)
+    }
+
+    fun clearSteamSearch() {
+        isSteamSearchExpanded = false
+        steamSearchQuery = ""
+    }
+
+    LaunchedEffect(steamSearchQuery) {
+        selectedTokenAccountIds = emptyList()
+        viewModel.clearSelectedConfirmations()
+    }
+
+    LaunchedEffect(selectedSection, uiState.storageSource, detailAccountId) {
+        clearSteamSearch()
+        selectedTokenAccountIds = emptyList()
+        viewModel.clearSelectedConfirmations()
     }
 
     LaunchedEffect(steamIdCompletionAccount?.id, steamIdCompletionAccount?.hasRealSteamId) {
@@ -892,112 +948,78 @@ fun SteamScreen(
                         }
                     )
                 } else {
-                    ExpressiveTopBar(
+                    SteamRootTopBar(
                         title = stringResource(R.string.nav_steam),
-                        searchQuery = "",
-                        onSearchQueryChange = {},
-                        isSearchExpanded = false,
-                        onSearchExpandedChange = {},
-                        searchHint = stringResource(R.string.nav_steam),
-                        actions = {
-                            if (selectedAccount != null && selectedSection == SteamSection.CONFIRMATIONS) {
-                                IconButton(onClick = { viewModel.refreshConfirmations() }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = stringResource(R.string.refresh),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                        searchQuery = steamSearchQuery,
+                        onSearchQueryChange = { query ->
+                            steamSearchQuery = query
+                            selectedTokenAccountIds = emptyList()
+                            viewModel.clearSelectedConfirmations()
+                        },
+                        isSearchExpanded = isSteamSearchExpanded,
+                        onSearchExpandedChange = { expanded ->
+                            isSteamSearchExpanded = expanded
+                            if (!expanded) steamSearchQuery = ""
+                        },
+                        searchHint = stringResource(selectedSection.searchHintRes),
+                        pendingConfirmationCount = pendingConfirmationCount,
+                        onOpenSearch = { isSteamSearchExpanded = true },
+                        storageSourceMenu = {
+                            SteamStorageSourceMenu(
+                                expanded = showStorageSourceMenu,
+                                onDismissRequest = { showStorageSourceMenu = false },
+                                selectedSource = uiState.storageSource,
+                                mdbxDatabases = mdbxDatabases,
+                                onSelectSource = { source ->
+                                    showStorageSourceMenu = false
+                                    clearSteamSearch()
+                                    selectedTokenAccountIds = emptyList()
+                                    detailAccountId = null
+                                    scannedQrPayload = null
+                                    viewModel.clearSelectedConfirmations()
+                                    viewModel.selectStorageSource(source)
                                 }
-                            }
-                            Box {
-                                IconButton(onClick = { showStorageSourceMenu = true }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = stringResource(R.string.database_source_label),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                SteamStorageSourceMenu(
-                                    expanded = showStorageSourceMenu,
-                                    onDismissRequest = { showStorageSourceMenu = false },
-                                    selectedSource = uiState.storageSource,
-                                    mdbxDatabases = mdbxDatabases,
-                                    onSelectSource = { source ->
-                                        showStorageSourceMenu = false
-                                        selectedTokenAccountIds = emptyList()
-                                        detailAccountId = null
-                                        scannedQrPayload = null
-                                        viewModel.selectStorageSource(source)
-                                    }
-                                )
-                            }
-                            IconButton(
-                                onClick = {
+                            )
+                        },
+                        onOpenStorageSourceMenu = { showStorageSourceMenu = true },
+                        topActionsMenu = {
+                            SteamTopActionsMenu(
+                                expanded = showTopActionsMenu,
+                                onDismissRequest = { showTopActionsMenu = false },
+                                selectedSection = selectedSection,
+                                pendingConfirmationCount = pendingConfirmationCount,
+                                showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                                onSelectSection = { section ->
                                     showTopActionsMenu = false
-                                    showAddAccountDialog = true
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = stringResource(R.string.steam_add_account_button),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (selectedAccount != null) {
-                                val targetSection = when (selectedSection) {
-                                    SteamSection.CODE -> SteamSection.CONFIRMATIONS
-                                    SteamSection.CONFIRMATIONS -> SteamSection.CODE
-                                }
-                                IconButton(
-                                    onClick = {
-                                        selectedSection = targetSection
-                                        if (targetSection == SteamSection.CONFIRMATIONS) {
+                                    clearSteamSearch()
+                                    selectedTokenAccountIds = emptyList()
+                                    viewModel.clearSelectedConfirmations()
+                                    if (selectedSection != section) {
+                                        selectedSection = section
+                                        if (section == SteamSection.CONFIRMATIONS) {
                                             viewModel.refreshConfirmations()
                                         }
                                     }
-                                ) {
-                                    BadgedBox(
-                                        badge = {
-                                            if (targetSection == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
-                                                Badge {
-                                                    Text(badgeCountText(pendingConfirmationCount))
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = targetSection.icon,
-                                            contentDescription = stringResource(targetSection.labelRes),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                },
+                                onRefreshCurrent = {
+                                    showTopActionsMenu = false
+                                    if (selectedSection == SteamSection.CONFIRMATIONS) {
+                                        viewModel.refreshConfirmations()
                                     }
+                                },
+                                onAddAccount = {
+                                    showTopActionsMenu = false
+                                    clearSteamSearch()
+                                    showAddAccountDialog = true
+                                },
+                                onOpenStandaloneSettings = {
+                                    showTopActionsMenu = false
+                                    clearSteamSearch()
+                                    onOpenStandaloneSettings()
                                 }
-                            }
-                            if (showStandaloneSettingsEntry) {
-                                Box {
-                                    IconButton(
-                                        onClick = {
-                                            showTopActionsMenu = true
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.MoreVert,
-                                            contentDescription = stringResource(R.string.more_options),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    SteamTopActionsMenu(
-                                        expanded = showTopActionsMenu,
-                                        onDismissRequest = { showTopActionsMenu = false },
-                                        showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                                        onOpenStandaloneSettings = {
-                                            showTopActionsMenu = false
-                                            onOpenStandaloneSettings()
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                            )
+                        },
+                        onOpenTopActionsMenu = { showTopActionsMenu = true }
                     )
                 }
             }
@@ -1072,15 +1094,32 @@ fun SteamScreen(
                             onRespondQr = viewModel::respondQr
                         )
                     } else if (selectedAccount == null) {
-                        SteamEmptyAccountContent(
-                            onAddAccount = { showAddAccountDialog = true }
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(0, pullToSearch.currentOffset.toInt()) }
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures(
+                                        onVerticalDrag = { _, dragAmount ->
+                                            pullToSearch.onVerticalDrag(dragAmount)
+                                        },
+                                        onDragEnd = pullToSearch.onDragEnd,
+                                        onDragCancel = pullToSearch.onDragCancel
+                                    )
+                                }
+                        ) {
+                            SteamEmptyAccountContent(
+                                onAddAccount = { showAddAccountDialog = true }
+                            )
+                        }
                     } else {
                         when (selectedSection) {
                             SteamSection.CODE -> SteamCodeContent(
-                                accounts = uiState.accounts,
+                                accounts = filteredSteamAccounts,
                                 selectedAccountIds = selectedTokenAccountIds,
                                 appSettings = appSettings,
+                                isSearchActive = isSteamSearchExpanded || steamSearchQuery.isNotBlank(),
+                                pullToSearch = pullToSearch,
                                 onToggleSelection = { account ->
                                     selectedTokenAccountIds = if (account.id in selectedTokenAccountIds) {
                                         selectedTokenAccountIds - account.id
@@ -1092,10 +1131,14 @@ fun SteamScreen(
                                     selectedTokenAccountIds = emptyList()
                                 },
                                 onSelectAll = {
-                                    selectedTokenAccountIds = if (selectedTokenAccountIds.size == uiState.accounts.size) {
-                                        emptyList()
+                                    val visibleIds = filteredSteamAccounts.map { it.id }
+                                    selectedTokenAccountIds = if (
+                                        visibleIds.isNotEmpty() &&
+                                        visibleIds.all { it in selectedTokenAccountIds }
+                                    ) {
+                                        selectedTokenAccountIds - visibleIds.toSet()
                                     } else {
-                                        uiState.accounts.map { it.id }
+                                        (selectedTokenAccountIds + visibleIds).distinct()
                                     }
                                 },
                                 onDeleteSelected = {
@@ -1112,6 +1155,7 @@ fun SteamScreen(
                                 },
                                 onUpdateSortOrders = viewModel::updateSortOrders,
                                 onOpenDetail = { account ->
+                                    clearSteamSearch()
                                     selectedTokenAccountIds = emptyList()
                                     detailAccountId = account.id
                                 }
@@ -1119,11 +1163,17 @@ fun SteamScreen(
                             SteamSection.CONFIRMATIONS -> SteamConfirmationsContent(
                                 account = selectedAccount,
                                 accounts = uiState.accounts,
-                                confirmations = uiState.confirmations,
+                                confirmations = filteredSteamConfirmations,
+                                hasSearchQuery = steamSearchQuery.isNotBlank(),
+                                pullToSearch = pullToSearch,
                                 selectedIds = uiState.selectedConfirmationIds,
                                 onSelectAccount = viewModel::selectAccount,
                                 onToggle = viewModel::toggleConfirmation,
-                                onSelectAll = viewModel::selectAllConfirmations,
+                                onSelectAll = {
+                                    viewModel.selectConfirmations(
+                                        filteredSteamConfirmations.map { it.id }.toSet()
+                                    )
+                                },
                                 onClearSelection = viewModel::clearSelectedConfirmations,
                                 onRespond = viewModel::respondConfirmation,
                                 onRespondSelected = viewModel::respondSelectedConfirmations
@@ -1141,9 +1191,89 @@ fun SteamScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
+
+            if (detailAccount == null && pullToSearch.currentOffset > 0.5f) {
+                PullGestureIndicator(
+                    state = if (pullToSearch.currentOffset >= steamSearchTriggerDistance) {
+                        PullActionVisualState.SEARCH_READY
+                    } else {
+                        PullActionVisualState.IDLE
+                    },
+                    searchProgress = pullToSearch.currentOffset / steamSearchTriggerDistance,
+                    syncProgress = 0f,
+                    text = stringResource(R.string.pull_release_to_search),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp)
+                )
+            }
         }
     }
 
+}
+
+@Composable
+private fun SteamRootTopBar(
+    title: String,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    isSearchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    searchHint: String,
+    pendingConfirmationCount: Int,
+    onOpenSearch: () -> Unit,
+    onOpenStorageSourceMenu: () -> Unit,
+    storageSourceMenu: @Composable () -> Unit,
+    onOpenTopActionsMenu: () -> Unit,
+    topActionsMenu: @Composable () -> Unit
+) {
+    ExpressiveTopBar(
+        title = title,
+        searchQuery = searchQuery,
+        onSearchQueryChange = onSearchQueryChange,
+        isSearchExpanded = isSearchExpanded,
+        onSearchExpandedChange = onSearchExpandedChange,
+        searchHint = searchHint,
+        actions = {
+            Box {
+                IconButton(onClick = onOpenStorageSourceMenu) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = stringResource(R.string.database_source_label),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                storageSourceMenu()
+            }
+            IconButton(onClick = onOpenSearch) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = stringResource(R.string.topbar_search_hint),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Box {
+                IconButton(onClick = onOpenTopActionsMenu) {
+                    BadgedBox(
+                        badge = {
+                            if (pendingConfirmationCount > 0) {
+                                Badge {
+                                    Text(badgeCountText(pendingConfirmationCount))
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.more_options),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                topActionsMenu()
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1203,13 +1333,72 @@ private fun SteamDetailTopBar(
 private fun SteamTopActionsMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
+    selectedSection: SteamSection,
+    pendingConfirmationCount: Int,
     showStandaloneSettingsEntry: Boolean,
+    onSelectSection: (SteamSection) -> Unit,
+    onRefreshCurrent: () -> Unit,
+    onAddAccount: () -> Unit,
     onOpenStandaloneSettings: () -> Unit
 ) {
     PasswordTopActionsDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest
     ) {
+        SteamSection.entries.forEach { section ->
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(section.labelRes),
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (section == SteamSection.CONFIRMATIONS && pendingConfirmationCount > 0) {
+                            Badge {
+                                Text(badgeCountText(pendingConfirmationCount))
+                            }
+                        }
+                    }
+                },
+                leadingIcon = {
+                    Icon(section.icon, contentDescription = null)
+                },
+                trailingIcon = {
+                    if (section == selectedSection) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                onClick = { onSelectSection(section) }
+            )
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
+
+        if (selectedSection.supportsRefresh) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.refresh)) },
+                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                onClick = onRefreshCurrent
+            )
+        }
+
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.steam_add_account_button)) },
+            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+            onClick = onAddAccount
+        )
+
         if (showStandaloneSettingsEntry) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.nav_settings)) },
@@ -1507,6 +1696,8 @@ private fun SteamCodeContent(
     accounts: List<SteamAccount>,
     selectedAccountIds: List<Long>,
     appSettings: AppSettings,
+    isSearchActive: Boolean,
+    pullToSearch: PullToSearchStateHandle,
     onToggleSelection: (SteamAccount) -> Unit,
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
@@ -1524,13 +1715,14 @@ private fun SteamCodeContent(
     val sharedTickSeconds = sharedProgressTimeMillis / 1000L
     val lazyListState = rememberSaveableLazyListState()
     var localAccounts by remember(accounts) { mutableStateOf(accounts) }
+    val reorderEnabled = selectionMode && !isSearchActive
 
     LaunchedEffect(accounts) {
         localAccounts = accounts
     }
 
     val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        if (selectionMode) {
+        if (reorderEnabled) {
             localAccounts = localAccounts.toMutableList().apply {
                 add(to.index, removeAt(from.index))
             }
@@ -1538,7 +1730,7 @@ private fun SteamCodeContent(
     }
 
     LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
-        if (!reorderableLazyListState.isAnyItemDragging && selectionMode) {
+        if (!reorderableLazyListState.isAnyItemDragging && reorderEnabled) {
             val newOrders = localAccounts.mapIndexed { index, account -> account.id to index }
             if (newOrders.isNotEmpty()) {
                 onUpdateSortOrders(newOrders)
@@ -1558,7 +1750,11 @@ private fun SteamCodeContent(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(0, pullToSearch.currentOffset.toInt()) }
+        ) {
             if (appSettings.validatorUnifiedProgressBar == UnifiedProgressBarMode.ENABLED &&
                 accounts.isNotEmpty()
             ) {
@@ -1571,28 +1767,48 @@ private fun SteamCodeContent(
                 )
             }
 
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = 16.dp,
-                    end = 16.dp,
-                    bottom = if (selectionMode) 112.dp else 80.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(localAccounts, key = { it.id }) { account ->
-                    ReorderableItem(
-                        reorderableLazyListState,
-                        key = account.id,
-                        enabled = selectionMode
-                    ) { isDragging ->
+            if (localAccounts.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    pullToSearch.onVerticalDrag(dragAmount)
+                                },
+                                onDragEnd = pullToSearch.onDragEnd,
+                                onDragCancel = pullToSearch.onDragCancel
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    EmptyState(stringResource(R.string.no_results))
+                }
+            } else {
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(pullToSearch.nestedScrollConnection),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 16.dp,
+                        end = 16.dp,
+                        bottom = if (selectionMode) 112.dp else 80.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(localAccounts, key = { it.id }) { account ->
+                        ReorderableItem(
+                            reorderableLazyListState,
+                            key = account.id,
+                            enabled = reorderEnabled
+                        ) { isDragging ->
                         val elevation by animateDpAsState(
                             if (isDragging) 8.dp else 0.dp,
                             label = "steam_token_drag_elevation"
                         )
-                        val dragModifier = if (selectionMode) {
+                        val dragModifier = if (reorderEnabled) {
                             Modifier.longPressDraggableHandle(
                                 onDragStarted = { haptic.performLongPress() },
                                 onDragStopped = { haptic.performSuccess() }
@@ -1649,6 +1865,7 @@ private fun SteamCodeContent(
                                     appSettings = appSettings
                                 )
                             }
+                        }
                         }
                     }
                 }
@@ -2431,6 +2648,8 @@ private fun SteamConfirmationsContent(
     account: SteamAccount?,
     accounts: List<SteamAccount>,
     confirmations: List<SteamConfirmation>,
+    hasSearchQuery: Boolean,
+    pullToSearch: PullToSearchStateHandle,
     selectedIds: Set<String>,
     onSelectAccount: (Long) -> Unit,
     onToggle: (String) -> Unit,
@@ -2575,31 +2794,54 @@ private fun SteamConfirmationsContent(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(0, pullToSearch.currentOffset.toInt()) }
+        ) {
             SteamConfirmationAccountCard(
                 account = account,
                 onClick = { showAccountPicker = true },
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
             )
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = 10.dp,
-                    end = 16.dp,
-                    bottom = if (selectionMode) 144.dp else 88.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (account == null || !account.canUseConfirmations) {
-                    item {
-                        EmptyState(
-                            steamConfirmationUnavailableText(account)
-                        )
-                    }
-                } else if (confirmations.isEmpty()) {
-                    item { EmptyState(stringResource(R.string.steam_no_confirmations)) }
-                } else {
+            if (account == null || !account.canUseConfirmations || confirmations.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(account?.id, hasSearchQuery) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    pullToSearch.onVerticalDrag(dragAmount)
+                                },
+                                onDragEnd = pullToSearch.onDragEnd,
+                                onDragCancel = pullToSearch.onDragCancel
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    EmptyState(
+                        when {
+                            account == null || !account.canUseConfirmations -> {
+                                steamConfirmationUnavailableText(account)
+                            }
+                            hasSearchQuery -> stringResource(R.string.no_results)
+                            else -> stringResource(R.string.steam_no_confirmations)
+                        }
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(pullToSearch.nestedScrollConnection),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 10.dp,
+                        end = 16.dp,
+                        bottom = if (selectionMode) 144.dp else 88.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     items(confirmations, key = { it.id }) { confirmation ->
                         SwipeActions(
                             onSwipeLeft = {},
@@ -2626,9 +2868,9 @@ private fun SteamConfirmationsContent(
                             )
                         }
                     }
+                    }
                 }
             }
-        }
 
         if (selectionMode) {
             Row(
