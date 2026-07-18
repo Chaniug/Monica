@@ -821,6 +821,13 @@ fun SimpleMainScreen(
     var passwordScrollToTopRequestKey by remember { mutableIntStateOf(0) }
     var showPasswordQuickAccessSheet by rememberSaveable { mutableStateOf(false) }
     val vaultV2PaneState = rememberVaultV2PaneState()
+    val isPasswordVaultAuthenticated by passwordViewModel.isAuthenticated.collectAsState()
+
+    LaunchedEffect(isPasswordVaultAuthenticated) {
+        if (!isPasswordVaultAuthenticated) {
+            vaultV2PaneState.clearRetainedListSnapshots()
+        }
+    }
     
     LaunchedEffect(passwordPageVisibleContentTypes) {
         passwordPageSelectedContentTypes = sanitizeSelectedPasswordPageTypes(

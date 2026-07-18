@@ -96,7 +96,7 @@ class SteamSearchFiltersTest {
             marketHashName = item.marketHashName,
             name = item.name,
             iconUrl = "",
-            buyerPrice = 117,
+            sellerReceives = 100,
             fee = 17,
             createdAt = 0L,
             active = true

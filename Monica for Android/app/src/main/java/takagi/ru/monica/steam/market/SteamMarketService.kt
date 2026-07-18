@@ -162,7 +162,7 @@ class SteamMarketService(
                             else -> ITEM_IMAGE_BASE + rawIcon.removePrefix("/")
                         }
                     },
-                    buyerPrice = listing.intValue("price"),
+                    sellerReceives = listing.intValue("price"),
                     fee = listing.intValue("fee"),
                     createdAt = listing.stringValue("time_created").toLongOrNull()
                         ?: listing.intValue("time_created").toLong(),

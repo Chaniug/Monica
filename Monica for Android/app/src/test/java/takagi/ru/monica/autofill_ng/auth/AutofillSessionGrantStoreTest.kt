@@ -7,7 +7,7 @@ import org.junit.Test
 class AutofillSessionGrantStoreTest {
 
     @Test
-    fun grantIsLimitedToExactAutofillContext() {
+    fun grantIsLimitedToAppAndInteractionButSurvivesDynamicFieldChanges() {
         var now = 1_000L
         val store = AutofillSessionGrantStore(
             ttlMillis = 30_000L,
@@ -26,7 +26,8 @@ class AutofillSessionGrantStoreTest {
         assertFalse(store.isGranted(context.copy(packageName = "com.example.other")))
         assertFalse(store.isGranted(context.copy(webDomain = "evil.example")))
         assertFalse(store.isGranted(context.copy(interactionIdentifier = "app:other")))
-        assertFalse(store.isGranted(context.copy(fieldSignatureKey = "password")))
+        assertTrue(store.isGranted(context.copy(fieldSignatureKey = "password")))
+        assertTrue(store.isGranted(context.copy(fieldSignatureKey = null)))
     }
 
     @Test

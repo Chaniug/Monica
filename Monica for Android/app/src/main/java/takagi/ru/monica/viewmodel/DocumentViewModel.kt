@@ -114,7 +114,7 @@ class DocumentViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
     // 获取所有证件
-    val allDocuments: Flow<List<SecureItem>> = repository.getItemsByType(ItemType.DOCUMENT)
+    val allDocuments: StateFlow<List<SecureItem>> = repository.getItemsByType(ItemType.DOCUMENT)
         .onStart { _isLoading.value = true }
         .onEach { _isLoading.value = false }
         .stateIn(

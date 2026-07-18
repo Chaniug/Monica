@@ -37,7 +37,7 @@ class SteamMarketBulkActionsTest {
         marketHashName = "item_$id",
         name = "Item $id",
         iconUrl = "",
-        buyerPrice = 117,
+        sellerReceives = 100,
         fee = 17,
         createdAt = 0L,
         active = true

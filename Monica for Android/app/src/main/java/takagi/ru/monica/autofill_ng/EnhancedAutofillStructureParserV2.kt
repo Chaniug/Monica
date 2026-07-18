@@ -185,21 +185,6 @@ class EnhancedAutofillStructureParserV2 {
         "電子郵箱",
     )
 
-    private val autofillLabelUsernameTranslations = listOf(
-        "nickname",
-        "username",
-        "utilisateur",
-        "login",
-        "логин",
-        "логін",
-        "користувач",
-        "пользовател",
-        "用户名",
-        "用戶名",
-        "id",
-        "customer",
-    )
-
     private val autofillLabelCreditCardNumberTranslations = listOf(
         ".*(credit|debit|card)+.*number.*".toRegex(),
         ".*(cc|card)[-_ ]?(no|num|number).*".toRegex(),
@@ -509,7 +494,11 @@ class EnhancedAutofillStructureParserV2 {
         ),
     )
 
-    fun parse(structure: AssistStructure, respectAutofillOff: Boolean = true): ParsedStructure {
+    fun parse(
+        structure: AssistStructure,
+        respectAutofillOff: Boolean = true,
+        allowWeakTargets: Boolean = false,
+    ): ParsedStructure {
         var applicationId: String? = structure.activityComponent?.packageName
         var rawStructure: RawParsedStructure? = null
         val parseContext = ParseContext()
@@ -548,6 +537,7 @@ class EnhancedAutofillStructureParserV2 {
         }
 
         val confidenceFilteredItems = candidateItems.let { list ->
+            if (allowWeakTargets) return@let list
             val onlyLowAccuracy = list.all {
                 it.accuracy.score <= Accuracy.LOW.score || it.hint == InternalHint.OFF
             }
@@ -1181,7 +1171,7 @@ class EnhancedAutofillStructureParserV2 {
                     reason = "label:$hint",
                 )
 
-            autofillLabelUsernameTranslations.any { it in hint } ->
+            AutofillDetectionPolicy.matchesUsernameLabel(hint) ->
                 ParsedItemBuilder(
                     accuracy = Accuracy.MEDIUM,
                     hint = InternalHint.USERNAME,
@@ -1393,11 +1383,7 @@ class EnhancedAutofillStructureParserV2 {
                         extractOfType(node.idType.orEmpty()).let(out::addAll)
                         extractOfId(node.idEntry.orEmpty()).let(out::addAll)
                         out += ParsedItemBuilder(
-                            accuracy = if (importance == View.IMPORTANT_FOR_AUTOFILL_YES) {
-                                Accuracy.MEDIUM
-                            } else {
-                                Accuracy.LOW
-                            },
+                            accuracy = AutofillDetectionPolicy.genericNumberFallbackAccuracy(),
                             hint = InternalHint.USERNAME,
                         )
                     }
@@ -1425,11 +1411,11 @@ class EnhancedAutofillStructureParserV2 {
         builders: List<ParsedItemBuilder>,
     ): Boolean {
         return builders.any { builder ->
-            builder.hint == InternalHint.USERNAME ||
-                builder.hint == InternalHint.EMAIL_ADDRESS ||
-                builder.hint == InternalHint.PHONE_NUMBER ||
-                builder.hint == InternalHint.PASSWORD ||
-                builder.hint == InternalHint.NEW_PASSWORD
+            val mappedHint = mapHint(builder.hint) ?: return@any false
+            AutofillDetectionPolicy.shouldIncludeHiddenCredential(
+                hint = mappedHint,
+                accuracy = builder.accuracy,
+            )
         }
     }
 

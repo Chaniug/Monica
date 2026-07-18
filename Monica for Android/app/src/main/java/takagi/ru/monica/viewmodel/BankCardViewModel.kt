@@ -261,7 +261,7 @@ class BankCardViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
     // 获取所有银行卡
-    val allCards: Flow<List<SecureItem>> = repository.getItemsByType(ItemType.BANK_CARD)
+    val allCards: StateFlow<List<SecureItem>> = repository.getItemsByType(ItemType.BANK_CARD)
         .onStart { _isLoading.value = true }
         .onEach { _isLoading.value = false }
         .stateIn(

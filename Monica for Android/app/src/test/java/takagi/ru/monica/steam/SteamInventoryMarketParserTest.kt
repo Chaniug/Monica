@@ -71,7 +71,7 @@ class SteamInventoryMarketParserTest {
     }
 
     @Test
-    fun marketListingsAndPriceOverviewParseLocalizedValues() {
+    fun marketListingsKeepSteamSellerReceiveAndAddFeeForBuyerPrice() {
         val listingsPayload = json.parseToJsonElement(
             """
             {
@@ -80,8 +80,8 @@ class SteamInventoryMarketParserTest {
               "listings":[{
                 "listingid":"555",
                 "time_created":1700000000,
-                "price":117,
-                "fee":17,
+                "price":579,
+                "fee":85,
                 "active":1,
                 "asset":{"appid":730,"contextid":"2","id":"100","market_hash_name":"AK-47 | Redline","name":"AK-47","icon_url":"icon-path"}
               }]
@@ -96,7 +96,9 @@ class SteamInventoryMarketParserTest {
         val price = SteamMarketService.parsePriceOverview(pricePayload)
 
         assertEquals(1, listings.items.size)
-        assertEquals(100, listings.items.first().sellerReceives)
+        assertEquals(579, listings.items.first().sellerReceives)
+        assertEquals(85, listings.items.first().fee)
+        assertEquals(664, listings.items.first().buyerPrice)
         assertFalse(listings.hasMore)
         assertEquals(1234, price?.volume)
         assertEquals("¥ 1.17", price?.lowestPrice)

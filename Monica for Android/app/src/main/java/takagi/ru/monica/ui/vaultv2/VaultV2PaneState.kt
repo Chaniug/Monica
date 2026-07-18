@@ -28,6 +28,13 @@ class VaultV2PaneState internal constructor(
     archiveReturnStorageFilterPrimaryId: Long?,
     archiveReturnStorageFilterSecondaryKey: String?,
 ) {
+    internal val computedListSnapshots =
+        VaultV2RetainedSnapshotStore<VaultV2ComputedSnapshotKey, VaultV2ComputedListState>()
+    internal val visibleListSnapshots =
+        VaultV2RetainedSnapshotStore<VaultV2VisibleSnapshotKey, VaultV2VisibleListState>(
+            maxEntries = 8
+        )
+
     var scrollIndex by mutableIntStateOf(scrollIndex)
         private set
 
@@ -121,6 +128,11 @@ class VaultV2PaneState internal constructor(
     fun clearTransientUi() {
         showBackToTop = false
         fastScrollIndicatorLabel = null
+    }
+
+    fun clearRetainedListSnapshots() {
+        computedListSnapshots.clear()
+        visibleListSnapshots.clear()
     }
 
     fun updateSelectionCount(count: Int) {

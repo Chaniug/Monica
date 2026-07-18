@@ -234,7 +234,12 @@ class MonicaAutofillServiceNg : AutofillService() {
         }
 
         val respectAutofillOff = autofillPreferences.isV2RespectAutofillOffEnabled.first()
-        val parsed = parser.parse(structure, respectAutofillOff = respectAutofillOff)
+        val isManualRequest = request.flags and FillRequest.FLAG_MANUAL_REQUEST != 0
+        val parsed = parser.parse(
+            structure = structure,
+            respectAutofillOff = respectAutofillOff,
+            allowWeakTargets = isManualRequest,
+        )
         val packageName = resolveEffectivePackageName(
             parsedApplicationId = parsed.applicationId,
             fallbackPackage = fallbackPackage,
@@ -260,6 +265,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "parsedItemCount" to parsed.items.size,
                 "respectAutofillOff" to respectAutofillOff,
                 "compatMode" to isCompatMode,
+                "manualRequest" to isManualRequest,
             )
         )
         if (packageName.isBlank()) {
@@ -276,7 +282,10 @@ class MonicaAutofillServiceNg : AutofillService() {
             return null
         }
 
-        val fillableTargets = selectFillableTargets(parsed.items)
+        val fillableTargets = selectFillableTargets(
+            items = parsed.items,
+            manualRequest = isManualRequest,
+        )
         if (fillableTargets.isEmpty()) {
             AutofillLogger.i(
                 "AF",
@@ -311,7 +320,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         val loginTargetCount = fillableTargets.count { isLoginHint(it.hint) }
         val structuredTargetCount = fillableTargets.size - loginTargetCount
         val structuredDecision = evaluateStructuredConfidence(fillableTargets)
-        if (loginTargetCount == 0 && !structuredDecision.highConfidence) {
+        if (!isManualRequest && loginTargetCount == 0 && !structuredDecision.highConfidence) {
             AutofillLogger.i(
                 "AF",
                 "Skip weak structured autofill request",
@@ -758,12 +767,24 @@ class MonicaAutofillServiceNg : AutofillService() {
         return request.inlineSuggestionsRequest
     }
 
-    private fun selectFillableTargets(items: List<ParsedItem>): List<ParsedItem> {
+    private fun selectFillableTargets(
+        items: List<ParsedItem>,
+        manualRequest: Boolean,
+    ): List<ParsedItem> {
         if (items.isEmpty()) return emptyList()
 
         val rawCount = items.size
+        val hasPasswordTarget = items.any {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        }
         val filtered = items.filter { item ->
-            isSupportedFillableHint(item.hint)
+            isSupportedFillableHint(item.hint) &&
+                AutofillDetectionPolicy.shouldKeepTarget(
+                    hint = item.hint,
+                    accuracy = item.accuracy,
+                    hasPasswordTarget = hasPasswordTarget,
+                    manualRequest = manualRequest,
+                )
         }
         if (filtered.isEmpty()) return emptyList()
 
@@ -806,6 +827,8 @@ class MonicaAutofillServiceNg : AutofillService() {
                     "droppedByHint" to droppedByHint,
                     "droppedByValueSuppression" to droppedByValueSuppression,
                     "hasFocusedTarget" to hasFocusedTarget,
+                    "hasPasswordTarget" to hasPasswordTarget,
+                    "manualRequest" to manualRequest,
                 ),
             )
         }

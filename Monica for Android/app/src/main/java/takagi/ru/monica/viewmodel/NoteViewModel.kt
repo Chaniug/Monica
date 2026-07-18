@@ -219,7 +219,7 @@ class NoteViewModel(
     }
     
     // 获取所有笔记
-    val allNotes: Flow<List<SecureItem>> = repository.getItemsByType(ItemType.NOTE)
+    val allNotes: StateFlow<List<SecureItem>> = repository.getItemsByType(ItemType.NOTE)
         .onStart { _isLoading.value = true }
         .onEach { _isLoading.value = false }
         .stateIn(

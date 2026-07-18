@@ -212,7 +212,7 @@ import java.util.concurrent.CancellationException
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private enum class VaultV2ItemType {
+internal enum class VaultV2ItemType {
 	PASSWORD,
 	AUTHENTICATOR,
 	NOTE,
@@ -221,7 +221,7 @@ private enum class VaultV2ItemType {
 	DOCUMENT,
 }
 
-private data class VaultV2Item(
+internal data class VaultV2Item(
 	val key: String,
 	val type: VaultV2ItemType,
 	val title: String,
@@ -282,19 +282,19 @@ private fun parseVaultV2DocumentData(
 	)
 }
 
-private data class VaultV2SectionLayout(
+internal data class VaultV2SectionLayout(
 	val title: String,
 	val items: List<VaultV2Item>,
 	val itemStartIndex: Int,
 	val firstItemLazyIndex: Int,
 )
 
-private data class VaultV2ComputedListState(
+internal data class VaultV2ComputedListState(
 	val allItemsRaw: List<VaultV2Item> = emptyList(),
 	val passwordById: Map<Long, PasswordEntry> = emptyMap(),
 )
 
-private data class VaultV2VisibleListState(
+internal data class VaultV2VisibleListState(
 	val filteredItems: List<VaultV2Item> = emptyList(),
 	val sectionedItems: List<Pair<String, List<VaultV2Item>>> = emptyList(),
 	val sectionLayouts: List<VaultV2SectionLayout> = emptyList(),
@@ -303,6 +303,24 @@ private data class VaultV2VisibleListState(
 private data class VaultV2AsyncComputedValue<T>(
 	val value: T,
 	val isComputing: Boolean,
+	val hasComputed: Boolean,
+)
+
+internal data class VaultV2ComputedSnapshotKey(
+	val isArchiveView: Boolean,
+	val showOnlyLocalData: Boolean,
+)
+
+internal data class VaultV2VisibleSnapshotKey(
+	val storageSelection: UnifiedCategoryFilterSelection,
+	val displayedContentTypes: Set<PasswordPageContentType>,
+	val configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
+	val quickFilterStates: List<Boolean>,
+	val activeAttachmentParentIds: Set<Long>,
+	val manualStackGroupByEntryId: Map<Long, String>,
+	val noStackEntryIds: Set<Long>,
+	val normalizedQuery: String,
+	val isArchiveView: Boolean,
 )
 
 private const val VAULT_V2_FAST_SCROLL_LOG_TAG = "VaultV2FastScroll"
@@ -790,10 +808,12 @@ private fun <T> rememberVaultV2AsyncComputed(
 private fun <T> rememberVaultV2AsyncComputedValue(
 	vararg keys: Any?,
 	initialValue: T,
+	initialHasComputed: Boolean = false,
 	compute: suspend () -> T,
 ): VaultV2AsyncComputedValue<T> {
 	var value by remember { mutableStateOf(initialValue) }
-	var isComputing by remember { mutableStateOf(true) }
+	var isComputing by remember { mutableStateOf(!initialHasComputed) }
+	var hasComputed by remember { mutableStateOf(initialHasComputed) }
 	val latestCompute by rememberUpdatedState(compute)
 
 	LaunchedEffect(*keys) {
@@ -801,12 +821,14 @@ private fun <T> rememberVaultV2AsyncComputedValue(
 		value = withContext(Dispatchers.Default) {
 			latestCompute()
 		}
+		hasComputed = true
 		isComputing = false
 	}
 
 	return VaultV2AsyncComputedValue(
 		value = value,
 		isComputing = isComputing,
+		hasComputed = hasComputed,
 	)
 }
 
@@ -1307,9 +1329,9 @@ fun VaultV2Pane(
 	val categories by passwordViewModel.categories.collectAsState()
 	var showCreateCategoryDialog by remember { mutableStateOf(false) }
 	val totpItems by totpViewModel.allTotpItems.collectAsState()
-	val bankCardItems by bankCardViewModel.allCards.collectAsState(initial = emptyList())
-	val documentItems by documentViewModel.allDocuments.collectAsState(initial = emptyList())
-	val noteItems by noteViewModel.allNotes.collectAsState(initial = emptyList())
+	val bankCardItems by bankCardViewModel.allCards.collectAsState()
+	val documentItems by documentViewModel.allDocuments.collectAsState()
+	val noteItems by noteViewModel.allNotes.collectAsState()
 	val passkeyItems by passkeyViewModel.allPasskeys.collectAsState()
 	val savedCategoryFilterFlow = remember(settingsViewModel) {
 		settingsViewModel.categoryFilterStateFlow(VAULT_V2_CATEGORY_FILTER_SCOPE)
@@ -1767,6 +1789,18 @@ fun VaultV2Pane(
 		)
 	}
 
+	val computedSnapshotKey = remember(state.isArchiveView, showOnlyLocalData) {
+		VaultV2ComputedSnapshotKey(
+			isArchiveView = state.isArchiveView,
+			showOnlyLocalData = showOnlyLocalData,
+		)
+	}
+	val computedSnapshotSeed = remember(computedSnapshotKey) {
+		state.computedListSnapshots.seed(
+			key = computedSnapshotKey,
+			fallback = VaultV2ComputedListState(),
+		)
+	}
 	val computedListStateAsync = rememberVaultV2AsyncComputedValue(
 		visiblePasswordEntries,
 		visibleTotpItems,
@@ -1774,7 +1808,8 @@ fun VaultV2Pane(
 		visibleDocumentItems,
 		visibleNoteItems,
 		visiblePasskeyItems,
-		initialValue = VaultV2ComputedListState(),
+		initialValue = computedSnapshotSeed.value,
+		initialHasComputed = computedSnapshotSeed.hasSnapshot,
 	) {
 		val passwordList = visiblePasswordEntries.map { entry ->
 			val displayTitle = entry.title.ifBlank { "(Untitled)" }
@@ -1929,12 +1964,26 @@ fun VaultV2Pane(
 			passwordById = visiblePasswordEntries.associateBy { it.id },
 		)
 	}
+	LaunchedEffect(
+		computedSnapshotKey,
+		computedListStateAsync.value,
+		computedListStateAsync.hasComputed,
+	) {
+		if (computedListStateAsync.hasComputed) {
+			state.computedListSnapshots.update(
+				key = computedSnapshotKey,
+				value = computedListStateAsync.value,
+			)
+		}
+	}
 	val computedListState = computedListStateAsync.value
 	val allItemsRaw = computedListState.allItemsRaw
 	val passwordById = computedListState.passwordById
 
-	var allItems by remember { mutableStateOf(allItemsRaw) }
-	var pendingAllItems by remember { mutableStateOf<List<VaultV2Item>?>(null) }
+	var allItems by remember(computedSnapshotKey) { mutableStateOf(allItemsRaw) }
+	var pendingAllItems by remember(computedSnapshotKey) {
+		mutableStateOf<List<VaultV2Item>?>(null)
+	}
 	var isAutoScrollingToTop by remember { mutableStateOf(false) }
 	var lastHandledScrollToTopRequestKey by rememberSaveable { mutableStateOf(0) }
 	var lastHandledFastScrollRequestKey by remember {
@@ -1958,7 +2007,65 @@ fun VaultV2Pane(
 	}
 
 	val normalizedQuery = remember(searchQuery) { searchQuery.trim() }
-	val visibleListState = rememberVaultV2AsyncComputed(
+	val visibleSnapshotKey = remember(
+		storageSelection,
+		displayedContentTypes,
+		configuredQuickFilterItems,
+		quickFilterFavorite,
+		quickFilter2fa,
+		quickFilterNotes,
+		quickFilterPasskey,
+		quickFilterBoundNote,
+		quickFilterAttachments,
+		activeAttachmentParentIds,
+		quickFilterUncategorized,
+		quickFilterLocalOnly,
+		quickFilterManualStackOnly,
+		quickFilterNeverStack,
+		quickFilterUnstacked,
+		manualStackGroupByEntryId,
+		noStackEntryIds,
+		normalizedQuery,
+		state.isArchiveView,
+	) {
+		VaultV2VisibleSnapshotKey(
+			storageSelection = storageSelection,
+			displayedContentTypes = displayedContentTypes,
+			configuredQuickFilterItems = configuredQuickFilterItems,
+			quickFilterStates = listOf(
+				quickFilterFavorite,
+				quickFilter2fa,
+				quickFilterNotes,
+				quickFilterPasskey,
+				quickFilterBoundNote,
+				quickFilterAttachments,
+				quickFilterUncategorized,
+				quickFilterLocalOnly,
+				quickFilterManualStackOnly,
+				quickFilterNeverStack,
+				quickFilterUnstacked,
+			),
+			activeAttachmentParentIds = activeAttachmentParentIds,
+			manualStackGroupByEntryId = manualStackGroupByEntryId,
+			noStackEntryIds = noStackEntryIds,
+			normalizedQuery = normalizedQuery,
+			isArchiveView = state.isArchiveView,
+		)
+	}
+	val visibleSnapshotSeed = remember(visibleSnapshotKey) {
+		if (normalizedQuery.isBlank()) {
+			state.visibleListSnapshots.seed(
+				key = visibleSnapshotKey,
+				fallback = VaultV2VisibleListState(),
+			)
+		} else {
+			VaultV2SnapshotSeed(
+				value = VaultV2VisibleListState(),
+				hasSnapshot = false,
+			)
+		}
+	}
+	val visibleListStateAsync = rememberVaultV2AsyncComputedValue(
 		allItems,
 		storageSelection,
 		displayedContentTypes,
@@ -1979,7 +2086,8 @@ fun VaultV2Pane(
 		noStackEntryIds,
 		normalizedQuery,
 		state.isArchiveView,
-		initialValue = VaultV2VisibleListState(),
+		initialValue = visibleSnapshotSeed.value,
+		initialHasComputed = visibleSnapshotSeed.hasSnapshot,
 	) {
 		val filteredItems = allItems.asSequence().filter { item ->
 			state.isArchiveView || item.matchesStorageFilter(storageSelection)
@@ -2036,11 +2144,25 @@ fun VaultV2Pane(
 			sectionLayouts = sectionLayouts,
 		)
 	}
+	LaunchedEffect(
+		visibleSnapshotKey,
+		visibleListStateAsync.value,
+		visibleListStateAsync.hasComputed,
+	) {
+		if (visibleListStateAsync.hasComputed && normalizedQuery.isBlank()) {
+			state.visibleListSnapshots.update(
+				key = visibleSnapshotKey,
+				value = visibleListStateAsync.value,
+			)
+		}
+	}
+	val visibleListState = visibleListStateAsync.value
 	val filteredItems = visibleListState.filteredItems
 	val sectionedItems = visibleListState.sectionedItems
 	val sectionLayouts = visibleListState.sectionLayouts
 	val isVaultListLoading = remember(
 		computedListStateAsync.isComputing,
+		visibleListStateAsync.hasComputed,
 		pendingAllItems,
 		allItems,
 		normalizedQuery,
@@ -2048,9 +2170,15 @@ fun VaultV2Pane(
 	) {
 		normalizedQuery.isBlank() &&
 			allItems.isEmpty() &&
+			!visibleListStateAsync.hasComputed &&
 			(!selectedPasswordEntriesReady || computedListStateAsync.isComputing || pendingAllItems != null)
 	}
-	var showVaultEmptyState by remember { mutableStateOf(false) }
+	var showVaultEmptyState by remember(visibleSnapshotKey) {
+		mutableStateOf(
+			visibleSnapshotSeed.hasSnapshot &&
+				visibleSnapshotSeed.value.sectionedItems.isEmpty()
+		)
+	}
 	LaunchedEffect(sectionedItems, normalizedQuery, isVaultListLoading) {
 		if (sectionedItems.isNotEmpty()) {
 			showVaultEmptyState = false
@@ -2067,7 +2195,7 @@ fun VaultV2Pane(
 		delay(VAULT_V2_EMPTY_STATE_DEBOUNCE_MS)
 		showVaultEmptyState = true
 	}
-	val showVaultLoadingIndicator = sectionedItems.isEmpty() && !showVaultEmptyState
+	val showVaultLoadingIndicator = sectionedItems.isEmpty() && isVaultListLoading
 
 	val selectedCount by remember { derivedStateOf { selectedKeys.size } }
 	val selectedItems by remember(allItems) {

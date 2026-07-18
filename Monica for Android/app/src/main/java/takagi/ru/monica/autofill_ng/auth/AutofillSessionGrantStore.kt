@@ -66,7 +66,7 @@ class AutofillSessionGrantStore(
     fun grant(context: AutofillGrantContext) {
         val now = elapsedRealtime()
         activeGrant = Grant(
-            context = context.normalized(),
+            context = context.grantScope(),
             expiresAtMillis = now + ttlMillis,
         )
     }
@@ -77,7 +77,7 @@ class AutofillSessionGrantStore(
             clear()
             return false
         }
-        return grant.context == context.normalized()
+        return grant.context == context.grantScope()
     }
 
     fun clear() {
@@ -88,6 +88,9 @@ class AutofillSessionGrantStore(
         const val DEFAULT_TTL_MILLIS = 30_000L
     }
 }
+
+private fun AutofillGrantContext.grantScope(): AutofillGrantContext =
+    normalized().copy(fieldSignatureKey = null)
 
 object AutofillSessionGrants {
     private val store = AutofillSessionGrantStore()

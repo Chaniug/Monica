@@ -106,13 +106,13 @@ data class SteamMarketListing(
     val marketHashName: String,
     val name: String,
     val iconUrl: String,
-    val buyerPrice: Int,
+    val sellerReceives: Int,
     val fee: Int,
     val createdAt: Long,
     val active: Boolean
 ) {
-    val sellerReceives: Int
-        get() = buyerPrice - fee
+    val buyerPrice: Int
+        get() = sellerReceives + fee
 }
 
 data class SteamMarketListingsPage(
