@@ -58,12 +58,14 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -103,14 +105,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.intl.Locale as ComposeLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -150,13 +155,15 @@ import takagi.ru.monica.steam.core.SteamTotp
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.data.SteamMaFileTransferAction
 import takagi.ru.monica.steam.data.SteamStorageSource
+import takagi.ru.monica.steam.market.SteamInventoryItemStack
+import takagi.ru.monica.steam.market.SteamBatchSellEntry
+import takagi.ru.monica.steam.market.SteamMarketListing
+import takagi.ru.monica.steam.market.SteamWalletInfo
 import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamConfirmation
 import takagi.ru.monica.steam.network.SteamPendingLogin
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
-import takagi.ru.monica.ui.common.pull.PullActionVisualState
-import takagi.ru.monica.ui.common.pull.PullGestureIndicator
 import takagi.ru.monica.ui.common.pull.PullToSearchStateHandle
 import takagi.ru.monica.ui.common.pull.rememberPullToSearchState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
@@ -210,6 +217,18 @@ private enum class SteamSection(
         icon = Icons.Default.VerifiedUser,
         searchHintRes = R.string.steam_search_confirmations_hint,
         supportsRefresh = true
+    ),
+    INVENTORY(
+        labelRes = R.string.steam_section_inventory,
+        icon = Icons.Default.Inventory2,
+        searchHintRes = R.string.steam_search_inventory_hint,
+        supportsRefresh = true
+    ),
+    MARKET(
+        labelRes = R.string.steam_section_market,
+        icon = Icons.Default.Storefront,
+        searchHintRes = R.string.steam_search_market_hint,
+        supportsRefresh = true
     )
 }
 
@@ -237,6 +256,17 @@ private data class SteamTransferAccountsRequest(
     val accounts: List<SteamAccount>
 )
 
+private sealed interface SteamProtectedMarketAction {
+    data class Sell(
+        val entries: List<SteamBatchSellEntry>,
+        val autoConfirm: Boolean
+    ) : SteamProtectedMarketAction
+
+    data class CancelListings(
+        val listings: List<SteamMarketListing>
+    ) : SteamProtectedMarketAction
+}
+
 private data class SteamTransferTarget(
     val source: SteamStorageSource,
     val label: String,
@@ -259,6 +289,7 @@ fun SteamScreen(
     onScanSteamQrCode: ((Long?) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val activity = context as? FragmentActivity
     val securityManager = remember(context) { SecurityManager(context.applicationContext) }
     val biometricHelper = remember(context) { BiometricHelper(context) }
@@ -286,6 +317,15 @@ fun SteamScreen(
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var showStorageSourceMenu by remember { mutableStateOf(false) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
+    var sellItemStack by remember { mutableStateOf<SteamInventoryItemStack?>(null) }
+    var selectedInventoryStackKeys by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var selectedMarketListingIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var batchSellStacks by remember { mutableStateOf<List<SteamInventoryItemStack>>(emptyList()) }
+    var pendingProtectedMarketAction by remember {
+        mutableStateOf<SteamProtectedMarketAction?>(null)
+    }
+    var protectedMarketPasswordInput by remember { mutableStateOf("") }
+    var protectedMarketPasswordError by remember { mutableStateOf(false) }
     var addAccountMethod by remember { mutableStateOf<SteamAddAccountMethod?>(null) }
     var steamIdCompletionAccountId by rememberSaveable { mutableStateOf<Long?>(null) }
     val steamIdCompletionAccount = uiState.accounts.firstOrNull { it.id == steamIdCompletionAccountId }
@@ -315,6 +355,16 @@ fun SteamScreen(
     val filteredSteamConfirmations = remember(uiState.confirmations, steamSearchQuery) {
         filterSteamConfirmations(uiState.confirmations, steamSearchQuery)
     }
+    val filteredInventoryStacks = remember(
+        uiState.inventoryMarket.inventoryStacks,
+        steamSearchQuery
+    ) {
+        filterSteamInventoryStacks(uiState.inventoryMarket.inventoryStacks, steamSearchQuery)
+    }
+    val filteredMarketListings = remember(uiState.inventoryMarket.listings, steamSearchQuery) {
+        filterSteamMarketListings(uiState.inventoryMarket.listings, steamSearchQuery)
+    }
+    val steamLanguage = steamCommunityLanguage(ComposeLocale.current.language)
     val density = LocalDensity.current
     val steamSearchTriggerDistance = remember(density) { with(density) { 40.dp.toPx() } }
     val steamSearchMaxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
@@ -355,15 +405,39 @@ fun SteamScreen(
         steamSearchQuery = ""
     }
 
+    BackHandler(enabled = isSteamSearchExpanded && detailAccount == null) {
+        clearSteamSearch()
+        focusManager.clearFocus()
+    }
+
     LaunchedEffect(steamSearchQuery) {
         selectedTokenAccountIds = emptyList()
+        selectedInventoryStackKeys = emptyList()
+        selectedMarketListingIds = emptyList()
         viewModel.clearSelectedConfirmations()
     }
 
     LaunchedEffect(selectedSection, uiState.storageSource, detailAccountId) {
         clearSteamSearch()
         selectedTokenAccountIds = emptyList()
+        selectedInventoryStackKeys = emptyList()
+        selectedMarketListingIds = emptyList()
+        batchSellStacks = emptyList()
+        pendingProtectedMarketAction = null
+        protectedMarketPasswordInput = ""
+        protectedMarketPasswordError = false
+        viewModel.clearBatchMarketQuotes()
         viewModel.clearSelectedConfirmations()
+    }
+
+    LaunchedEffect(selectedAccount?.id) {
+        selectedInventoryStackKeys = emptyList()
+        selectedMarketListingIds = emptyList()
+        batchSellStacks = emptyList()
+        pendingProtectedMarketAction = null
+        protectedMarketPasswordInput = ""
+        protectedMarketPasswordError = false
+        viewModel.clearBatchMarketQuotes()
     }
 
     LaunchedEffect(steamIdCompletionAccount?.id, steamIdCompletionAccount?.hasRealSteamId) {
@@ -447,6 +521,16 @@ fun SteamScreen(
         }
     }
 
+    LaunchedEffect(selectedAccount?.id, selectedSection, steamLanguage) {
+        if (selectedAccount != null) {
+            when (selectedSection) {
+                SteamSection.INVENTORY -> viewModel.refreshInventory(steamLanguage)
+                SteamSection.MARKET -> viewModel.refreshMarketListings(steamLanguage)
+                SteamSection.CODE, SteamSection.CONFIRMATIONS -> Unit
+            }
+        }
+    }
+
     LaunchedEffect(
         selectedAccount?.id,
         selectedAccount?.canApproveLogins,
@@ -512,6 +596,65 @@ fun SteamScreen(
                 steamAccountRebindAccountId = null
             }
             viewModel.clearMessage()
+        }
+    }
+
+    LaunchedEffect(
+        uiState.inventoryMarket.lastActionResult,
+        sellItemStack,
+        batchSellStacks
+    ) {
+        val result = uiState.inventoryMarket.lastActionResult ?: return@LaunchedEffect
+        if (result.action == SteamMarketActionType.CANCEL_LISTING) {
+            if (result.affectedCount > 0) {
+                selectedMarketListingIds = emptyList()
+            }
+            val cancellationMessage = if (
+                result.affectedCount + result.failedCount > 1 || result.failedCount > 0
+            ) {
+                context.getString(
+                    R.string.steam_market_cancel_batch_result,
+                    result.affectedCount,
+                    result.failedCount
+                )
+            } else {
+                context.getString(
+                    if (result.success) {
+                        R.string.steam_market_cancel_success
+                    } else {
+                        R.string.steam_market_cancel_failed
+                    }
+                )
+            }
+            Toast.makeText(
+                context,
+                cancellationMessage,
+                Toast.LENGTH_SHORT
+            ).show()
+            viewModel.consumeMarketActionResult()
+        } else if (
+            result.action == SteamMarketActionType.SELL &&
+            sellItemStack == null &&
+            batchSellStacks.isEmpty()
+        ) {
+            val message = when {
+                !result.success -> result.message
+                    ?: context.getString(R.string.steam_market_list_failed)
+                result.autoConfirmed -> context.getString(
+                    R.string.steam_market_sell_auto_confirmed,
+                    result.affectedCount
+                )
+                result.requiresConfirmation -> context.getString(
+                    R.string.steam_market_sell_needs_confirmation,
+                    result.affectedCount
+                )
+                else -> context.getString(
+                    R.string.steam_market_sell_success,
+                    result.affectedCount
+                )
+            }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.consumeMarketActionResult()
         }
     }
 
@@ -922,6 +1065,158 @@ fun SteamScreen(
         )
     }
 
+    sellItemStack?.let { stack ->
+        SteamSellItemSheet(
+            stack = stack,
+            wallet = uiState.inventoryMarket.overview?.wallet ?: SteamWalletInfo.Fallback,
+            marketState = uiState.inventoryMarket,
+            onDismissRequest = {
+                sellItemStack = null
+                viewModel.clearMarketQuote()
+            },
+            onLoadQuote = { viewModel.loadMarketQuote(stack.item) },
+            onSell = { priceReceive, quantity, autoConfirm ->
+                viewModel.sellInventoryItems(
+                    stack = stack,
+                    priceReceive = priceReceive,
+                    quantity = quantity,
+                    autoConfirm = autoConfirm
+                )
+            },
+            onConsumeActionResult = viewModel::consumeMarketActionResult
+        )
+    }
+
+    fun dismissProtectedMarketAction() {
+        pendingProtectedMarketAction = null
+        protectedMarketPasswordInput = ""
+        protectedMarketPasswordError = false
+    }
+
+    fun requestProtectedMarketAction(action: SteamProtectedMarketAction) {
+        if (uiState.inventoryMarket.actionLoading) return
+        pendingProtectedMarketAction = action
+        protectedMarketPasswordInput = ""
+        protectedMarketPasswordError = false
+    }
+
+    fun executeProtectedMarketAction(action: SteamProtectedMarketAction) {
+        if (pendingProtectedMarketAction != action) return
+        dismissProtectedMarketAction()
+        when (action) {
+            is SteamProtectedMarketAction.Sell -> {
+                viewModel.sellInventoryBatch(action.entries, action.autoConfirm)
+            }
+            is SteamProtectedMarketAction.CancelListings -> {
+                viewModel.cancelMarketListings(action.listings)
+            }
+        }
+    }
+
+    if (batchSellStacks.isNotEmpty()) {
+        SteamBatchSellSheet(
+            stacks = batchSellStacks,
+            wallet = uiState.inventoryMarket.overview?.wallet ?: SteamWalletInfo.Fallback,
+            marketState = uiState.inventoryMarket,
+            onDismissRequest = {
+                batchSellStacks = emptyList()
+                viewModel.clearBatchMarketQuotes()
+            },
+            onLoadQuotes = { viewModel.loadBatchMarketQuotes(batchSellStacks) },
+            onSell = { entries: List<SteamBatchSellEntry>, autoConfirm: Boolean ->
+                requestProtectedMarketAction(
+                    SteamProtectedMarketAction.Sell(
+                        entries = entries.toList(),
+                        autoConfirm = autoConfirm
+                    )
+                )
+            },
+            onSellSucceeded = {
+                selectedInventoryStackKeys = emptyList()
+                batchSellStacks = emptyList()
+                viewModel.clearBatchMarketQuotes()
+            },
+            onConsumeActionResult = viewModel::consumeMarketActionResult
+        )
+    }
+
+    pendingProtectedMarketAction?.let { action ->
+        val isCancellation = action is SteamProtectedMarketAction.CancelListings
+        val affectedCount = when (action) {
+            is SteamProtectedMarketAction.Sell -> action.entries.sumOf { it.quantity }
+            is SteamProtectedMarketAction.CancelListings -> action.listings.size
+        }
+        val message = stringResource(
+            if (isCancellation) {
+                R.string.steam_market_cancel_verify_message
+            } else {
+                R.string.steam_market_sell_verify_message
+            },
+            affectedCount
+        )
+        val confirmText = stringResource(
+            if (isCancellation) {
+                R.string.steam_market_verify_and_cancel
+            } else {
+                R.string.steam_market_verify_and_list
+            }
+        )
+        val masterPasswordAvailable = securityManager.isMasterPasswordSet()
+        val biometricAction = if (
+            activity != null &&
+            appSettings.biometricEnabled &&
+            biometricHelper.isBiometricAvailable()
+        ) {
+            {
+                biometricHelper.authenticate(
+                    activity = activity,
+                    title = context.getString(R.string.verify_identity),
+                    subtitle = confirmText,
+                    description = message,
+                    onSuccess = { executeProtectedMarketAction(action) },
+                    onError = { error ->
+                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                    },
+                    onFailed = {}
+                )
+            }
+        } else {
+            null
+        }
+
+        M3IdentityVerifyDialog(
+            title = stringResource(R.string.verify_identity),
+            message = message,
+            passwordValue = protectedMarketPasswordInput,
+            onPasswordChange = {
+                protectedMarketPasswordInput = it
+                protectedMarketPasswordError = false
+            },
+            onDismiss = { dismissProtectedMarketAction() },
+            onConfirm = {
+                if (
+                    masterPasswordAvailable &&
+                    securityManager.verifyMasterPassword(protectedMarketPasswordInput)
+                ) {
+                    executeProtectedMarketAction(action)
+                } else {
+                    protectedMarketPasswordError = true
+                }
+            },
+            confirmText = confirmText,
+            confirmEnabled = masterPasswordAvailable && protectedMarketPasswordInput.isNotBlank(),
+            destructiveConfirm = isCancellation,
+            isPasswordError = protectedMarketPasswordError,
+            passwordErrorText = stringResource(R.string.current_password_incorrect),
+            onBiometricClick = biometricAction,
+            biometricHintText = when {
+                biometricAction != null -> null
+                !masterPasswordAvailable -> stringResource(R.string.steam_market_auth_unavailable)
+                else -> stringResource(R.string.biometric_not_available)
+            }
+        )
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -996,15 +1291,15 @@ fun SteamScreen(
                                     viewModel.clearSelectedConfirmations()
                                     if (selectedSection != section) {
                                         selectedSection = section
-                                        if (section == SteamSection.CONFIRMATIONS) {
-                                            viewModel.refreshConfirmations()
-                                        }
                                     }
                                 },
                                 onRefreshCurrent = {
                                     showTopActionsMenu = false
-                                    if (selectedSection == SteamSection.CONFIRMATIONS) {
-                                        viewModel.refreshConfirmations()
+                                    when (selectedSection) {
+                                        SteamSection.CODE -> Unit
+                                        SteamSection.CONFIRMATIONS -> viewModel.refreshConfirmations()
+                                        SteamSection.INVENTORY -> viewModel.refreshInventory(steamLanguage)
+                                        SteamSection.MARKET -> viewModel.refreshMarketListings(steamLanguage)
                                     }
                                 },
                                 onAddAccount = {
@@ -1074,6 +1369,7 @@ fun SteamScreen(
                     if (animatedDetailAccount != null) {
                         SteamAccountDetailContent(
                             account = animatedDetailAccount,
+                            appSettings = appSettings,
                             pendingLogins = uiState.pendingLogins,
                             authorizedDevices = uiState.authorizedDevices,
                             pendingScannedQr = scannedQrPayload,
@@ -1178,6 +1474,78 @@ fun SteamScreen(
                                 onRespond = viewModel::respondConfirmation,
                                 onRespondSelected = viewModel::respondSelectedConfirmations
                             )
+                            SteamSection.INVENTORY -> SteamInventoryContent(
+                                account = selectedAccount,
+                                accounts = uiState.accounts,
+                                state = uiState.inventoryMarket,
+                                visibleStacks = filteredInventoryStacks,
+                                hasSearchQuery = steamSearchQuery.isNotBlank(),
+                                pullToSearch = pullToSearch,
+                                selectedStackKeys = selectedInventoryStackKeys.toSet(),
+                                onSelectAccount = { accountId ->
+                                    clearSteamSearch()
+                                    selectedInventoryStackKeys = emptyList()
+                                    viewModel.selectAccount(accountId)
+                                },
+                                onSelectGame = { game ->
+                                    clearSteamSearch()
+                                    selectedInventoryStackKeys = emptyList()
+                                    viewModel.selectInventoryGame(game, steamLanguage)
+                                },
+                                onLoadMore = viewModel::loadMoreInventory,
+                                onToggleSelection = { stack ->
+                                    val key = stack.item.stackKey
+                                    selectedInventoryStackKeys = if (key in selectedInventoryStackKeys) {
+                                        selectedInventoryStackKeys - key
+                                    } else {
+                                        selectedInventoryStackKeys + key
+                                    }
+                                },
+                                onClearSelection = { selectedInventoryStackKeys = emptyList() },
+                                onOpenBatchSell = {
+                                    batchSellStacks = uiState.inventoryMarket.inventoryStacks
+                                        .filter { it.item.stackKey in selectedInventoryStackKeys }
+                                        .filter { it.item.marketable }
+                                },
+                                onOpenSell = { stack ->
+                                    clearSteamSearch()
+                                    selectedInventoryStackKeys = emptyList()
+                                    sellItemStack = stack
+                                }
+                            )
+                            SteamSection.MARKET -> SteamMarketListingsContent(
+                                account = selectedAccount,
+                                accounts = uiState.accounts,
+                                state = uiState.inventoryMarket,
+                                visibleListings = filteredMarketListings,
+                                hasSearchQuery = steamSearchQuery.isNotBlank(),
+                                pullToSearch = pullToSearch,
+                                selectedListingIds = selectedMarketListingIds.toSet(),
+                                onSelectAccount = { accountId ->
+                                    clearSteamSearch()
+                                    selectedMarketListingIds = emptyList()
+                                    viewModel.selectAccount(accountId)
+                                },
+                                onLoadMore = viewModel::loadMoreMarketListings,
+                                onToggleSelection = { listing ->
+                                    val id = listing.listingId
+                                    selectedMarketListingIds = if (id in selectedMarketListingIds) {
+                                        selectedMarketListingIds - id
+                                    } else {
+                                        selectedMarketListingIds + id
+                                    }
+                                },
+                                onClearSelection = { selectedMarketListingIds = emptyList() },
+                                onRequestCancelListings = { listings ->
+                                    if (listings.isNotEmpty()) {
+                                        requestProtectedMarketAction(
+                                            SteamProtectedMarketAction.CancelListings(
+                                                listings = listings.toList()
+                                            )
+                                        )
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -1192,21 +1560,6 @@ fun SteamScreen(
                 )
             }
 
-            if (detailAccount == null && pullToSearch.currentOffset > 0.5f) {
-                PullGestureIndicator(
-                    state = if (pullToSearch.currentOffset >= steamSearchTriggerDistance) {
-                        PullActionVisualState.SEARCH_READY
-                    } else {
-                        PullActionVisualState.IDLE
-                    },
-                    searchProgress = pullToSearch.currentOffset / steamSearchTriggerDistance,
-                    syncProgress = 0f,
-                    text = stringResource(R.string.pull_release_to_search),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp)
-                )
-            }
         }
     }
 
@@ -1714,11 +2067,14 @@ private fun SteamCodeContent(
     val sharedProgressTimeMillis = rememberTotpTickerMillis(appSettings.validatorSmoothProgress)
     val sharedTickSeconds = sharedProgressTimeMillis / 1000L
     val lazyListState = rememberSaveableLazyListState()
-    var localAccounts by remember(accounts) { mutableStateOf(accounts) }
+    var localAccounts by remember { mutableStateOf(accounts) }
     val reorderEnabled = selectionMode && !isSearchActive
 
     LaunchedEffect(accounts) {
-        localAccounts = accounts
+        localAccounts = reconcileSteamAccountsAfterSourceUpdate(
+            current = localAccounts,
+            incoming = accounts
+        )
     }
 
     val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
@@ -1753,7 +2109,6 @@ private fun SteamCodeContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .offset { IntOffset(0, pullToSearch.currentOffset.toInt()) }
         ) {
             if (appSettings.validatorUnifiedProgressBar == UnifiedProgressBarMode.ENABLED &&
                 accounts.isNotEmpty()
@@ -1767,37 +2122,43 @@ private fun SteamCodeContent(
                 )
             }
 
-            if (localAccounts.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onVerticalDrag = { _, dragAmount ->
-                                    pullToSearch.onVerticalDrag(dragAmount)
-                                },
-                                onDragEnd = pullToSearch.onDragEnd,
-                                onDragCancel = pullToSearch.onDragCancel
-                            )
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    EmptyState(stringResource(R.string.no_results))
-                }
-            } else {
-                LazyColumn(
-                    state = lazyListState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .nestedScroll(pullToSearch.nestedScrollConnection),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        top = 16.dp,
-                        end = 16.dp,
-                        bottom = if (selectionMode) 112.dp else 80.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, pullToSearch.currentOffset.toInt()) }
+            ) {
+                if (localAccounts.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures(
+                                    onVerticalDrag = { _, dragAmount ->
+                                        pullToSearch.onVerticalDrag(dragAmount)
+                                    },
+                                    onDragEnd = pullToSearch.onDragEnd,
+                                    onDragCancel = pullToSearch.onDragCancel
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmptyState(stringResource(R.string.no_results))
+                    }
+                } else {
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(pullToSearch.nestedScrollConnection),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = 16.dp,
+                            end = 16.dp,
+                            bottom = if (selectionMode) 112.dp else 80.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                     items(localAccounts, key = { it.id }) { account ->
                         ReorderableItem(
                             reorderableLazyListState,
@@ -1818,6 +2179,12 @@ private fun SteamCodeContent(
                         }
                         val totpItem = remember(account) { account.toSteamTotpUiItem() }
                         val totpData = remember(account) { account.toSteamTotpUiData() }
+                        val miniProfileBackgroundRequested =
+                            appSettings.steamMiniProfileBackgroundEnabled && account.hasRealSteamId
+                        var miniProfileBackgroundAvailable by remember(
+                            account.steamId,
+                            miniProfileBackgroundRequested
+                        ) { mutableStateOf(false) }
                         SwipeActions(
                             onSwipeLeft = {
                                 if (account.id !in selectedIds) {
@@ -1862,11 +2229,28 @@ private fun SteamCodeContent(
                                     onCopyCode = ::copyCode,
                                     sharedTickSeconds = sharedTickSeconds,
                                     sharedProgressTimeMillis = sharedProgressTimeMillis,
-                                    appSettings = appSettings
+                                    appSettings = appSettings,
+                                    immersiveBackgroundVisible = miniProfileBackgroundAvailable,
+                                    backgroundContent = if (miniProfileBackgroundRequested) {
+                                        {
+                                            SteamMiniProfileBackgroundLayer(
+                                                steamId = account.steamId,
+                                                enabled = true,
+                                                allowMotion = !appSettings.reduceAnimations,
+                                                onAvailabilityChanged = {
+                                                    miniProfileBackgroundAvailable = it
+                                                },
+                                                modifier = Modifier.matchParentSize()
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    }
                                 )
                             }
                         }
                         }
+                    }
                     }
                 }
             }
@@ -1887,9 +2271,25 @@ private fun SteamCodeContent(
     }
 }
 
+internal fun reconcileSteamAccountsAfterSourceUpdate(
+    current: List<SteamAccount>,
+    incoming: List<SteamAccount>
+): List<SteamAccount> {
+    if (current.size != incoming.size) return incoming
+    if (current.indices.any { index -> current[index].id != incoming[index].id }) return incoming
+
+    val onlyPersistedSortOrderChanged = current.indices.all { index ->
+        val currentAccount = current[index]
+        val incomingAccount = incoming[index]
+        currentAccount.copy(sortOrder = incomingAccount.sortOrder) == incomingAccount
+    }
+    return if (onlyPersistedSortOrderChanged) current else incoming
+}
+
 @Composable
 private fun SteamAccountDetailContent(
     account: SteamAccount,
+    appSettings: AppSettings,
     pendingLogins: List<SteamPendingLogin>,
     authorizedDevices: List<SteamAuthorizedDevice>,
     pendingScannedQr: String?,
@@ -1906,6 +2306,12 @@ private fun SteamAccountDetailContent(
     val clipboard = LocalClipboardManager.current
     val totpItem = remember(account) { account.toSteamTotpUiItem() }
     val totpData = remember(account) { account.toSteamTotpUiData() }
+    val miniProfileBackgroundRequested =
+        appSettings.steamMiniProfileBackgroundEnabled && account.hasRealSteamId
+    var miniProfileBackgroundAvailable by remember(
+        account.steamId,
+        miniProfileBackgroundRequested
+    ) { mutableStateOf(false) }
     var scannedQrAction by remember(account.id) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(pendingScannedQr, account.id) {
@@ -1939,6 +2345,23 @@ private fun SteamAccountDetailContent(
                         account = account,
                         size = 40.dp
                     )
+                },
+                appSettings = appSettings,
+                immersiveBackgroundVisible = miniProfileBackgroundAvailable,
+                backgroundContent = if (miniProfileBackgroundRequested) {
+                    {
+                        SteamMiniProfileBackgroundLayer(
+                            steamId = account.steamId,
+                            enabled = true,
+                            allowMotion = !appSettings.reduceAnimations,
+                            onAvailabilityChanged = {
+                                miniProfileBackgroundAvailable = it
+                            },
+                            modifier = Modifier.matchParentSize()
+                        )
+                    }
+                } else {
+                    null
                 },
                 onCopyCode = { code ->
                     copySteamText(
@@ -2563,7 +2986,7 @@ private fun isSteamAvatarCacheExpired(cacheFile: File): Boolean {
     return ageMs > STEAM_AVATAR_CACHE_TTL_MS
 }
 
-private suspend fun loadSteamConfirmationImage(context: Context, imageUrl: String): ImageBitmap? =
+internal suspend fun loadSteamConfirmationImage(context: Context, imageUrl: String): ImageBitmap? =
     withContext(Dispatchers.IO) {
         val normalizedUrl = normalizeSteamImageUrl(imageUrl)
         if (!normalizedUrl.startsWith("https://") && !normalizedUrl.startsWith("http://")) {
@@ -2903,16 +3326,18 @@ private fun SteamConfirmationsContent(
 }
 
 @Composable
-private fun SteamConfirmationAccountCard(
+internal fun SteamConfirmationAccountCard(
     account: SteamAccount?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val shape = RoundedCornerShape(12.dp)
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .clip(shape)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Row(
@@ -3274,7 +3699,7 @@ private fun steamPlatformLabel(platformType: Int): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SteamConfirmationAccountPickerSheet(
+internal fun SteamConfirmationAccountPickerSheet(
     accounts: List<SteamAccount>,
     selectedAccountId: Long?,
     onSelectAccount: (SteamAccount) -> Unit,
@@ -4935,7 +5360,7 @@ private fun badgeCountText(count: Int): String {
 }
 
 @Composable
-private fun EmptyState(text: String) {
+internal fun EmptyState(text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()

@@ -4,8 +4,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import takagi.ru.monica.steam.data.SteamAccount
 import takagi.ru.monica.steam.network.SteamConfirmation
+import takagi.ru.monica.steam.market.SteamInventoryItem
+import takagi.ru.monica.steam.market.SteamInventoryItemStack
+import takagi.ru.monica.steam.market.SteamMarketListing
 import takagi.ru.monica.steam.ui.filterSteamAccounts
 import takagi.ru.monica.steam.ui.filterSteamConfirmations
+import takagi.ru.monica.steam.ui.filterSteamInventoryStacks
+import takagi.ru.monica.steam.ui.filterSteamMarketListings
+import takagi.ru.monica.steam.ui.steamCommunityLanguage
 
 class SteamSearchFiltersTest {
 
@@ -61,5 +67,51 @@ class SteamSearchFiltersTest {
     @Test
     fun blankQueryReturnsOriginalLists() {
         assertEquals(listOf(account), filterSteamAccounts(listOf(account), "  "))
+    }
+
+    @Test
+    fun inventoryAndListingsSearchStayInsideCurrentPage() {
+        val item = SteamInventoryItem(
+            appId = 730,
+            contextId = "2",
+            assetId = "asset",
+            classId = "class",
+            instanceId = "0",
+            amount = 1,
+            marketHashName = "AK-47 | Redline",
+            name = "AK-47",
+            type = "Rifle",
+            iconUrl = "",
+            marketable = true,
+            tradable = true,
+            commodity = false,
+            publisherFeePercent = null
+        )
+        val stack = SteamInventoryItemStack(item, listOf(item.assetId))
+        val listing = SteamMarketListing(
+            listingId = "listing-555",
+            appId = 730,
+            contextId = "2",
+            assetId = "asset",
+            marketHashName = item.marketHashName,
+            name = item.name,
+            iconUrl = "",
+            buyerPrice = 117,
+            fee = 17,
+            createdAt = 0L,
+            active = true
+        )
+
+        assertEquals(listOf(stack), filterSteamInventoryStacks(listOf(stack), " rifle "))
+        assertEquals(listOf(listing), filterSteamMarketListings(listOf(listing), "555"))
+        assertEquals(emptyList<SteamInventoryItemStack>(), filterSteamInventoryStacks(listOf(stack), "card"))
+    }
+
+    @Test
+    fun steamLanguageFollowsSupportedAppLocales() {
+        assertEquals("schinese", steamCommunityLanguage("zh-CN"))
+        assertEquals("tchinese", steamCommunityLanguage("zh-Hant"))
+        assertEquals("japanese", steamCommunityLanguage("ja"))
+        assertEquals("english", steamCommunityLanguage("de"))
     }
 }

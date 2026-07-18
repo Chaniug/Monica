@@ -3,6 +3,7 @@ package takagi.ru.monica.ui.vaultv2
 import android.icu.text.Transliterator
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -1226,8 +1227,7 @@ fun VaultV2Pane(
 	// 覆盖外部传入的导航回调，改为在 VaultV2 内部处理
 	val handleOpenHistory: () -> Unit = { vaultHistoryPageMode = 1 }
 	val handleOpenTrashPage: () -> Unit = { vaultHistoryPageMode = 2 }
-	// 归档页面沿用外部回调（密码页面有完整的归档视图）
-	val handleOpenArchivePage: () -> Unit = onOpenArchivePage
+	val handleOpenArchivePage: () -> Unit = { state.openArchiveView() }
 
 	var searchQuery by rememberSaveable { mutableStateOf("") }
 	var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1249,6 +1249,23 @@ fun VaultV2Pane(
 	var selectedAggregateTypes by remember { mutableStateOf<Set<PasswordPageContentType>>(emptySet()) }
 	val selectedKeys = remember { mutableStateListOf<String>() }
 	var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+	LaunchedEffect(state.isArchiveView) {
+		selectedKeys.clear()
+		isStorageFilterSheetVisible = false
+		isTopActionsMenuExpanded = false
+		isSearchExpanded = false
+		searchQuery = ""
+	}
+	BackHandler(enabled = state.isArchiveView) {
+		when {
+			selectedKeys.isNotEmpty() -> selectedKeys.clear()
+			isSearchExpanded -> {
+				isSearchExpanded = false
+				searchQuery = ""
+			}
+			else -> state.closeArchiveView()
+		}
+	}
 	val listState = rememberLazyListState(
 		initialFirstVisibleItemIndex = state.scrollIndex,
 		initialFirstVisibleItemScrollOffset = state.scrollOffset
@@ -1284,6 +1301,9 @@ fun VaultV2Pane(
 	}
 
 	val passwordEntries by passwordViewModel.allPasswordsForUi.collectAsState()
+	val passwordsReady by passwordViewModel.allPasswordsForUiReady.collectAsState()
+	val archivedPasswordEntries by passwordViewModel.archivedPasswordsForUi.collectAsState()
+	val archivedPasswordsReady by passwordViewModel.archivedPasswordsForUiReady.collectAsState()
 	val categories by passwordViewModel.categories.collectAsState()
 	var showCreateCategoryDialog by remember { mutableStateOf(false) }
 	val totpItems by totpViewModel.allTotpItems.collectAsState()
@@ -1519,23 +1539,29 @@ fun VaultV2Pane(
 		mdbxFolders = selectedMdbxFolders,
 	)
 
-	val visiblePasswordEntries = remember(passwordEntries, showOnlyLocalData) {
-		if (showOnlyLocalData) passwordEntries.filter { it.isVaultV2LocalOnly() } else passwordEntries
+	val sourcePasswordEntries = if (state.isArchiveView) archivedPasswordEntries else passwordEntries
+	val selectedPasswordEntriesReady = if (state.isArchiveView) archivedPasswordsReady else passwordsReady
+	val visiblePasswordEntries = remember(sourcePasswordEntries, showOnlyLocalData) {
+		if (showOnlyLocalData) {
+			sourcePasswordEntries.filter { it.isVaultV2LocalOnly() }
+		} else {
+			sourcePasswordEntries
+		}
 	}
-	val visibleTotpItems = remember(totpItems, showOnlyLocalData) {
-		if (showOnlyLocalData) totpItems.filter { it.isVaultV2LocalOnly() } else totpItems
+	val visibleTotpItems = remember(totpItems, showOnlyLocalData, state.isArchiveView) {
+		if (state.isArchiveView) emptyList() else if (showOnlyLocalData) totpItems.filter { it.isVaultV2LocalOnly() } else totpItems
 	}
-	val visibleBankCardItems = remember(bankCardItems, showOnlyLocalData) {
-		if (showOnlyLocalData) bankCardItems.filter { it.isVaultV2LocalOnly() } else bankCardItems
+	val visibleBankCardItems = remember(bankCardItems, showOnlyLocalData, state.isArchiveView) {
+		if (state.isArchiveView) emptyList() else if (showOnlyLocalData) bankCardItems.filter { it.isVaultV2LocalOnly() } else bankCardItems
 	}
-	val visibleDocumentItems = remember(documentItems, showOnlyLocalData) {
-		if (showOnlyLocalData) documentItems.filter { it.isVaultV2LocalOnly() } else documentItems
+	val visibleDocumentItems = remember(documentItems, showOnlyLocalData, state.isArchiveView) {
+		if (state.isArchiveView) emptyList() else if (showOnlyLocalData) documentItems.filter { it.isVaultV2LocalOnly() } else documentItems
 	}
-	val visibleNoteItems = remember(noteItems, showOnlyLocalData) {
-		if (showOnlyLocalData) noteItems.filter { it.isVaultV2LocalOnly() } else noteItems
+	val visibleNoteItems = remember(noteItems, showOnlyLocalData, state.isArchiveView) {
+		if (state.isArchiveView) emptyList() else if (showOnlyLocalData) noteItems.filter { it.isVaultV2LocalOnly() } else noteItems
 	}
-	val visiblePasskeyItems = remember(passkeyItems, showOnlyLocalData) {
-		if (showOnlyLocalData) passkeyItems.filter { it.isVaultV2LocalOnly() } else passkeyItems
+	val visiblePasskeyItems = remember(passkeyItems, showOnlyLocalData, state.isArchiveView) {
+		if (state.isArchiveView) emptyList() else if (showOnlyLocalData) passkeyItems.filter { it.isVaultV2LocalOnly() } else passkeyItems
 	}
 	val categoryMenuFilter = remember(storageSelection) {
 		storageSelection.toCategoryFilterOrNull() ?: CategoryFilter.All
@@ -1574,11 +1600,15 @@ fun VaultV2Pane(
 		if (PasswordListQuickFilterItem.NEVER_STACK !in configuredQuickFilterItems) quickFilterNeverStack = false
 		if (PasswordListQuickFilterItem.UNSTACKED !in configuredQuickFilterItems) quickFilterUnstacked = false
 	}
-	val displayedContentTypes = remember(quickFilterVisibleTypes, selectedAggregateTypes) {
-		resolvePasswordPageDisplayedTypes(
-			visibleTypes = quickFilterVisibleTypes,
-			selectedTypes = selectedAggregateTypes
-		)
+	val displayedContentTypes = remember(quickFilterVisibleTypes, selectedAggregateTypes, state.isArchiveView) {
+		if (state.isArchiveView) {
+			setOf(PasswordPageContentType.PASSWORD)
+		} else {
+			resolvePasswordPageDisplayedTypes(
+				visibleTypes = quickFilterVisibleTypes,
+				selectedTypes = selectedAggregateTypes
+			)
+		}
 	}
 	val hasVisibleQuickFilters = remember(configuredQuickFilterItems, quickFilterVisibleTypes) {
 		configuredQuickFilterItems.any { item ->
@@ -1948,13 +1978,15 @@ fun VaultV2Pane(
 		manualStackGroupByEntryId,
 		noStackEntryIds,
 		normalizedQuery,
+		state.isArchiveView,
 		initialValue = VaultV2VisibleListState(),
 	) {
 		val filteredItems = allItems.asSequence().filter { item ->
-			item.matchesStorageFilter(storageSelection)
+			state.isArchiveView || item.matchesStorageFilter(storageSelection)
 		}.filter { item ->
 			if (!item.matchesDisplayedTypes(displayedContentTypes)) return@filter false
 			if (
+				!state.isArchiveView &&
 				!item.matchesPasswordQuickFilters(
 					configuredQuickFilterItems = configuredQuickFilterItems,
 					storageSelection = storageSelection,
@@ -2012,10 +2044,11 @@ fun VaultV2Pane(
 		pendingAllItems,
 		allItems,
 		normalizedQuery,
+		selectedPasswordEntriesReady,
 	) {
 		normalizedQuery.isBlank() &&
 			allItems.isEmpty() &&
-			(computedListStateAsync.isComputing || pendingAllItems != null)
+			(!selectedPasswordEntriesReady || computedListStateAsync.isComputing || pendingAllItems != null)
 	}
 	var showVaultEmptyState by remember { mutableStateOf(false) }
 	LaunchedEffect(sectionedItems, normalizedQuery, isVaultListLoading) {
@@ -2168,6 +2201,16 @@ fun VaultV2Pane(
 				state.fastScrollIndicatorLabel = sectionTitle
 			}
 	}
+	val topBarTitle = if (state.isArchiveView) {
+		stringResource(R.string.archive_page_title)
+	} else {
+		storageFilterLabel
+	}
+	val emptyStateText = if (state.isArchiveView && normalizedQuery.isBlank()) {
+		stringResource(R.string.archive_empty_hint)
+	} else {
+		stringResource(R.string.no_results)
+	}
 
 	Box(
 		modifier = modifier
@@ -2175,14 +2218,24 @@ fun VaultV2Pane(
 	) {
 		Column(modifier = Modifier.fillMaxSize()) {
 			ExpressiveTopBar(
-				title = storageFilterLabel,
+				title = topBarTitle,
 				searchQuery = searchQuery,
 				onSearchQueryChange = { searchQuery = it },
 				isSearchExpanded = isSearchExpanded,
 				onSearchExpandedChange = { isSearchExpanded = it },
 				searchHint = stringResource(R.string.topbar_search_hint),
 				actions = {
-					Box {
+					if (state.isArchiveView) {
+						IconButton(onClick = state::closeArchiveView) {
+							Icon(
+								imageVector = Icons.Default.Lock,
+								contentDescription = stringResource(R.string.nav_passwords_short),
+								tint = MaterialTheme.colorScheme.onSurfaceVariant,
+							)
+						}
+					}
+					if (!state.isArchiveView) {
+						Box {
 						IconButton(onClick = { isStorageFilterSheetVisible = true }) {
 							Icon(
 								imageVector = Icons.Default.Folder,
@@ -2317,6 +2370,7 @@ fun VaultV2Pane(
 								)
 							}
 						}
+						}
 					}
 					IconButton(onClick = { isSearchExpanded = true }) {
 						Icon(
@@ -2443,6 +2497,7 @@ fun VaultV2Pane(
 								onOpenTrash = handleOpenTrashPage,
 								onOpenArchive = handleOpenArchivePage,
 								showDisplayOptionsEntry = false,
+								showArchiveEntry = !state.isArchiveView,
 								showSettingsEntry = showStandaloneSettingsEntry,
 								onOpenSettings = onOpenStandaloneSettings,
 							)
@@ -2451,13 +2506,15 @@ fun VaultV2Pane(
 				}
 			)
 
-			VaultV2QuickStatusBar(
-				pathLabel = storageFilterLabel,
-				currentSectionLabel = currentSectionIndicatorLabel,
-				breadcrumbs = pathBreadcrumbs,
-				mdbxSyncState = mdbxQuickStatusSyncState,
-				onOpenStorageFilter = { isStorageFilterSheetVisible = true },
-			)
+			if (!state.isArchiveView) {
+				VaultV2QuickStatusBar(
+					pathLabel = storageFilterLabel,
+					currentSectionLabel = currentSectionIndicatorLabel,
+					breadcrumbs = pathBreadcrumbs,
+					mdbxSyncState = mdbxQuickStatusSyncState,
+					onOpenStorageFilter = { isStorageFilterSheetVisible = true },
+				)
+			}
 
 			val contentPullOffset = pullAction.currentOffset.toInt()
 			val listInteractionModifier = Modifier
@@ -2480,8 +2537,8 @@ fun VaultV2Pane(
 				)
 
 			VaultV2List(
-				hasVisibleQuickFilters = hasVisibleQuickFilters,
-				hasVisibleCategoryQuickFilters = categoryMenuQuickFolderShortcuts.isNotEmpty(),
+				hasVisibleQuickFilters = !state.isArchiveView && hasVisibleQuickFilters,
+				hasVisibleCategoryQuickFilters = !state.isArchiveView && categoryMenuQuickFolderShortcuts.isNotEmpty(),
 				configuredQuickFilterItems = configuredQuickFilterItems,
 				quickFilterChipState = quickFilterBindings.state,
 				quickFilterChipCallbacks = quickFilterBindings.callbacks,
@@ -2496,6 +2553,7 @@ fun VaultV2Pane(
 				sections = sectionedItems,
 				showLoadingIndicator = showVaultLoadingIndicator,
 				showEmptyState = showVaultEmptyState,
+				emptyStateText = emptyStateText,
 				listState = listState,
 				passwordById = passwordById,
 				appSettings = appSettings,
@@ -3159,6 +3217,7 @@ private fun VaultV2List(
 	sections: List<Pair<String, List<VaultV2Item>>>,
 	showLoadingIndicator: Boolean,
 	showEmptyState: Boolean,
+	emptyStateText: String,
 	listState: LazyListState,
 	passwordById: Map<Long, PasswordEntry>,
 	appSettings: AppSettings,
@@ -3228,7 +3287,7 @@ private fun VaultV2List(
 					contentAlignment = Alignment.Center,
 				) {
 					Text(
-						text = stringResource(R.string.no_results),
+						text = emptyStateText,
 						style = MaterialTheme.typography.bodyMedium,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)

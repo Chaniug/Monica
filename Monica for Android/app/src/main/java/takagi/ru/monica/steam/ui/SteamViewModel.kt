@@ -35,6 +35,23 @@ import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.steam.importer.SteamMaFileBackupCodec
 import takagi.ru.monica.steam.importer.SteamMaFileParser
 import takagi.ru.monica.steam.importer.SteamMaFilePayload
+import takagi.ru.monica.steam.market.SteamInventoryGame
+import takagi.ru.monica.steam.market.SteamInventoryItem
+import takagi.ru.monica.steam.market.SteamInventoryItemStack
+import takagi.ru.monica.steam.market.SteamInventoryOverview
+import takagi.ru.monica.steam.market.SteamInventoryService
+import takagi.ru.monica.steam.market.SteamBatchSellEntry
+import takagi.ru.monica.steam.market.SteamMarketListing
+import takagi.ru.monica.steam.market.SteamMarketListingsPage
+import takagi.ru.monica.steam.market.SteamMarketHistoryPoint
+import takagi.ru.monica.steam.market.SteamMarketPrice
+import takagi.ru.monica.steam.market.SteamMarketQuote
+import takagi.ru.monica.steam.market.SteamMarketService
+import takagi.ru.monica.steam.market.SteamWalletInfo
+import takagi.ru.monica.steam.market.findNewSteamMarketConfirmations
+import takagi.ru.monica.steam.market.isMarketListingConfirmation
+import takagi.ru.monica.steam.market.mergeSteamInventoryStacks
+import takagi.ru.monica.steam.market.removeCancelledSteamMarketListings
 import takagi.ru.monica.steam.network.SteamAuthenticatorService
 import takagi.ru.monica.steam.network.SteamAuthorizedDevice
 import takagi.ru.monica.steam.network.SteamAuthorizedDeviceService
@@ -47,6 +64,67 @@ import takagi.ru.monica.steam.network.SteamQrChallenge
 import takagi.ru.monica.steam.network.SteamSessionRefreshService
 import takagi.ru.monica.steam.service.SteamLoginImportService
 
+enum class SteamMarketActionType {
+    SELL,
+    CANCEL_LISTING
+}
+
+data class SteamMarketActionResult(
+    val action: SteamMarketActionType,
+    val success: Boolean,
+    val affectedCount: Int = 0,
+    val failedCount: Int = 0,
+    val requiresConfirmation: Boolean = false,
+    val autoConfirmed: Boolean = false,
+    val message: String? = null
+)
+
+private data class SteamCancelListingsOutcome(
+    val cancelledIds: Set<String>,
+    val failedCount: Int,
+    val message: String?
+)
+
+data class SteamInventoryMarketUiState(
+    val language: String = "english",
+    val overview: SteamInventoryOverview? = null,
+    val selectedGame: SteamInventoryGame? = null,
+    val inventoryStacks: List<SteamInventoryItemStack> = emptyList(),
+    val inventoryLastAssetId: String? = null,
+    val inventoryHasMore: Boolean = false,
+    val inventoryLoading: Boolean = false,
+    val inventoryLoadingMore: Boolean = false,
+    val inventoryError: String? = null,
+    val listings: List<SteamMarketListing> = emptyList(),
+    val listingsTotal: Int = 0,
+    val listingsNextStart: Int = 0,
+    val listingsHasMore: Boolean = false,
+    val listingsLoading: Boolean = false,
+    val listingsLoadingMore: Boolean = false,
+    val listingsError: String? = null,
+    val quoteItemKey: String? = null,
+    val quotePrice: SteamMarketPrice? = null,
+    val quoteHistory: List<SteamMarketHistoryPoint> = emptyList(),
+    val quoteLoading: Boolean = false,
+    val batchQuotes: Map<String, SteamMarketQuote> = emptyMap(),
+    val batchQuoteLoading: Boolean = false,
+    val batchQuoteCompleted: Int = 0,
+    val batchQuoteTotal: Int = 0,
+    val batchQuoteError: String? = null,
+    val actionLoading: Boolean = false,
+    val lastActionResult: SteamMarketActionResult? = null
+)
+
+private data class SteamSellOutcome(
+    val listedByStackKey: Map<String, Int>,
+    val requiresConfirmation: Boolean,
+    val autoConfirmed: Boolean,
+    val message: String?
+) {
+    val listedCount: Int
+        get() = listedByStackKey.values.sum()
+}
+
 data class SteamUiState(
     val storageSource: SteamStorageSource = SteamStorageSource.Local,
     val accounts: List<SteamAccount> = emptyList(),
@@ -58,6 +136,7 @@ data class SteamUiState(
     val pendingLogins: List<SteamPendingLogin> = emptyList(),
     val authorizedDevices: List<SteamAuthorizedDevice> = emptyList(),
     val selectedConfirmationIds: Set<String> = emptySet(),
+    val inventoryMarket: SteamInventoryMarketUiState = SteamInventoryMarketUiState(),
     val pendingLoginChallenge: SteamLoginChallengeUi? = null,
     val pendingQrLoginChallenge: SteamQrLoginChallengeUi? = null,
     val pendingMaFileSteamIdRequest: SteamMaFileSteamIdRequestUi? = null,
@@ -98,7 +177,9 @@ class SteamViewModel(
     private val authorizedDeviceService: SteamAuthorizedDeviceService = SteamAuthorizedDeviceService(),
     private val loginApprovalService: SteamLoginApprovalService = SteamLoginApprovalService(),
     private val sessionRefreshService: SteamSessionRefreshService = SteamSessionRefreshService(),
-    private val loginImportService: SteamLoginImportService = SteamLoginImportService()
+    private val loginImportService: SteamLoginImportService = SteamLoginImportService(),
+    private val inventoryService: SteamInventoryService = SteamInventoryService(),
+    private val marketService: SteamMarketService = SteamMarketService()
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SteamUiState())
     val uiState: StateFlow<SteamUiState> = _uiState.asStateFlow()
@@ -110,6 +191,9 @@ class SteamViewModel(
     private var pendingLoginCredentialEntryId: Long? = null
     private var pendingLoginCompletionAccountId: Long? = null
     private var pendingLoginRebindAccount = false
+    private var inventoryLoadGeneration: Long = 0L
+    private var marketQuoteGeneration: Long = 0L
+    private var batchQuoteGeneration: Long = 0L
 
     init {
         SteamDiagLogger.initialize(appContext.applicationContext)
@@ -177,7 +261,8 @@ class SteamViewModel(
                         confirmations = emptyList(),
                         pendingLogins = emptyList(),
                         authorizedDevices = emptyList(),
-                        selectedConfirmationIds = emptySet()
+                        selectedConfirmationIds = emptySet(),
+                        inventoryMarket = SteamInventoryMarketUiState()
                     )
                     setLoading(true)
                     runCatching {
@@ -746,6 +831,593 @@ class SteamViewModel(
         }
     }
 
+    fun refreshInventory(language: String) {
+        val account = selectedAccount() ?: return
+        val generation = ++inventoryLoadGeneration
+        updateInventoryMarket {
+            it.copy(
+                language = language,
+                inventoryLoading = true,
+                inventoryLoadingMore = false,
+                inventoryError = null
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    val overview = inventoryService.fetchOverview(freshAccount)
+                    val previousGame = _uiState.value.inventoryMarket.selectedGame
+                    val selectedGame = overview.games.firstOrNull { game ->
+                        game.appId == previousGame?.appId && game.contextId == previousGame.contextId
+                    } ?: overview.games.firstOrNull()
+                    val page = selectedGame?.let { game ->
+                        inventoryService.fetchItems(
+                            account = freshAccount,
+                            appId = game.appId,
+                            contextId = game.contextId,
+                            language = language
+                        )
+                    }
+                    Triple(overview, selectedGame, page)
+                }
+            }.onSuccess { (overview, selectedGame, page) ->
+                if (generation != inventoryLoadGeneration) return@onSuccess
+                updateInventoryMarket {
+                    it.copy(
+                        language = language,
+                        overview = overview,
+                        selectedGame = selectedGame,
+                        inventoryStacks = page?.let { loaded ->
+                            mergeSteamInventoryStacks(emptyList(), loaded.items)
+                        }.orEmpty(),
+                        inventoryLastAssetId = page?.lastAssetId,
+                        inventoryHasMore = page?.hasMore == true,
+                        inventoryLoading = false,
+                        inventoryLoadingMore = false,
+                        inventoryError = null
+                    )
+                }
+            }.onFailure { error ->
+                if (generation != inventoryLoadGeneration) return@onFailure
+                updateInventoryMarket {
+                    it.copy(
+                        inventoryLoading = false,
+                        inventoryLoadingMore = false,
+                        inventoryError = error.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectInventoryGame(game: SteamInventoryGame, language: String) {
+        val account = selectedAccount() ?: return
+        val generation = ++inventoryLoadGeneration
+        updateInventoryMarket {
+            it.copy(
+                language = language,
+                selectedGame = game,
+                inventoryStacks = emptyList(),
+                inventoryLastAssetId = null,
+                inventoryHasMore = false,
+                inventoryLoading = true,
+                inventoryLoadingMore = false,
+                inventoryError = null
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    inventoryService.fetchItems(
+                        account = freshAccount,
+                        appId = game.appId,
+                        contextId = game.contextId,
+                        language = language
+                    )
+                }
+            }.onSuccess { page ->
+                if (generation != inventoryLoadGeneration) return@onSuccess
+                updateInventoryMarket {
+                    it.copy(
+                        inventoryStacks = mergeSteamInventoryStacks(emptyList(), page.items),
+                        inventoryLastAssetId = page.lastAssetId,
+                        inventoryHasMore = page.hasMore,
+                        inventoryLoading = false,
+                        inventoryError = null
+                    )
+                }
+            }.onFailure { error ->
+                if (generation != inventoryLoadGeneration) return@onFailure
+                updateInventoryMarket {
+                    it.copy(inventoryLoading = false, inventoryError = error.message)
+                }
+            }
+        }
+    }
+
+    fun loadMoreInventory() {
+        val state = _uiState.value.inventoryMarket
+        val account = selectedAccount() ?: return
+        val game = state.selectedGame ?: return
+        if (!state.inventoryHasMore || state.inventoryLoading || state.inventoryLoadingMore) return
+        val generation = inventoryLoadGeneration
+        updateInventoryMarket { it.copy(inventoryLoadingMore = true, inventoryError = null) }
+        viewModelScope.launch {
+            runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    inventoryService.fetchItems(
+                        account = freshAccount,
+                        appId = game.appId,
+                        contextId = game.contextId,
+                        language = state.language,
+                        startAssetId = state.inventoryLastAssetId
+                    )
+                }
+            }.onSuccess { page ->
+                if (generation != inventoryLoadGeneration) return@onSuccess
+                updateInventoryMarket {
+                    it.copy(
+                        inventoryStacks = mergeSteamInventoryStacks(it.inventoryStacks, page.items),
+                        inventoryLastAssetId = page.lastAssetId,
+                        inventoryHasMore = page.hasMore,
+                        inventoryLoadingMore = false,
+                        inventoryError = null
+                    )
+                }
+            }.onFailure { error ->
+                if (generation != inventoryLoadGeneration) return@onFailure
+                updateInventoryMarket {
+                    it.copy(inventoryLoadingMore = false, inventoryError = error.message)
+                }
+            }
+        }
+    }
+
+    fun refreshMarketListings(language: String) {
+        val account = selectedAccount() ?: return
+        updateInventoryMarket {
+            it.copy(
+                language = language,
+                listingsLoading = true,
+                listingsLoadingMore = false,
+                listingsError = null
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    val overview = _uiState.value.inventoryMarket.overview
+                        ?: inventoryService.fetchOverview(freshAccount)
+                    overview to marketService.fetchMyListings(
+                        freshAccount,
+                        language = language
+                    )
+                }
+            }.onSuccess { (overview, page) ->
+                updateInventoryMarket { it.copy(overview = overview) }
+                applyListingsPage(page, append = false)
+            }.onFailure { error ->
+                updateInventoryMarket {
+                    it.copy(
+                        listingsLoading = false,
+                        listingsLoadingMore = false,
+                        listingsError = error.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadMoreMarketListings() {
+        val state = _uiState.value.inventoryMarket
+        val account = selectedAccount() ?: return
+        if (!state.listingsHasMore || state.listingsLoading || state.listingsLoadingMore) return
+        updateInventoryMarket { it.copy(listingsLoadingMore = true, listingsError = null) }
+        viewModelScope.launch {
+            runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    marketService.fetchMyListings(
+                        account = freshAccount,
+                        language = state.language,
+                        start = state.listingsNextStart
+                    )
+                }
+            }.onSuccess { page ->
+                applyListingsPage(page, append = true)
+            }.onFailure { error ->
+                updateInventoryMarket {
+                    it.copy(listingsLoadingMore = false, listingsError = error.message)
+                }
+            }
+        }
+    }
+
+    fun loadMarketQuote(item: SteamInventoryItem) {
+        val account = selectedAccount() ?: return
+        val wallet = _uiState.value.inventoryMarket.overview?.wallet ?: SteamWalletInfo.Fallback
+        val generation = ++marketQuoteGeneration
+        updateInventoryMarket {
+            it.copy(
+                quoteItemKey = item.stackKey,
+                quotePrice = null,
+                quoteHistory = emptyList(),
+                quoteLoading = true
+            )
+        }
+        viewModelScope.launch {
+            val freshAccount = ensureSteamSession(account)
+            val price = runCatching {
+                withContext(Dispatchers.IO) {
+                    marketService.fetchPriceOverview(
+                        appId = item.appId,
+                        marketHashName = item.marketHashName,
+                        currency = wallet.currency
+                    )
+                }
+            }.getOrNull()
+            val history = if (freshAccount == null) {
+                emptyList()
+            } else {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        marketService.fetchPriceHistory(
+                            account = freshAccount,
+                            appId = item.appId,
+                            marketHashName = item.marketHashName
+                        )
+                    }
+                }.getOrDefault(emptyList())
+            }
+            if (generation == marketQuoteGeneration) {
+                updateInventoryMarket {
+                    it.copy(quotePrice = price, quoteHistory = history, quoteLoading = false)
+                }
+            }
+        }
+    }
+
+    fun clearMarketQuote() {
+        marketQuoteGeneration++
+        updateInventoryMarket {
+            it.copy(
+                quoteItemKey = null,
+                quotePrice = null,
+                quoteHistory = emptyList(),
+                quoteLoading = false
+            )
+        }
+    }
+
+    fun loadBatchMarketQuotes(stacks: List<SteamInventoryItemStack>) {
+        val account = selectedAccount() ?: return
+        val targets = stacks
+            .filter { it.item.marketable }
+            .distinctBy { it.item.stackKey }
+        if (targets.isEmpty()) return
+        val wallet = _uiState.value.inventoryMarket.overview?.wallet ?: SteamWalletInfo.Fallback
+        val generation = ++batchQuoteGeneration
+        updateInventoryMarket {
+            it.copy(
+                batchQuotes = emptyMap(),
+                batchQuoteLoading = true,
+                batchQuoteCompleted = 0,
+                batchQuoteTotal = targets.size,
+                batchQuoteError = null
+            )
+        }
+        viewModelScope.launch {
+            val freshAccount = ensureSteamSession(account)
+            if (freshAccount == null) {
+                if (generation == batchQuoteGeneration) {
+                    updateInventoryMarket {
+                        it.copy(
+                            batchQuoteLoading = false,
+                            batchQuoteError = "Steam community session unavailable"
+                        )
+                    }
+                }
+                return@launch
+            }
+            targets.forEach { stack ->
+                if (generation != batchQuoteGeneration) return@launch
+                val quote = withContext(Dispatchers.IO) {
+                    val price = runCatching {
+                        marketService.fetchPriceOverview(
+                            appId = stack.item.appId,
+                            marketHashName = stack.item.marketHashName,
+                            currency = wallet.currency
+                        )
+                    }.getOrNull()
+                    val history = runCatching {
+                        marketService.fetchPriceHistory(
+                            account = freshAccount,
+                            appId = stack.item.appId,
+                            marketHashName = stack.item.marketHashName
+                        )
+                    }.getOrDefault(emptyList())
+                    SteamMarketQuote(price = price, history = history)
+                }
+                if (generation == batchQuoteGeneration) {
+                    updateInventoryMarket { state ->
+                        val completed = state.batchQuoteCompleted + 1
+                        state.copy(
+                            batchQuotes = state.batchQuotes + (stack.item.stackKey to quote),
+                            batchQuoteCompleted = completed,
+                            batchQuoteLoading = completed < state.batchQuoteTotal
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun clearBatchMarketQuotes() {
+        batchQuoteGeneration++
+        updateInventoryMarket {
+            it.copy(
+                batchQuotes = emptyMap(),
+                batchQuoteLoading = false,
+                batchQuoteCompleted = 0,
+                batchQuoteTotal = 0,
+                batchQuoteError = null
+            )
+        }
+    }
+
+    fun sellInventoryItems(
+        stack: SteamInventoryItemStack,
+        priceReceive: Int,
+        quantity: Int,
+        autoConfirm: Boolean
+    ) {
+        sellInventoryBatch(
+            entries = listOf(
+                SteamBatchSellEntry(
+                    stack = stack,
+                    priceReceive = priceReceive,
+                    quantity = quantity
+                )
+            ),
+            autoConfirm = autoConfirm
+        )
+    }
+
+    fun sellInventoryBatch(
+        entries: List<SteamBatchSellEntry>,
+        autoConfirm: Boolean
+    ) {
+        val account = selectedAccount() ?: return
+        val validEntries = entries.filter {
+            it.stack.item.marketable &&
+                it.priceReceive > 0 &&
+                it.quantity > 0 &&
+                it.stack.assetIds.isNotEmpty()
+        }
+        if (validEntries.isEmpty()) return
+        updateInventoryMarket {
+            it.copy(actionLoading = true, lastActionResult = null)
+        }
+        viewModelScope.launch {
+            val outcome = runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    val preExistingMarketIds = if (autoConfirm) {
+                        runCatching {
+                            confirmationService.fetch(freshAccount)
+                                .filter { it.isMarketListingConfirmation() }
+                                .map { it.id }
+                                .toSet()
+                        }.getOrNull()
+                    } else {
+                        null
+                    }
+                    val listedByStackKey = mutableMapOf<String, Int>()
+                    var requiresConfirmation = false
+                    var failureMessage: String? = null
+                    validEntries.forEach { entry ->
+                        val stackKey = entry.stack.item.stackKey
+                        val assetIds = entry.stack.assetIds.take(
+                            entry.quantity.coerceAtMost(entry.stack.assetIds.size)
+                        )
+                        assetIds.forEach { assetId ->
+                            runCatching {
+                                marketService.sell(
+                                    account = freshAccount,
+                                    item = entry.stack.item,
+                                    priceReceive = entry.priceReceive,
+                                    assetId = assetId
+                                )
+                            }.onSuccess { result ->
+                                if (result.success) {
+                                    listedByStackKey[stackKey] =
+                                        (listedByStackKey[stackKey] ?: 0) + 1
+                                    requiresConfirmation =
+                                        requiresConfirmation || result.requiresConfirmation
+                                } else {
+                                    failureMessage = result.message
+                                }
+                            }.onFailure { error ->
+                                failureMessage = error.message
+                            }
+                        }
+                    }
+
+                    var autoConfirmed = false
+                    if (
+                        listedByStackKey.isNotEmpty() &&
+                        requiresConfirmation &&
+                        autoConfirm &&
+                        preExistingMarketIds != null
+                    ) {
+                        var newConfirmations: List<SteamConfirmation> = emptyList()
+                        for (attempt in 0..3) {
+                            val latest = confirmationService.fetch(freshAccount)
+                            newConfirmations = findNewSteamMarketConfirmations(
+                                preExistingIds = preExistingMarketIds,
+                                latest = latest
+                            )
+                            if (newConfirmations.isNotEmpty()) break
+                            if (attempt < 3) delay(600L)
+                        }
+                        if (newConfirmations.isNotEmpty()) {
+                            val response = confirmationService.respondMultiple(
+                                account = freshAccount,
+                                confirmations = newConfirmations,
+                                accept = true
+                            )
+                            autoConfirmed = response.ok == newConfirmations.size
+                        }
+                    }
+                    SteamSellOutcome(
+                        listedByStackKey = listedByStackKey,
+                        requiresConfirmation = requiresConfirmation,
+                        autoConfirmed = autoConfirmed,
+                        message = failureMessage
+                    )
+                }
+            }
+            outcome.onSuccess { sellOutcome ->
+                val succeeded = sellOutcome.listedCount > 0
+                updateInventoryMarket { marketState ->
+                    val updatedStacks = if (succeeded) {
+                        marketState.inventoryStacks.mapNotNull { existing ->
+                            val listedCount = sellOutcome.listedByStackKey[existing.item.stackKey] ?: 0
+                            if (listedCount <= 0) {
+                                existing
+                            } else {
+                                val remaining = existing.assetIds.drop(listedCount)
+                                existing.copy(assetIds = remaining).takeIf { remaining.isNotEmpty() }
+                            }
+                        }
+                    } else {
+                        marketState.inventoryStacks
+                    }
+                    marketState.copy(
+                        inventoryStacks = updatedStacks,
+                        listings = if (succeeded) emptyList() else marketState.listings,
+                        listingsNextStart = if (succeeded) 0 else marketState.listingsNextStart,
+                        listingsHasMore = if (succeeded) false else marketState.listingsHasMore,
+                        actionLoading = false,
+                        lastActionResult = SteamMarketActionResult(
+                            action = SteamMarketActionType.SELL,
+                            success = succeeded,
+                            affectedCount = sellOutcome.listedCount,
+                            requiresConfirmation = sellOutcome.requiresConfirmation,
+                            autoConfirmed = sellOutcome.autoConfirmed,
+                            message = sellOutcome.message
+                        )
+                    )
+                }
+                if (succeeded && sellOutcome.requiresConfirmation && !sellOutcome.autoConfirmed) {
+                    refreshConfirmations(silent = true)
+                }
+            }.onFailure { error ->
+                updateInventoryMarket {
+                    it.copy(
+                        actionLoading = false,
+                        lastActionResult = SteamMarketActionResult(
+                            action = SteamMarketActionType.SELL,
+                            success = false,
+                            message = error.message
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun cancelMarketListing(listing: SteamMarketListing) {
+        cancelMarketListings(listOf(listing))
+    }
+
+    fun cancelMarketListings(listings: List<SteamMarketListing>) {
+        val account = selectedAccount() ?: return
+        val targets = listings
+            .filter { it.listingId.isNotBlank() }
+            .distinctBy { it.listingId }
+        if (targets.isEmpty()) return
+        updateInventoryMarket { it.copy(actionLoading = true, lastActionResult = null) }
+        viewModelScope.launch {
+            val result = runCatching {
+                val freshAccount = ensureSteamSession(account)
+                    ?: throw IllegalStateException("Steam community session unavailable")
+                withContext(Dispatchers.IO) {
+                    val cancelledIds = mutableSetOf<String>()
+                    var failedCount = 0
+                    var firstError: String? = null
+                    targets.forEach { listing ->
+                        runCatching {
+                            marketService.cancelListing(freshAccount, listing.listingId)
+                        }.onSuccess { success ->
+                            if (success) {
+                                cancelledIds += listing.listingId
+                            } else {
+                                failedCount++
+                            }
+                        }.onFailure { error ->
+                            failedCount++
+                            if (firstError == null) firstError = error.message
+                        }
+                    }
+                    SteamCancelListingsOutcome(
+                        cancelledIds = cancelledIds,
+                        failedCount = failedCount,
+                        message = firstError
+                    )
+                }
+            }
+            result.onSuccess { outcome ->
+                updateInventoryMarket {
+                    it.copy(
+                        listings = removeCancelledSteamMarketListings(
+                            existing = it.listings,
+                            cancelledListingIds = outcome.cancelledIds
+                        ),
+                        listingsTotal = (
+                            it.listingsTotal - outcome.cancelledIds.size
+                        ).coerceAtLeast(0),
+                        actionLoading = false,
+                        lastActionResult = SteamMarketActionResult(
+                            action = SteamMarketActionType.CANCEL_LISTING,
+                            success = outcome.cancelledIds.isNotEmpty() &&
+                                outcome.failedCount == 0,
+                            affectedCount = outcome.cancelledIds.size,
+                            failedCount = outcome.failedCount,
+                            message = outcome.message
+                        )
+                    )
+                }
+            }.onFailure { error ->
+                updateInventoryMarket {
+                    it.copy(
+                        actionLoading = false,
+                        lastActionResult = SteamMarketActionResult(
+                            action = SteamMarketActionType.CANCEL_LISTING,
+                            success = false,
+                            failedCount = targets.size,
+                            message = error.message
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun consumeMarketActionResult() {
+        updateInventoryMarket { it.copy(lastActionResult = null) }
+    }
+
     fun refreshPendingLogins(silent: Boolean = false) {
         val account = selectedAccount() ?: return
         viewModelScope.launch {
@@ -1227,7 +1899,34 @@ class SteamViewModel(
             confirmations = emptyList(),
             pendingLogins = emptyList(),
             authorizedDevices = emptyList(),
-            selectedConfirmationIds = emptySet()
+            selectedConfirmationIds = emptySet(),
+            inventoryMarket = SteamInventoryMarketUiState()
+        )
+    }
+
+    private fun applyListingsPage(page: SteamMarketListingsPage, append: Boolean) {
+        updateInventoryMarket {
+            it.copy(
+                listings = if (append) {
+                    (it.listings + page.items).distinctBy { listing -> listing.listingId }
+                } else {
+                    page.items
+                },
+                listingsTotal = page.totalActive,
+                listingsNextStart = page.nextStart,
+                listingsHasMore = page.hasMore,
+                listingsLoading = false,
+                listingsLoadingMore = false,
+                listingsError = null
+            )
+        }
+    }
+
+    private fun updateInventoryMarket(
+        transform: (SteamInventoryMarketUiState) -> SteamInventoryMarketUiState
+    ) {
+        _uiState.value = _uiState.value.copy(
+            inventoryMarket = transform(_uiState.value.inventoryMarket)
         )
     }
 
@@ -1314,7 +2013,8 @@ class SteamViewModel(
                     confirmations = emptyList(),
                     pendingLogins = emptyList(),
                     authorizedDevices = emptyList(),
-                    selectedConfirmationIds = emptySet()
+                    selectedConfirmationIds = emptySet(),
+                    inventoryMarket = SteamInventoryMarketUiState()
                 )
             }
             is SteamStorageSource.Mdbx -> {
@@ -1443,7 +2143,12 @@ class SteamViewModel(
             confirmations = if (selectedChanged || clearAccountScopedState) emptyList() else previous.confirmations,
             pendingLogins = if (selectedChanged || clearAccountScopedState) emptyList() else previous.pendingLogins,
             authorizedDevices = if (selectedChanged || clearAccountScopedState) emptyList() else previous.authorizedDevices,
-            selectedConfirmationIds = if (selectedChanged || clearAccountScopedState) emptySet() else previous.selectedConfirmationIds
+            selectedConfirmationIds = if (selectedChanged || clearAccountScopedState) emptySet() else previous.selectedConfirmationIds,
+            inventoryMarket = if (selectedChanged || clearAccountScopedState) {
+                SteamInventoryMarketUiState()
+            } else {
+                previous.inventoryMarket
+            }
         )
     }
 

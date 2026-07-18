@@ -23,6 +23,10 @@ class VaultV2PaneState internal constructor(
     storageFilterSecondaryKey: String?,
     hasInitializedStorageFilter: Boolean,
     selectionCount: Int,
+    isArchiveView: Boolean,
+    archiveReturnStorageFilterType: String?,
+    archiveReturnStorageFilterPrimaryId: Long?,
+    archiveReturnStorageFilterSecondaryKey: String?,
 ) {
     var scrollIndex by mutableIntStateOf(scrollIndex)
         private set
@@ -57,6 +61,15 @@ class VaultV2PaneState internal constructor(
 
     var selectionCount by mutableIntStateOf(selectionCount)
         private set
+
+    var isArchiveView by mutableStateOf(isArchiveView)
+        private set
+
+    private var archiveReturnStorageFilterType by mutableStateOf(archiveReturnStorageFilterType)
+
+    private var archiveReturnStorageFilterPrimaryId by mutableStateOf(archiveReturnStorageFilterPrimaryId)
+
+    private var archiveReturnStorageFilterSecondaryKey by mutableStateOf(archiveReturnStorageFilterSecondaryKey)
 
     fun updateScrollPosition(index: Int, offset: Int) {
         val safeIndex = index.coerceAtLeast(0)
@@ -114,6 +127,31 @@ class VaultV2PaneState internal constructor(
         selectionCount = count.coerceAtLeast(0)
     }
 
+    fun openArchiveView() {
+        if (!isArchiveView) {
+            archiveReturnStorageFilterType = storageFilterType
+            archiveReturnStorageFilterPrimaryId = storageFilterPrimaryId
+            archiveReturnStorageFilterSecondaryKey = storageFilterSecondaryKey
+        }
+        isArchiveView = true
+        requestScrollToTop()
+    }
+
+    fun closeArchiveView() {
+        archiveReturnStorageFilterType?.let { returnType ->
+            updateStorageFilter(
+                type = returnType,
+                primaryId = archiveReturnStorageFilterPrimaryId,
+                secondaryKey = archiveReturnStorageFilterSecondaryKey,
+            )
+        }
+        archiveReturnStorageFilterType = null
+        archiveReturnStorageFilterPrimaryId = null
+        archiveReturnStorageFilterSecondaryKey = null
+        isArchiveView = false
+        requestScrollToTop()
+    }
+
     companion object {
         val Saver: Saver<VaultV2PaneState, Any> = listSaver(
             save = {
@@ -128,6 +166,10 @@ class VaultV2PaneState internal constructor(
                     it.storageFilterSecondaryKey,
                     it.hasInitializedStorageFilter,
                     it.selectionCount,
+                    it.isArchiveView,
+                    it.archiveReturnStorageFilterType,
+                    it.archiveReturnStorageFilterPrimaryId,
+                    it.archiveReturnStorageFilterSecondaryKey,
                 )
             },
             restore = { restored ->
@@ -142,6 +184,10 @@ class VaultV2PaneState internal constructor(
                     storageFilterSecondaryKey = restored[7] as String?,
                     hasInitializedStorageFilter = restored.getOrNull(8) as? Boolean ?: false,
                     selectionCount = restored.getOrNull(9) as? Int ?: 0,
+                    isArchiveView = restored.getOrNull(10) as? Boolean ?: false,
+                    archiveReturnStorageFilterType = restored.getOrNull(11) as? String,
+                    archiveReturnStorageFilterPrimaryId = restored.getOrNull(12) as? Long,
+                    archiveReturnStorageFilterSecondaryKey = restored.getOrNull(13) as? String,
                 )
             }
         )
@@ -162,6 +208,10 @@ fun rememberVaultV2PaneState(): VaultV2PaneState {
             storageFilterSecondaryKey = null,
             hasInitializedStorageFilter = false,
             selectionCount = 0,
+            isArchiveView = false,
+            archiveReturnStorageFilterType = null,
+            archiveReturnStorageFilterPrimaryId = null,
+            archiveReturnStorageFilterSecondaryKey = null,
         )
     }
 }

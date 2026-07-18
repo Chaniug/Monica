@@ -196,7 +196,7 @@ internal fun PasswordListTopSection(
             onActionPillBoundsChanged = if (isArchiveView) null else onCategoryPillBoundsChange,
             actions = {
                 if (isArchiveView) {
-                    IconButton(onClick = { viewModel.setCategoryFilter(CategoryFilter.All) }) {
+                    IconButton(onClick = { viewModel.closeArchiveView() }) {
                         Icon(
                             imageVector = Icons.Default.Lock,
                             contentDescription = stringResource(R.string.nav_passwords_short),
@@ -464,7 +464,7 @@ internal fun PasswordListTopSection(
                                 onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
                                 onOpenHistory = onOpenHistory,
                                 onOpenTrash = onOpenTrash,
-                                onOpenArchive = { viewModel.setCategoryFilter(CategoryFilter.Archived) },
+                                onOpenArchive = viewModel::openArchiveView,
                                 showSettingsEntry = showStandaloneSettingsEntry,
                                 onOpenSettings = onOpenStandaloneSettings,
                                 onScanFidoQr = onScanFidoQr

@@ -89,7 +89,9 @@ fun TotpCodeCard(
     sharedProgressTimeMillis: Long? = null,
     appSettings: AppSettings? = null,
     parsedTotpData: TotpData? = null,
-    decryptStoredValue: ((String) -> String)? = null
+    decryptStoredValue: ((String) -> String)? = null,
+    backgroundContent: (@Composable BoxScope.() -> Unit)? = null,
+    immersiveBackgroundVisible: Boolean = backgroundContent != null
 ) {
     val context = LocalContext.current
     val screenLifecycleOwner = LocalLifecycleOwner.current
@@ -332,13 +334,22 @@ fun TotpCodeCard(
             )
     }
 
+    val hasImmersiveBackground = backgroundContent != null && immersiveBackgroundVisible
+    val immersivePrimaryColor = Color.White
+    val immersiveSecondaryColor = Color.White.copy(alpha = 0.82f)
+    val immersiveAccentColor = Color.White.copy(alpha = 0.92f)
+    val immersiveTertiaryColor = Color.White.copy(alpha = 0.96f)
+    val immersiveErrorColor = Color.White
+
     Card(
         modifier = cardInteractionModifier,
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
         ),
-        colors = if (isSelected) {
+        colors = if (hasImmersiveBackground) {
+            CardDefaults.cardColors(containerColor = Color.Transparent)
+        } else if (isSelected) {
             CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
@@ -346,9 +357,41 @@ fun TotpCodeCard(
             CardDefaults.cardColors()
         }
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (backgroundContent != null) {
+                backgroundContent()
+                if (hasImmersiveBackground) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.34f),
+                                        Color.Black.copy(alpha = 0.74f)
+                                    )
+                                )
+                            )
+                    )
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f))
+                        )
+                    }
+                }
+            }
+            CompositionLocalProvider(
+                LocalContentColor provides if (hasImmersiveBackground) {
+                    immersivePrimaryColor
+                } else {
+                    LocalContentColor.current
+                }
+            ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
             // 标题和菜单
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -437,7 +480,11 @@ fun TotpCodeCard(
                             Text(
                                 text = line,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (hasImmersiveBackground) {
+                                    immersiveSecondaryColor
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
                     }
@@ -465,7 +512,11 @@ fun TotpCodeCard(
                         Icon(
                             Icons.Default.Favorite,
                             contentDescription = stringResource(R.string.favorite),
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (hasImmersiveBackground) {
+                                immersiveAccentColor
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -636,6 +687,9 @@ fun TotpCodeCard(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.ExtraBold,
                         color = when {
+                            totpData.otpType == OtpType.STEAM && hasImmersiveBackground -> immersiveTertiaryColor
+                            remainingSeconds <= 5 && hasImmersiveBackground -> immersiveErrorColor
+                            hasImmersiveBackground -> immersiveAccentColor
                             totpData.otpType == OtpType.STEAM -> MaterialTheme.colorScheme.tertiary
                             remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
                             else -> MaterialTheme.colorScheme.primary
@@ -650,7 +704,11 @@ fun TotpCodeCard(
                             text = "Next",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (hasImmersiveBackground) {
+                                immersiveAccentColor
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
                         )
                         DisableSelection {
                             Text(
@@ -661,7 +719,11 @@ fun TotpCodeCard(
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (hasImmersiveBackground) {
+                                    immersiveSecondaryColor
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
                     }
@@ -696,7 +758,11 @@ fun TotpCodeCard(
                         Text(
                             text = stringResource(R.string.counter_value, totpData.counter),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (hasImmersiveBackground) {
+                                immersiveSecondaryColor
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
                         )
                         
                         if (onGenerateNext != null) {
@@ -723,9 +789,9 @@ fun TotpCodeCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val progressColor = if (remainingSeconds <= 5) {
-                                MaterialTheme.colorScheme.error
+                                if (hasImmersiveBackground) immersiveErrorColor else MaterialTheme.colorScheme.error
                             } else {
-                                MaterialTheme.colorScheme.primary
+                                if (hasImmersiveBackground) immersiveAccentColor else MaterialTheme.colorScheme.primary
                             }
                             
                             M3EProgressIndicator(
@@ -733,6 +799,11 @@ fun TotpCodeCard(
                                 color = progressColor,
                                 style = settings.validatorProgressBarStyle,
                                 smoothProgress = settings.validatorSmoothProgress,
+                                trackColor = if (hasImmersiveBackground) {
+                                    Color.White.copy(alpha = 0.28f)
+                                } else {
+                                    null
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                             
@@ -742,9 +813,9 @@ fun TotpCodeCard(
                                 text = "${remainingSeconds}s",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (remainingSeconds <= 5) {
-                                    MaterialTheme.colorScheme.error
+                                    if (hasImmersiveBackground) immersiveErrorColor else MaterialTheme.colorScheme.error
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    if (hasImmersiveBackground) immersiveSecondaryColor else MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
                         }
@@ -753,6 +824,8 @@ fun TotpCodeCard(
                         // 不需要显示任何UI
                     }
                 }
+            }
+            }
             }
         }
     }
@@ -787,7 +860,8 @@ private fun M3EProgressIndicator(
     style: ProgressBarStyle,
     smoothProgress: Boolean,
     modifier: Modifier = Modifier,
-    trackHeight: Dp = 12.dp
+    trackHeight: Dp = 12.dp,
+    trackColor: Color? = null
 ) {
     val safeProgress = if (progress.isFinite()) progress else 0f
     val clampedProgress = safeProgress.coerceIn(0f, 1f)
@@ -816,7 +890,8 @@ private fun M3EProgressIndicator(
     }
 
     val fillFraction = animatedProgress.coerceIn(0f, 1f)
-    val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    val resolvedTrackColor = trackColor
+        ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
 
     Box(
         modifier = modifier
@@ -843,7 +918,7 @@ private fun M3EProgressIndicator(
                     val trackStartX = progressWidth + gap
                     if (trackStartX < width) {
                         drawLine(
-                            color = trackColor,
+                            color = resolvedTrackColor,
                             start = Offset(trackStartX, centerY),
                             end = Offset(width, centerY),
                             strokeWidth = strokeWidth,
@@ -894,7 +969,7 @@ private fun M3EProgressIndicator(
                     val trackStartX = progressWidth + gap
                     if (trackStartX < width - strokeWidth / 2f) {
                         drawLine(
-                            color = trackColor,
+                            color = resolvedTrackColor,
                             start = Offset(trackStartX, centerY),
                             end = Offset(width - strokeWidth / 2f, centerY),
                             strokeWidth = strokeWidth,

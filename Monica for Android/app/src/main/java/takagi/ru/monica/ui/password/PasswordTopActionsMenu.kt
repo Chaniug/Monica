@@ -86,6 +86,7 @@ internal fun CommonPasswordTopActionsMenuItems(
     onOpenTrash: () -> Unit,
     onOpenArchive: () -> Unit,
     showDisplayOptionsEntry: Boolean = true,
+    showArchiveEntry: Boolean = true,
     showSettingsEntry: Boolean = false,
     onOpenSettings: (() -> Unit)? = null,
     onScanFidoQr: (() -> Unit)? = null,
@@ -134,14 +135,16 @@ internal fun CommonPasswordTopActionsMenuItems(
             onOpenTrash()
         }
     )
-    DropdownMenuItem(
-        text = { Text(stringResource(R.string.archive_page_title)) },
-        leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
-        onClick = {
-            onDismissMenu()
-            onOpenArchive()
-        }
-    )
+    if (showArchiveEntry) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.archive_page_title)) },
+            leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
+            onClick = {
+                onDismissMenu()
+                onOpenArchive()
+            }
+        )
+    }
     if (showSettingsEntry && onOpenSettings != null) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.nav_settings)) },

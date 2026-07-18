@@ -118,6 +118,7 @@ data class PageAdjustmentSettingsSnapshot(
     val copyNextCodeWhenExpiring: Boolean = false,
     val securityAnalysisAutoEnabled: Boolean = false,
     val passwordDetailSecurityAnalysisEnabled: Boolean = true,
+    val steamMiniProfileBackgroundEnabled: Boolean = false,
     val autofillAuthRequired: Boolean = true,
     val iconCardsEnabled: Boolean = true,
     val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.MODERN.name,
@@ -243,6 +244,8 @@ class SettingsManager(private val context: Context) {
         private val SECURITY_ANALYSIS_AUTO_ENABLED_KEY = booleanPreferencesKey("security_analysis_auto_enabled") // 安全分析自动分析
         private val PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY =
             booleanPreferencesKey("password_detail_security_analysis_enabled")
+        private val STEAM_MINI_PROFILE_BACKGROUND_ENABLED_KEY =
+            booleanPreferencesKey("steam_mini_profile_background_enabled")
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
         private val NOTE_CODE_BLOCK_COLLAPSE_MODE_KEY = stringPreferencesKey("note_code_block_collapse_mode") // 笔记代码块折叠模式
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
@@ -562,6 +565,8 @@ class SettingsManager(private val context: Context) {
             securityAnalysisAutoEnabled = preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] ?: false,
             passwordDetailSecurityAnalysisEnabled =
                 preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] ?: true,
+            steamMiniProfileBackgroundEnabled =
+                preferences[STEAM_MINI_PROFILE_BACKGROUND_ENABLED_KEY] ?: false,
             bitwardenBottomStatusBarEnabled = preferences[BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY] ?: false,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             // Temporarily hard-disabled for stability.
@@ -891,6 +896,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePasswordDetailSecurityAnalysisEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateSteamMiniProfileBackgroundEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[STEAM_MINI_PROFILE_BACKGROUND_ENABLED_KEY] = enabled
         }
     }
 
@@ -1324,6 +1335,7 @@ class SettingsManager(private val context: Context) {
             copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
             securityAnalysisAutoEnabled = settings.securityAnalysisAutoEnabled,
             passwordDetailSecurityAnalysisEnabled = settings.passwordDetailSecurityAnalysisEnabled,
+            steamMiniProfileBackgroundEnabled = settings.steamMiniProfileBackgroundEnabled,
             autofillAuthRequired = settings.autofillAuthRequired,
             iconCardsEnabled = settings.iconCardsEnabled,
             appLauncherIcon = settings.appLauncherIcon.name,
@@ -1501,6 +1513,8 @@ class SettingsManager(private val context: Context) {
             preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] = snapshot.securityAnalysisAutoEnabled
             preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] =
                 snapshot.passwordDetailSecurityAnalysisEnabled
+            preferences[STEAM_MINI_PROFILE_BACKGROUND_ENABLED_KEY] =
+                snapshot.steamMiniProfileBackgroundEnabled
             preferences[AUTOFILL_AUTH_REQUIRED_KEY] = snapshot.autofillAuthRequired
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
             val parsedAppLauncherIcon = runCatching {

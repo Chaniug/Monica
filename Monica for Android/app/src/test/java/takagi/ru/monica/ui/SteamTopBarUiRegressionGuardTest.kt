@@ -41,6 +41,39 @@ class SteamTopBarUiRegressionGuardTest {
         assertTrue(source.contains("LaunchedEffect(selectedSection, uiState.storageSource, detailAccountId)"))
     }
 
+    @Test
+    fun steamPullSearchDoesNotDrawAnExtraIndicatorBehindTheTopBar() {
+        val source = steamSource()
+
+        assertFalse(source.contains("PullGestureIndicator"))
+        assertFalse(source.contains("PullActionVisualState"))
+    }
+
+    @Test
+    fun expandedSteamSearchConsumesBackBeforeOuterNavigation() {
+        val source = steamSource()
+        val backHandler = source
+            .substringAfter("BackHandler(enabled = isSteamSearchExpanded && detailAccount == null)")
+            .substringBefore("}")
+
+        assertTrue(backHandler.contains("clearSteamSearch()"))
+        assertTrue(backHandler.contains("focusManager.clearFocus()"))
+    }
+
+    @Test
+    fun pullToSearchRemainsDraggableAfterSearchExpands() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/common/pull/PullToSearchState.kt"
+        ).readText()
+        val verticalDrag = source.substringAfter("fun onVerticalDrag(dragAmount: Float)")
+            .substringBefore("val onDragEnd")
+        val postScroll = source.substringAfter("override fun onPostScroll(")
+            .substringBefore("override suspend fun onPreFling")
+
+        assertFalse(verticalDrag.contains("if (isSearchExpanded) return"))
+        assertFalse(postScroll.contains("!isSearchExpanded &&"))
+    }
+
     private fun steamSource(): String = projectFile(
         "app/src/main/java/takagi/ru/monica/steam/ui/SteamScreen.kt"
     ).readText()

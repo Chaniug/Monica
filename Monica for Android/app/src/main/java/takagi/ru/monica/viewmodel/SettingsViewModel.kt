@@ -239,6 +239,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateSteamMiniProfileBackgroundEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateSteamMiniProfileBackgroundEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenBottomStatusBarEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenBottomStatusBarEnabled(enabled)

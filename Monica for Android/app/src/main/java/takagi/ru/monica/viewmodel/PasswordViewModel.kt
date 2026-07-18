@@ -102,6 +102,27 @@ sealed class CategoryFilter {
     data class BitwardenVaultUncategorized(val vaultId: Long) : CategoryFilter()
 }
 
+internal class PasswordArchiveFilterController {
+    private var returnFilter: CategoryFilter? = null
+
+    fun open(currentFilter: CategoryFilter): CategoryFilter {
+        if (currentFilter !is CategoryFilter.Archived) {
+            returnFilter = currentFilter
+        }
+        return CategoryFilter.Archived
+    }
+
+    fun close(): CategoryFilter {
+        val target = returnFilter ?: CategoryFilter.All
+        returnFilter = null
+        return target
+    }
+
+    fun clear() {
+        returnFilter = null
+    }
+}
+
 sealed class BitwardenRecoveryResult {
     object Success : BitwardenRecoveryResult()
     data class Error(val message: String) : BitwardenRecoveryResult()
@@ -289,6 +310,7 @@ class PasswordViewModel(
     
     private val _categoryFilter = MutableStateFlow<CategoryFilter>(CategoryFilter.All)
     val categoryFilter = _categoryFilter.asStateFlow()
+    private val archiveFilterController = PasswordArchiveFilterController()
 
     private val _mdbxFoldersByDatabase = MutableStateFlow<Map<Long, List<MdbxStoredFolderEntry>>>(emptyMap())
     val mdbxFoldersByDatabase: StateFlow<Map<Long, List<MdbxStoredFolderEntry>>> =
@@ -640,6 +662,28 @@ class PasswordViewModel(
             initialValue = false
         )
     val allPasswordsForUi: StateFlow<List<PasswordEntry>> = allPasswordsForUiSource
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    // Lightweight archive stream for Vault V2. Password contents stay out of list state.
+    private val archivedPasswordsForUiSource: Flow<List<PasswordEntry>> = repository.getArchivedEntries()
+        .map { entries ->
+            entries.map { entry ->
+                if (entry.password.isEmpty()) entry else entry.copy(password = "")
+            }
+        }
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
+    val archivedPasswordsForUiReady: StateFlow<Boolean> = archivedPasswordsForUiSource
+        .map { true }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+    val archivedPasswordsForUi: StateFlow<List<PasswordEntry>> = archivedPasswordsForUiSource
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -1741,7 +1785,21 @@ class PasswordViewModel(
     }
 
     fun setCategoryFilter(filter: CategoryFilter) {
+        if (filter is CategoryFilter.Archived) {
+            openArchiveView()
+            return
+        }
+        archiveFilterController.clear()
         applyCategoryFilter(filter, persist = true)
+    }
+
+    fun openArchiveView() {
+        val archiveFilter = archiveFilterController.open(_categoryFilter.value)
+        applyCategoryFilter(archiveFilter, persist = false)
+    }
+
+    fun closeArchiveView() {
+        applyCategoryFilter(archiveFilterController.close(), persist = true)
     }
 
     private fun applyCategoryFilter(filter: CategoryFilter, persist: Boolean) {
@@ -1906,10 +1964,7 @@ class PasswordViewModel(
                     is CategoryFilter.All -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_ALL
                     )
-                    is CategoryFilter.Archived -> manager.updateLastPasswordCategoryFilter(
-                        // Archive is a temporary view; avoid restoring into it next launch.
-                        type = SAVED_FILTER_ALL
-                    )
+                    is CategoryFilter.Archived -> Unit
                     is CategoryFilter.Local -> manager.updateLastPasswordCategoryFilter(
                         type = SAVED_FILTER_LOCAL
                     )

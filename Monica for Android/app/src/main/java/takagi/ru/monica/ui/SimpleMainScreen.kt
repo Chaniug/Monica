@@ -1948,9 +1948,7 @@ fun SimpleMainScreen(
                         openTrashPage()
                     },
                     onOpenVaultV2ArchivePage = {
-                        closeHistoryPage()
-                        selectedTabKey = BottomNavItem.Passwords.key
-                        passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
+                        vaultV2PaneState.openArchiveView()
                     },
                     onClearAllData = onClearAllData,
                     cardWalletSubTab = cardWalletSubTab,
@@ -2099,8 +2097,7 @@ fun SimpleMainScreen(
                         openTrashPage()
                     },
                     onOpenArchivePage = {
-                        closeHistoryPage()
-                        passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
+                        vaultV2PaneState.openArchiveView()
                     },
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
                     onScanFidoQr = onNavigateToFidoQrScan,
@@ -2507,8 +2504,7 @@ fun SimpleMainScreen(
                             openTrashPage()
                         },
                         onOpenArchivePage = {
-                            closeHistoryPage()
-                            passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
+                            vaultV2PaneState.openArchiveView()
                         },
                         onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
                         onScanFidoQr = onNavigateToFidoQrScan,

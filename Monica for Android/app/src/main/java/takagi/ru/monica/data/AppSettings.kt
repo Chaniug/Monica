@@ -522,6 +522,7 @@ data class AppSettings(
     val hideFabOnScroll: Boolean = false, // 滚动时隐藏悬浮按钮
     val securityAnalysisAutoEnabled: Boolean = false, // 安全分析自动分析
     val passwordDetailSecurityAnalysisEnabled: Boolean = true,
+    val steamMiniProfileBackgroundEnabled: Boolean = false,
     val bitwardenBottomStatusBarEnabled: Boolean = false, // Bitwarden 底部状态栏（实验）
     val copyNextCodeWhenExpiring: Boolean = true, // 倒计时<=5秒时复制下一个验证码（默认开启）
     val notificationValidatorEnabled: Boolean = false, // 通知栏验证器开关

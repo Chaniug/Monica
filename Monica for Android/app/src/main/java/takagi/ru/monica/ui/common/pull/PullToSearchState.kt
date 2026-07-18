@@ -102,7 +102,6 @@ fun rememberPullToSearchState(
     }
 
     fun onVerticalDrag(dragAmount: Float) {
-        if (isSearchExpanded) return
         interruptCollapseAnimation()
         if (dragAmount < 0f) {
             updateOffset((currentOffset + dragAmount).coerceAtLeast(0f))
@@ -153,7 +152,6 @@ fun rememberPullToSearchState(
                 source: NestedScrollSource
             ): Offset {
                 if (
-                    !isSearchExpanded &&
                     available.y > 0f &&
                     source == NestedScrollSource.UserInput
                 ) {

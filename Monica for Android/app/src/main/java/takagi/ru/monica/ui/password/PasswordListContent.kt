@@ -697,7 +697,7 @@ fun PasswordListContent(
 
     // 在归档页按返回键时，先退出归档回到密码主列表
     BackHandler(enabled = isArchiveView && !isSelectionMode && !isSearchExpanded) {
-        viewModel.setCategoryFilter(CategoryFilter.All)
+        viewModel.closeArchiveView()
     }
     // Category sheet state
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }

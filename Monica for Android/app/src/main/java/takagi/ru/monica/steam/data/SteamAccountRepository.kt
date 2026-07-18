@@ -1,6 +1,8 @@
 package takagi.ru.monica.steam.data
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.steam.importer.SteamMaFilePayload
@@ -10,7 +12,9 @@ class SteamAccountRepository(
     private val securityManager: SecurityManager
 ) {
     fun observeAccounts(): Flow<List<SteamAccount>> {
-        return dao.observeAccounts().map { accounts -> accounts.map(::decryptEntity) }
+        return dao.observeAccounts()
+            .map { accounts -> accounts.map(::decryptEntity) }
+            .flowOn(Dispatchers.Default)
     }
 
     suspend fun getAccounts(): List<SteamAccount> = dao.getAccounts().map(::decryptEntity)

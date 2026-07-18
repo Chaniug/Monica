@@ -3388,6 +3388,10 @@ fun MonicaContent(
                 onPasswordDetailSecurityAnalysisEnabledChange = { enabled ->
                     settingsViewModel.updatePasswordDetailSecurityAnalysisEnabled(enabled)
                 },
+                steamMiniProfileBackgroundEnabled = settings.steamMiniProfileBackgroundEnabled,
+                onSteamMiniProfileBackgroundEnabledChange = { enabled ->
+                    settingsViewModel.updateSteamMiniProfileBackgroundEnabled(enabled)
+                },
                 passwordSwipeSelectionMode = settings.passwordSwipeSelectionMode,
                 onPasswordSwipeSelectionModeChange = { mode ->
                     settingsViewModel.updatePasswordSwipeSelectionMode(mode)

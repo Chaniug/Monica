@@ -43,6 +43,8 @@ fun ExtensionsScreen(
     onClipboardAutoClearSecondsChange: (Int) -> Unit = {},
     passwordDetailSecurityAnalysisEnabled: Boolean = true,
     onPasswordDetailSecurityAnalysisEnabledChange: (Boolean) -> Unit = {},
+    steamMiniProfileBackgroundEnabled: Boolean = false,
+    onSteamMiniProfileBackgroundEnabledChange: (Boolean) -> Unit = {},
     passwordSwipeSelectionMode: PasswordSwipeSelectionMode = PasswordSwipeSelectionMode.DEFAULT,
     onPasswordSwipeSelectionModeChange: (PasswordSwipeSelectionMode) -> Unit = {},
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
@@ -311,6 +313,17 @@ fun ExtensionsScreen(
                     description = stringResource(R.string.swipe_selection_mode_desc),
                     selectedMode = passwordSwipeSelectionMode,
                     onModeChange = onPasswordSwipeSelectionModeChange
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            ExtensionSection(title = stringResource(R.string.extensions_steam_settings)) {
+                ExtensionSwitchItem(
+                    icon = Icons.Default.Wallpaper,
+                    title = stringResource(R.string.steam_mini_profile_background_title),
+                    description = stringResource(R.string.steam_mini_profile_background_description),
+                    checked = steamMiniProfileBackgroundEnabled,
+                    onCheckedChange = onSteamMiniProfileBackgroundEnabledChange
                 )
             }
              
