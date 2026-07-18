@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-17T21:07:09.074Z",
+  "generatedAt": "2026-07-18T21:05:50.030Z",
   "range": {
-    "from": "2025-07-18",
-    "to": "2026-07-17"
+    "from": "2025-07-19",
+    "to": "2026-07-18"
   },
   "activity": [
-    {
-      "date": "2025-07-18",
-      "count": 0
-    },
     {
       "date": "2025-07-19",
       "count": 0
@@ -1466,9 +1462,40 @@
     {
       "date": "2026-07-17",
       "count": 2
+    },
+    {
+      "date": "2026-07-18",
+      "count": 3
     }
   ],
   "latest": [
+    {
+      "sha": "3666e6eb6619f8884ca330efba57c6a2b6096242",
+      "shortSha": "3666e6e",
+      "message": "fix(android): keep vault loading until data is ready",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-18T05:07:18Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/3666e6eb6619f8884ca330efba57c6a2b6096242"
+    },
+    {
+      "sha": "7c46b8212f458794266ddb066557922d1040b70b",
+      "shortSha": "7c46b82",
+      "message": "fix(android): improve vault loading, autofill, and Steam pricing",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-18T04:24:31Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/7c46b8212f458794266ddb066557922d1040b70b"
+    },
+    {
+      "sha": "810f898a5ff1479d85b895a3a7a7aae31758e903",
+      "shortSha": "810f898",
+      "message": "feat(android): add Steam market tools and archive fixes",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-18T01:48:37Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/810f898a5ff1479d85b895a3a7a7aae31758e903"
+    },
     {
       "sha": "5ecdaabcda29b04bfc62211e452c437ae408d5ad",
       "shortSha": "5ecdaab",
@@ -1531,33 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-14T17:24:30Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/d9ee80f2e6c1d8c12b7f29f2a9e3013b77c08f98"
-    },
-    {
-      "sha": "ad503a453600e8608f9c4d704faf0f4d91cbfc0a",
-      "shortSha": "ad503a4",
-      "message": "fix(android): support Steam device revocation",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-13T00:45:15Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/ad503a453600e8608f9c4d704faf0f4d91cbfc0a"
-    },
-    {
-      "sha": "15c07cfb2bb16d7974b48df3b326052c05bb903c",
-      "shortSha": "15c07cf",
-      "message": "Merge pull request #66 from Mrmiaomrzh/main",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-07T03:43:04Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/15c07cfb2bb16d7974b48df3b326052c05bb903c"
-    },
-    {
-      "sha": "26df547050e5b4cb01937a4a8dfeb6848eb0dfb1",
-      "shortSha": "26df547",
-      "message": "Merge branch 'main' into main",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-07-07T03:00:45Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/26df547050e5b4cb01937a4a8dfeb6848eb0dfb1"
     }
   ]
 }
