@@ -27,7 +27,9 @@ class VaultV2EntryCacheIntegrationGuardTest {
                 "showVaultLoadingIndicator = sectionedItems.isEmpty() && isVaultListLoading"
             )
         )
-        assertTrue(pane.contains("!visibleListStateAsync.hasComputed"))
+        assertTrue(pane.contains("shouldShowVaultV2InitialLoading("))
+        assertTrue(pane.contains("hasRetainedSnapshot = visibleSnapshotSeed.hasSnapshot"))
+        assertTrue(pane.contains("visibleListHasComputed = visibleListStateAsync.hasComputed"))
     }
 
     @Test

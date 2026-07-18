@@ -332,6 +332,25 @@ private val vaultV2Transliterator: Transliterator by lazy(LazyThreadSafetyMode.N
 	Transliterator.getInstance("Any-Latin; Latin-ASCII")
 }
 
+internal fun shouldShowVaultV2InitialLoading(
+	queryIsBlank: Boolean,
+	hasVisibleSections: Boolean,
+	hasRetainedSnapshot: Boolean,
+	passwordEntriesReady: Boolean,
+	computedListIsComputing: Boolean,
+	visibleListIsComputing: Boolean,
+	visibleListHasComputed: Boolean,
+	hasPendingItems: Boolean,
+): Boolean {
+	if (!queryIsBlank || hasVisibleSections || hasRetainedSnapshot) return false
+
+	return !passwordEntriesReady ||
+		computedListIsComputing ||
+		visibleListIsComputing ||
+		!visibleListHasComputed ||
+		hasPendingItems
+}
+
 private fun PasswordEntry.isVaultV2LocalOnly(): Boolean {
 	return isLocalOnlyEntry()
 }
@@ -2162,16 +2181,24 @@ fun VaultV2Pane(
 	val sectionLayouts = visibleListState.sectionLayouts
 	val isVaultListLoading = remember(
 		computedListStateAsync.isComputing,
+		visibleListStateAsync.isComputing,
 		visibleListStateAsync.hasComputed,
 		pendingAllItems,
-		allItems,
+		sectionedItems,
 		normalizedQuery,
 		selectedPasswordEntriesReady,
+		visibleSnapshotSeed.hasSnapshot,
 	) {
-		normalizedQuery.isBlank() &&
-			allItems.isEmpty() &&
-			!visibleListStateAsync.hasComputed &&
-			(!selectedPasswordEntriesReady || computedListStateAsync.isComputing || pendingAllItems != null)
+		shouldShowVaultV2InitialLoading(
+			queryIsBlank = normalizedQuery.isBlank(),
+			hasVisibleSections = sectionedItems.isNotEmpty(),
+			hasRetainedSnapshot = visibleSnapshotSeed.hasSnapshot,
+			passwordEntriesReady = selectedPasswordEntriesReady,
+			computedListIsComputing = computedListStateAsync.isComputing,
+			visibleListIsComputing = visibleListStateAsync.isComputing,
+			visibleListHasComputed = visibleListStateAsync.hasComputed,
+			hasPendingItems = pendingAllItems != null,
+		)
 	}
 	var showVaultEmptyState by remember(visibleSnapshotKey) {
 		mutableStateOf(
