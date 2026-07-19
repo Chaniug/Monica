@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-18T21:05:50.030Z",
+  "generatedAt": "2026-07-19T21:06:37.897Z",
   "range": {
-    "from": "2025-07-19",
-    "to": "2026-07-18"
+    "from": "2025-07-20",
+    "to": "2026-07-19"
   },
   "activity": [
-    {
-      "date": "2025-07-19",
-      "count": 0
-    },
     {
       "date": "2025-07-20",
       "count": 0
@@ -1466,9 +1462,40 @@
     {
       "date": "2026-07-18",
       "count": 3
+    },
+    {
+      "date": "2026-07-19",
+      "count": 3
     }
   ],
   "latest": [
+    {
+      "sha": "d738e38e192a6e8b02b115d72732352a1ff2e67f",
+      "shortSha": "d738e38",
+      "message": "feat(android): refine passkeys and autofill suggestions",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-19T16:23:51Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d738e38e192a6e8b02b115d72732352a1ff2e67f"
+    },
+    {
+      "sha": "d9c70305d2170e3c2ac468f171b5ef23ab371174",
+      "shortSha": "d9c7030",
+      "message": "feat(android): import external authenticators and refine vault cache",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-19T14:06:06Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d9c70305d2170e3c2ac468f171b5ef23ab371174"
+    },
+    {
+      "sha": "689f70c6c1011018a7eeafa6ead76a046178dfd7",
+      "shortSha": "689f70c",
+      "message": "feat(android): redesign database deduplication and vault loading",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-19T00:11:03Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/689f70c6c1011018a7eeafa6ead76a046178dfd7"
+    },
     {
       "sha": "3666e6eb6619f8884ca330efba57c6a2b6096242",
       "shortSha": "3666e6e",
@@ -1531,33 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-16T13:16:16Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/5345a4c5dd5da4e2ba2550b70f21e1965f267756"
-    },
-    {
-      "sha": "89bc4e79b60a6326e7a0946436d8a04956c24c47",
-      "shortSha": "89bc4e7",
-      "message": "fix(android): simplify security analysis scoring",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-16T05:24:05Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/89bc4e79b60a6326e7a0946436d8a04956c24c47"
-    },
-    {
-      "sha": "8e4c91e3009c51e1646b6a27dcb9e1e379fb4d83",
-      "shortSha": "8e4c91e",
-      "message": "feat(android): add secure autofill session unlock",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-16T05:01:04Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/8e4c91e3009c51e1646b6a27dcb9e1e379fb4d83"
-    },
-    {
-      "sha": "d9ee80f2e6c1d8c12b7f29f2a9e3013b77c08f98",
-      "shortSha": "d9ee80f",
-      "message": "fix(android): stabilize QR scanning and simplify Plus",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-14T17:24:30Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/d9ee80f2e6c1d8c12b7f29f2a9e3013b77c08f98"
     }
   ]
 }
