@@ -80,6 +80,8 @@ import takagi.ru.monica.data.model.LOGIN_TYPE_BARCODE
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.data.model.isSshKeyEntry
+import takagi.ru.monica.external.ExternalTotpImportController
+import takagi.ru.monica.external.ExternalTotpImportRequest
 import takagi.ru.monica.navigation.Screen
 import takagi.ru.monica.data.dedup.DedupMergeService
 import takagi.ru.monica.repository.PasswordRepository
@@ -338,6 +340,7 @@ private fun AnimatedContentScope.AddEditRouteContent(
 
 class MainActivity : BaseMonicaActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
+    private val externalTotpImportController = ExternalTotpImportController()
 
     companion object {
         private const val TAG = "MainActivity"
@@ -353,6 +356,7 @@ class MainActivity : BaseMonicaActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
+        handleExternalTotpIntent(intent)
 
         // 注意：enableEdgeToEdge() 已在基类调用，这里不再重复
 
@@ -401,7 +405,29 @@ class MainActivity : BaseMonicaActivity() {
         }
 
         setContent {
-            MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database, mdbxRepository)
+            MonicaApp(
+                repository = repository,
+                secureItemRepository = secureItemRepository,
+                securityManager = securityManager,
+                settingsManager = settingsManager,
+                database = database,
+                mdbxRepository = mdbxRepository,
+                externalTotpImportController = externalTotpImportController
+            )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleExternalTotpIntent(intent)
+    }
+
+    private fun handleExternalTotpIntent(incomingIntent: Intent?) {
+        if (!ExternalTotpImportController.isExternalOtpAuthIntent(incomingIntent)) return
+        val accepted = externalTotpImportController.offer(incomingIntent)
+        incomingIntent?.data = null
+        if (!accepted) {
+            Toast.makeText(this, getString(R.string.qr_invalid_authenticator), Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -480,11 +506,13 @@ fun MonicaApp(
     securityManager: SecurityManager,
     settingsManager: SettingsManager,
     database: PasswordDatabase,
-    mdbxRepository: MdbxRepository
+    mdbxRepository: MdbxRepository,
+    externalTotpImportController: ExternalTotpImportController
 ) {
     val context = LocalContext.current
     val activity = context as ComponentActivity
     val navController = rememberNavController()
+    val pendingExternalTotpImport by externalTotpImportController.pendingRequest.collectAsState()
 
     // 创建权限共享 launcher
     var pendingSupportPermissionCallback by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
@@ -708,6 +736,8 @@ fun MonicaApp(
                     database = database,
                     secureItemRepository = secureItemRepository,
                     passwordHistoryManager = passwordHistoryManager,
+                    pendingExternalTotpImport = pendingExternalTotpImport,
+                    onConsumeExternalTotpImport = externalTotpImportController::consume,
                     initialAuthState = authState,
                     onPermissionRequested = { permission, callback ->
                         pendingSupportPermissionCallback = callback
@@ -741,6 +771,8 @@ fun MonicaContent(
     database: PasswordDatabase,
     secureItemRepository: SecureItemRepository,
     passwordHistoryManager: PasswordHistoryManager,
+    pendingExternalTotpImport: ExternalTotpImportRequest?,
+    onConsumeExternalTotpImport: (Long) -> Unit,
     initialAuthState: MainAppAccessState =
         MainAppAccessState(
             isFirstTime = false,
@@ -931,6 +963,24 @@ fun MonicaContent(
                 }
             }
         }
+    }
+
+    var lastExternalTotpNavigationId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(
+        pendingExternalTotpImport?.id,
+        isAuthenticated,
+        shouldRequireAuthentication,
+        currentRoute
+    ) {
+        val request = pendingExternalTotpImport ?: return@LaunchedEffect
+        if (!isAuthenticated || shouldRequireAuthentication || isOnAuthRoute) return@LaunchedEffect
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            return@LaunchedEffect
+        }
+        if (lastExternalTotpNavigationId == request.id) return@LaunchedEffect
+
+        lastExternalTotpNavigationId = request.id
+        navController.navigate(Screen.AddEditTotp.createRoute())
     }
 
     LaunchedEffect(settings.quickSetupCompleted, shouldRequireAuthentication, currentRoute) {
@@ -1656,6 +1706,9 @@ fun MonicaContent(
             val qrResult = navController.currentBackStackEntry
                 ?.savedStateHandle
                 ?.get<String>("qr_result")
+            val externalTotpImport = pendingExternalTotpImport?.takeIf { totpId == 0L }
+            val externalQrResult = externalTotpImport?.uri?.takeIf { qrResult == null }
+            val pendingTotpImportResult = qrResult ?: externalQrResult
 
             LaunchedEffect(totpId, displayTotpItems) {
                 val item = when {
@@ -1776,11 +1829,15 @@ fun MonicaContent(
                     passwordViewModel = viewModel,
                     totpViewModel = totpViewModel,
                     localKeePassViewModel = localKeePassViewModel,
-                    pendingQrResult = qrResult,
+                    pendingQrResult = pendingTotpImportResult,
                     onConsumePendingQrResult = {
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.remove<String>("qr_result")
+                        if (externalQrResult != null) {
+                            onConsumeExternalTotpImport(externalTotpImport.id)
+                        } else {
+                            navController.currentBackStackEntry
+                                ?.savedStateHandle
+                                ?.remove<String>("qr_result")
+                        }
                     },
                     onSave = { title, notes, totpData, isFavorite, targets, onComplete ->
                         totpViewModel.saveTotpAcrossTargets(

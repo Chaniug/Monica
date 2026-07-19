@@ -49,4 +49,28 @@ class VaultV2RetainedSnapshotStoreTest {
         assertFalse(store.seed("main", emptyList()).hasSnapshot)
         assertFalse(store.seed("archive", emptyList()).hasSnapshot)
     }
+
+    @Test
+    fun `source snapshot is reused only for the same source version`() {
+        val store = VaultV2RetainedSourceSnapshotStore<String, List<Int>, List<String>>()
+        store.update(key = "main", source = listOf(1), value = listOf("cached"))
+
+        val unchanged = store.seed("main", listOf(1), emptyList())
+        val changed = store.seed("main", listOf(2), emptyList())
+
+        assertTrue(unchanged.hasSnapshot)
+        assertEquals(listOf("cached"), unchanged.value)
+        assertFalse(changed.hasSnapshot)
+        assertEquals(emptyList<String>(), changed.value)
+    }
+
+    @Test
+    fun `source snapshot update replaces stale data for the same scope`() {
+        val store = VaultV2RetainedSourceSnapshotStore<String, List<Int>, String>()
+        store.update(key = "main", source = listOf(1), value = "first")
+        store.update(key = "main", source = listOf(2), value = "second")
+
+        assertFalse(store.seed("main", listOf(1), "fallback").hasSnapshot)
+        assertEquals("second", store.seed("main", listOf(2), "fallback").value)
+    }
 }

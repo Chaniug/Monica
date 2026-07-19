@@ -314,6 +314,15 @@ internal data class VaultV2ComputedSnapshotKey(
 	val showOnlyLocalData: Boolean,
 )
 
+internal data class VaultV2ComputedSources(
+	val passwords: List<PasswordEntry>,
+	val totpItems: List<SecureItem>,
+	val bankCardItems: List<SecureItem>,
+	val documentItems: List<SecureItem>,
+	val noteItems: List<SecureItem>,
+	val passkeyItems: List<PasskeyEntry>,
+)
+
 internal data class VaultV2VisibleSnapshotKey(
 	val storageSelection: UnifiedCategoryFilterSelection,
 	val displayedContentTypes: Set<PasswordPageContentType>,
@@ -854,29 +863,36 @@ private fun <T> rememberVaultV2AsyncComputed(
 
 @Composable
 private fun <T> rememberVaultV2AsyncComputedValue(
-	vararg keys: Any?,
+	computationKey: Any?,
 	initialValue: T,
 	initialHasComputed: Boolean = false,
 	compute: suspend () -> T,
 ): VaultV2AsyncComputedValue<T> {
+	val notComputed = remember { Any() }
 	var value by remember { mutableStateOf(initialValue) }
 	var isComputing by remember { mutableStateOf(!initialHasComputed) }
-	var hasComputed by remember { mutableStateOf(initialHasComputed) }
+	var computedKey by remember {
+		mutableStateOf(if (initialHasComputed) computationKey else notComputed)
+	}
 	val latestCompute by rememberUpdatedState(compute)
 
-	LaunchedEffect(*keys) {
+	LaunchedEffect(computationKey) {
+		if (computedKey == computationKey) {
+			isComputing = false
+			return@LaunchedEffect
+		}
 		isComputing = true
 		value = withContext(Dispatchers.Default) {
 			latestCompute()
 		}
-		hasComputed = true
+		computedKey = computationKey
 		isComputing = false
 	}
 
 	return VaultV2AsyncComputedValue(
 		value = value,
 		isComputing = isComputing,
-		hasComputed = hasComputed,
+		hasComputed = computedKey == computationKey,
 	)
 }
 
@@ -1943,19 +1959,32 @@ fun VaultV2Pane(
 			showOnlyLocalData = showOnlyLocalData,
 		)
 	}
-	val computedSnapshotSeed = remember(computedSnapshotKey) {
+	val computedSources = remember(
+		sourcePasswordEntries,
+		totpItems,
+		bankCardItems,
+		documentItems,
+		noteItems,
+		passkeyItems,
+	) {
+		VaultV2ComputedSources(
+			passwords = sourcePasswordEntries,
+			totpItems = totpItems,
+			bankCardItems = bankCardItems,
+			documentItems = documentItems,
+			noteItems = noteItems,
+			passkeyItems = passkeyItems,
+		)
+	}
+	val computedSnapshotSeed = remember(computedSnapshotKey, computedSources) {
 		state.computedListSnapshots.seed(
 			key = computedSnapshotKey,
+			source = computedSources,
 			fallback = VaultV2ComputedListState(),
 		)
 	}
 	val computedListStateAsync = rememberVaultV2AsyncComputedValue(
-		visiblePasswordEntries,
-		visibleTotpItems,
-		visibleBankCardItems,
-		visibleDocumentItems,
-		visibleNoteItems,
-		visiblePasskeyItems,
+		computationKey = computedSnapshotKey to computedSources,
 		initialValue = computedSnapshotSeed.value,
 		initialHasComputed = computedSnapshotSeed.hasSnapshot,
 	) {
@@ -2140,12 +2169,14 @@ fun VaultV2Pane(
 	}
 	LaunchedEffect(
 		computedSnapshotKey,
+		computedSources,
 		computedListStateAsync.value,
 		computedListStateAsync.hasComputed,
 	) {
 		if (computedListStateAsync.hasComputed) {
 			state.computedListSnapshots.update(
 				key = computedSnapshotKey,
+				source = computedSources,
 				value = computedListStateAsync.value,
 			)
 		}

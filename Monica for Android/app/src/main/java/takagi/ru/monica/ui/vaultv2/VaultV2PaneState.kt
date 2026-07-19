@@ -30,7 +30,11 @@ class VaultV2PaneState internal constructor(
     archiveReturnStorageFilterSecondaryKey: String?,
     retainedState: VaultV2RetainedState = VaultV2RetainedState(),
 ) {
-    internal val computedListSnapshots = retainedState.computedListSnapshots
+    internal val computedListSnapshots: VaultV2RetainedSourceSnapshotStore<
+        VaultV2ComputedSnapshotKey,
+        VaultV2ComputedSources,
+        VaultV2ComputedListState
+    > = retainedState.computedListSnapshots
     internal val visibleListSnapshots = retainedState.visibleListSnapshots
     private val retainedListState = retainedState
 

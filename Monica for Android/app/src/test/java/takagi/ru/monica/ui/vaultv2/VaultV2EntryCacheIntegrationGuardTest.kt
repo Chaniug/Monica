@@ -10,9 +10,13 @@ class VaultV2EntryCacheIntegrationGuardTest {
     @Test
     fun `pane seeds and updates both retained list stages`() {
         val pane = source("ui/vaultv2/VaultV2Pane.kt")
+        val paneState = source("ui/vaultv2/VaultV2PaneState.kt")
+        val retainedState = source("ui/vaultv2/VaultV2RetainedStateViewModel.kt")
 
         assertTrue(pane.contains("state.computedListSnapshots.seed("))
         assertTrue(pane.contains("state.computedListSnapshots.update("))
+        assertTrue(pane.contains("source = computedSources"))
+        assertTrue(pane.contains("computationKey = computedSnapshotKey to computedSources"))
         assertTrue(pane.contains("state.visibleListSnapshots.seed("))
         assertTrue(pane.contains("state.visibleListSnapshots.update("))
         assertTrue(pane.contains("initialHasComputed = computedSnapshotSeed.hasSnapshot"))
@@ -31,6 +35,8 @@ class VaultV2EntryCacheIntegrationGuardTest {
         assertTrue(pane.contains("hasRetainedSnapshot = visibleSnapshotSeed.hasSnapshot"))
         assertTrue(pane.contains("value = visibleListState"))
         assertTrue(pane.contains("val allItemsForVisibleList = remember("))
+        assertTrue(paneState.contains("VaultV2RetainedSourceSnapshotStore<"))
+        assertTrue(retainedState.contains("computedListSnapshots: VaultV2RetainedSourceSnapshotStore<"))
     }
 
     @Test

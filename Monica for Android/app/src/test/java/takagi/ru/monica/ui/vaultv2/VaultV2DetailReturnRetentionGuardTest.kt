@@ -23,9 +23,10 @@ class VaultV2DetailReturnRetentionGuardTest {
         assertTrue(paneState.contains("retainedState = retainedState"))
         val pane = source("ui/vaultv2/VaultV2Pane.kt")
         assertTrue(
-            pane.contains(
-                "var selectedAggregateTypes by rememberSaveable(\n\t\tstateSaver = passwordPageContentTypeSetSaver"
-            )
+            Regex(
+                "var\\s+selectedAggregateTypes\\s+by\\s+rememberSaveable\\(\\s*" +
+                    "stateSaver\\s*=\\s*passwordPageContentTypeSetSaver"
+            ).containsMatchIn(pane)
         )
     }
 
@@ -36,7 +37,15 @@ class VaultV2DetailReturnRetentionGuardTest {
             isArchiveView = false,
             showOnlyLocalData = false,
         )
-        retainedState.computedListSnapshots.update(key, VaultV2ComputedListState())
+        val source = VaultV2ComputedSources(
+            passwords = emptyList(),
+            totpItems = emptyList(),
+            bankCardItems = emptyList(),
+            documentItems = emptyList(),
+            noteItems = emptyList(),
+            passkeyItems = emptyList(),
+        )
+        retainedState.computedListSnapshots.update(key, source, VaultV2ComputedListState())
 
         val restored = requireNotNull(
             vaultV2PaneStateSaver(retainedState).restore(
@@ -48,9 +57,13 @@ class VaultV2DetailReturnRetentionGuardTest {
             )
         )
 
-        assertTrue(restored.computedListSnapshots.seed(key, VaultV2ComputedListState()).hasSnapshot)
+        assertTrue(
+            restored.computedListSnapshots.seed(key, source, VaultV2ComputedListState()).hasSnapshot
+        )
         restored.clearRetainedListSnapshots()
-        assertFalse(restored.computedListSnapshots.seed(key, VaultV2ComputedListState()).hasSnapshot)
+        assertFalse(
+            restored.computedListSnapshots.seed(key, source, VaultV2ComputedListState()).hasSnapshot
+        )
     }
 
     @Test

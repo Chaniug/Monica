@@ -14,8 +14,16 @@ internal data class VaultV2ManualStackMetadata(
 )
 
 internal class VaultV2RetainedState {
-    val computedListSnapshots =
-        VaultV2RetainedSnapshotStore<VaultV2ComputedSnapshotKey, VaultV2ComputedListState>()
+    val computedListSnapshots: VaultV2RetainedSourceSnapshotStore<
+        VaultV2ComputedSnapshotKey,
+        VaultV2ComputedSources,
+        VaultV2ComputedListState
+    > =
+        VaultV2RetainedSourceSnapshotStore<
+            VaultV2ComputedSnapshotKey,
+            VaultV2ComputedSources,
+            VaultV2ComputedListState
+        >()
     val visibleListSnapshots =
         VaultV2RetainedSnapshotStore<VaultV2VisibleSnapshotKey, VaultV2VisibleListState>(
             maxEntries = 8
