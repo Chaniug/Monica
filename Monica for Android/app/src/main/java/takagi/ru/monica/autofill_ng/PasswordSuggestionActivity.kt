@@ -13,8 +13,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -28,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -129,8 +132,10 @@ class PasswordSuggestionActivity : ComponentActivity() {
                     val datasetBuilder = android.service.autofill.Dataset.Builder()
                     
                     // 创建简单的 presentation (不会显示,仅用于满足 API 要求)
-                    val presentation = android.widget.RemoteViews(this@PasswordSuggestionActivity.packageName, R.layout.autofill_suggestion_item)
-                    presentation.setTextViewText(R.id.title, getString(R.string.password_suggestion_accept))
+                    val presentation = android.widget.RemoteViews(this@PasswordSuggestionActivity.packageName, R.layout.autofill_dataset_card)
+                    presentation.setTextViewText(R.id.text_title, getString(R.string.password_suggestion_accept))
+                    presentation.setTextViewText(R.id.text_username, getString(R.string.password_suggestion_title))
+                    presentation.setImageViewResource(R.id.icon_app, R.drawable.ic_key_24dp)
                     
                     // 为每个密码字段设置生成的密码值
                     passwordFieldIds!!.forEach { autofillId ->
@@ -214,18 +219,25 @@ fun PasswordSuggestionDialog(
         } ?: packageName.substringAfterLast(".").replaceFirstChar { it.uppercase() }
     }
     
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .widthIn(max = 420.dp)
                 .wrapContentHeight(),
             shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 640.dp)
+                    .verticalScroll(rememberScrollState())
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -311,14 +323,8 @@ fun PasswordSuggestionDialog(
                     
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(
-                                width = 2.dp,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -412,7 +418,7 @@ fun PasswordSuggestionDialog(
                 // 说明文字
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -422,13 +428,13 @@ fun PasswordSuggestionDialog(
                         Icon(
                             imageVector = Icons.Default.Info,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = stringResource(R.string.autofill_save_for_next_fill),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2
                         )
                     }
@@ -473,7 +479,8 @@ fun PasswordSuggestionDialog(
                         Text(
                             text = stringResource(R.string.password_suggestion_accept),
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
                         )
                     }
                 }

@@ -9,7 +9,7 @@ import org.junit.Test
 class UpdateCheckerTest {
     @Test
     fun compareVersionTags_detectsNewerRelease() {
-        assertTrue(UpdateChecker.compareVersionTags("v1.0.295", "1.0.294") > 0)
+        assertTrue(UpdateChecker.compareVersionTags("v1.0.296", "1.0.294") > 0)
     }
 
     @Test

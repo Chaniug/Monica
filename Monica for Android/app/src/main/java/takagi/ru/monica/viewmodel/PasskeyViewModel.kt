@@ -96,9 +96,10 @@ class PasskeyViewModel(
         } else {
             passkeys.filter { passkey ->
                 passkey.rpId.contains(query, ignoreCase = true) ||
-                passkey.rpName.contains(query, ignoreCase = true) ||
-                passkey.userName.contains(query, ignoreCase = true) ||
-                passkey.userDisplayName.contains(query, ignoreCase = true)
+                    passkey.rpName.contains(query, ignoreCase = true) ||
+                    passkey.userName.contains(query, ignoreCase = true) ||
+                    passkey.userDisplayName.contains(query, ignoreCase = true) ||
+                    passkey.notes.contains(query, ignoreCase = true)
             }
         }
     }.stateIn(

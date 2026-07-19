@@ -9,14 +9,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -66,6 +69,8 @@ fun PasskeyDetailScreen(
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
     var passkeyToBind by remember { mutableStateOf<PasskeyEntry?>(null) }
+    var showRemarkDialog by remember { mutableStateOf(false) }
+    var remarkInput by remember { mutableStateOf("") }
     val passkey = passkeys.firstOrNull { it.id == recordId }
 
     Scaffold(
@@ -76,7 +81,7 @@ fun PasskeyDetailScreen(
                 title = {
                     Text(
                         passkey?.let { currentPasskey ->
-                            currentPasskey.rpName.ifBlank { currentPasskey.rpId }
+                            currentPasskey.displayTitle()
                         } ?: stringResource(R.string.passkey_title)
                     )
                 },
@@ -86,6 +91,21 @@ fun PasskeyDetailScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
+                    }
+                },
+                actions = {
+                    if (passkey != null) {
+                        IconButton(
+                            onClick = {
+                                remarkInput = passkey.notes
+                                showRemarkDialog = true
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = stringResource(R.string.passkey_edit_remark)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -202,6 +222,10 @@ fun PasskeyDetailScreen(
                     onNavigateBack()
                 }
             },
+            onEditRemark = {
+                remarkInput = passkey.notes
+                showRemarkDialog = true
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
@@ -254,6 +278,40 @@ fun PasskeyDetailScreen(
             }
         }
     )
+
+    if (showRemarkDialog && passkey != null) {
+        AlertDialog(
+            onDismissRequest = { showRemarkDialog = false },
+            icon = { Icon(Icons.Default.Edit, contentDescription = null) },
+            title = { Text(stringResource(R.string.passkey_edit_remark)) },
+            text = {
+                takagi.ru.monica.ui.components.OutlinedTextField(
+                    value = remarkInput,
+                    onValueChange = { remarkInput = it.take(80) },
+                    label = { Text(stringResource(R.string.passkey_remark)) },
+                    supportingText = { Text(stringResource(R.string.passkey_remark_hint)) },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            passkeyViewModel.updatePasskey(passkey.copy(notes = remarkInput.trim()))
+                            showRemarkDialog = false
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemarkDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 }
 
 private sealed interface PasskeyBindResult {

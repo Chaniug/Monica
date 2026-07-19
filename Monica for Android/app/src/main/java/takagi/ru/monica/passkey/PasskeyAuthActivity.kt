@@ -907,7 +907,7 @@ private fun PasskeyAuthScreen(
 
                     PasskeyAuthInfoRow(
                         icon = Icons.Default.Person,
-                        title = passkey.userDisplayName.ifBlank { passkey.userName },
+        title = passkey.displayTitle(),
                         subtitle = if (
                             passkey.userName != passkey.userDisplayName &&
                             passkey.userDisplayName.isNotBlank()

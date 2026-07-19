@@ -166,7 +166,7 @@
     <string name="password_suggestion">强密码建议</string>
     <string name="password_suggestion_title">生成强密码</string>
     <string name="password_suggestion_subtitle">Monica 将为您创建一个安全的强密码</string>
-    <string name="password_suggestion_accept">使用此密码</string>
+    <string name="password_suggestion_accept">使用</string>
     <string name="password_suggestion_decline">不了,谢谢</string>
     <string name="password_suggestion_copied">密码已复制</string>
     
@@ -1310,7 +1310,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.295</string>
+    <string name="settings_version_number">V1.0.296</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -3977,4 +3977,18 @@
     <string name="extensions_steam_settings">Steam</string>
     <string name="steam_mini_profile_background_title">迷你个人资料背景</string>
     <string name="steam_mini_profile_background_description">在令牌与账号详情卡片显示 Steam 迷你个人资料背景。动态背景仅在可见时播放，媒体缓存最多占用 64 MB。</string>
+    <string name="passkey_remark">备注</string>
+    <string name="passkey_add_remark">添加备注</string>
+    <string name="passkey_edit_remark">编辑备注</string>
+    <string name="passkey_remark_hint">备注会显示在 Monica 和系统通行密钥选择器中，清空后恢复原名称。</string>
+    <string name="passkey_detail_account">账号信息</string>
+    <string name="passkey_detail_security">安全与存储</string>
+    <string name="passkey_detail_activity">使用记录</string>
+    <string name="passkey_detail_technical">技术信息</string>
+    <string name="passkey_detail_sync_status">同步状态</string>
+    <string name="passkey_detail_storage">存储格式</string>
+    <string name="passkey_detail_algorithm">算法</string>
+    <string name="passkey_detail_transports">传输方式</string>
+    <string name="passkey_detail_user_verification">用户验证</string>
+    <string name="passkey_binding_description">绑定后可将通行密钥与对应账号放在一起管理。</string>
 </resources>

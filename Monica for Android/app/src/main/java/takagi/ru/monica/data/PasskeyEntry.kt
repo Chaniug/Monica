@@ -218,4 +218,11 @@ data class PasskeyEntry(
     fun isKeePassCompatible(): Boolean = passkeyMode == MODE_KEEPASS_COMPAT
 
     fun hasPersistentId(): Boolean = id > 0L
+
+    /** Monica 展示名称：用户备注优先，不改写 WebAuthn 原始名称。 */
+    fun displayTitle(): String = notes.trim()
+        .ifBlank { userDisplayName.trim() }
+        .ifBlank { userName.trim() }
+        .ifBlank { rpName.trim() }
+        .ifBlank { rpId.trim() }
 }

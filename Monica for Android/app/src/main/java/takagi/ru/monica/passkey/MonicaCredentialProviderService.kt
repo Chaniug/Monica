@@ -309,7 +309,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
                 
                 val entry = PublicKeyCredentialEntry.Builder(
                     this,
-                    passkey.userDisplayName.ifBlank { passkey.userName },
+                passkey.displayTitle(),
                     pendingIntent,
                     option
                 )

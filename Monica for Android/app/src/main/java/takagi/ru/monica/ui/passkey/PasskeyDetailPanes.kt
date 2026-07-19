@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
@@ -31,20 +33,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
+import takagi.ru.monica.ui.icons.UnmatchedIconFallback
+import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import java.text.DateFormat
 import java.util.Date
 
@@ -122,6 +129,7 @@ internal fun PasskeyDetailPane(
     onOpenBoundPassword: (() -> Unit)?,
     onUnbindPassword: (() -> Unit)?,
     onDeletePasskey: () -> Unit,
+    onEditRemark: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -134,8 +142,8 @@ internal fun PasskeyDetailPane(
     val transports = remember(passkey.transports) {
         passkey.getTransportsList().joinToString(", ").ifBlank { "-" }
     }
-    val displayTitle = remember(passkey.rpName, passkey.rpId) {
-        passkey.rpName.ifBlank { passkey.rpId }
+    val displayTitle = remember(passkey.notes, passkey.userDisplayName, passkey.userName, passkey.rpName, passkey.rpId) {
+        passkey.displayTitle()
     }
     val bindingLabel = boundPasswordTitle ?: stringResource(R.string.common_account_not_configured)
 
@@ -149,71 +157,12 @@ internal fun PasskeyDetailPane(
         PasskeyHeroCard(
             passkey = passkey,
             title = displayTitle,
-            hasBoundPassword = boundPasswordTitle != null
-        )
-
-        PasskeyBindingCard(
-            boundPasswordTitle = bindingLabel,
             hasBoundPassword = boundPasswordTitle != null,
-            onBindPassword = onBindPassword,
-            onChangeBinding = onChangeBinding,
-            onOpenBoundPassword = onOpenBoundPassword,
-            onUnbindPassword = onUnbindPassword
+            onEditRemark = onEditRemark
         )
 
         PasskeySectionCard(
-            title = "Account",
-            icon = Icons.Default.Person
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                InfoField(
-                    label = stringResource(R.string.passkey_detail_user),
-                    value = passkey.userDisplayName.ifBlank { "-" }
-                )
-                InfoField(
-                    label = stringResource(R.string.passkey_detail_username),
-                    value = passkey.userName.ifBlank { "-" }
-                )
-                InfoFieldWithCopy(
-                    label = "User ID",
-                    value = passkey.userId.ifBlank { "-" },
-                    context = context
-                )
-            }
-        }
-
-        PasskeySectionCard(
-            title = stringResource(R.string.security),
-            icon = Icons.Default.Security
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                InfoField(label = "Algorithm", value = passkey.getAlgorithmName())
-                InfoField(label = "Transports", value = transports)
-                InfoField(
-                    label = stringResource(R.string.passkey_discoverable),
-                    value = if (passkey.isDiscoverable) stringResource(R.string.yes) else stringResource(R.string.no)
-                )
-                InfoField(
-                    label = "User verification",
-                    value = if (passkey.isUserVerificationRequired) stringResource(R.string.yes) else stringResource(R.string.no)
-                )
-                InfoField(
-                    label = "Backed up",
-                    value = if (passkey.isBackedUp) stringResource(R.string.yes) else stringResource(R.string.no)
-                )
-                InfoField(
-                    label = "Sync status",
-                    value = passkey.syncStatus.toReadableSyncLabel()
-                )
-                InfoField(
-                    label = "Storage mode",
-                    value = passkey.passkeyMode.toReadableModeLabel()
-                )
-            }
-        }
-
-        PasskeySectionCard(
-            title = "Activity",
+            title = stringResource(R.string.passkey_detail_activity),
             icon = Icons.Default.AccessTime
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -229,19 +178,51 @@ internal fun PasskeyDetailPane(
                     label = stringResource(R.string.passkey_detail_use_count),
                     value = passkey.useCount.toString()
                 )
+            }
+        }
+
+        PasskeyBindingCard(
+            boundPasswordTitle = bindingLabel,
+            hasBoundPassword = boundPasswordTitle != null,
+            onBindPassword = onBindPassword,
+            onChangeBinding = onChangeBinding,
+            onOpenBoundPassword = onOpenBoundPassword,
+            onUnbindPassword = onUnbindPassword
+        )
+
+        PasskeySectionCard(
+            title = stringResource(R.string.passkey_detail_security),
+            icon = Icons.Default.Security
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 InfoField(
-                    label = "Sign count",
-                    value = passkey.signCount.toString()
+                    label = stringResource(R.string.passkey_discoverable),
+                    value = if (passkey.isDiscoverable) stringResource(R.string.yes) else stringResource(R.string.no)
+                )
+                InfoField(
+                    label = stringResource(R.string.passkey_detail_user_verification),
+                    value = if (passkey.isUserVerificationRequired) stringResource(R.string.yes) else stringResource(R.string.no)
+                )
+                InfoField(
+                    label = stringResource(R.string.passkey_detail_storage),
+                    value = passkey.passkeyMode.toReadableModeLabel()
                 )
             }
         }
 
         PasskeySectionCard(
-            title = "Technical",
+            title = stringResource(R.string.passkey_detail_technical),
             icon = Icons.Default.Info
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 InfoField(label = "RP ID", value = passkey.rpId)
+                InfoField(label = stringResource(R.string.passkey_detail_algorithm), value = passkey.getAlgorithmName())
+                InfoField(label = stringResource(R.string.passkey_detail_transports), value = transports)
+                InfoFieldWithCopy(
+                    label = "User ID",
+                    value = passkey.userId.ifBlank { "-" },
+                    context = context
+                )
                 InfoFieldWithCopy(
                     label = "Credential ID",
                     value = passkey.credentialId,
@@ -264,19 +245,6 @@ internal fun PasskeyDetailPane(
                         }
                     )
                 }
-            }
-        }
-
-        if (passkey.notes.isNotBlank()) {
-            PasskeySectionCard(
-                title = stringResource(R.string.notes),
-                icon = Icons.AutoMirrored.Filled.Notes
-            ) {
-                Text(
-                    text = passkey.notes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
             }
         }
 
@@ -336,8 +304,30 @@ internal fun PasskeyDetailPane(
 private fun PasskeyHeroCard(
     passkey: PasskeyEntry,
     title: String,
-    hasBoundPassword: Boolean
+    hasBoundPassword: Boolean,
+    onEditRemark: (() -> Unit)?
 ) {
+    val website = remember(passkey.rpId) {
+        passkey.rpId.trim().let { rpId ->
+            when {
+                rpId.isBlank() -> ""
+                "://" in rpId -> rpId
+                else -> "https://$rpId"
+            }
+        }
+    }
+    val simpleIcon = rememberAutoMatchedSimpleIcon(
+        website = website,
+        title = passkey.rpName,
+        appPackageName = null,
+        tintColor = MaterialTheme.colorScheme.primary,
+        enabled = true
+    )
+    val favicon = rememberFavicon(
+        url = website,
+        enabled = website.isNotBlank() && simpleIcon.resolved && simpleIcon.slug == null
+    )
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
@@ -348,58 +338,72 @@ private fun PasskeyHeroCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .padding(14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Default.VpnKey,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+                    when {
+                        simpleIcon.bitmap != null -> Image(
+                            bitmap = simpleIcon.bitmap,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        favicon != null -> Image(
+                            bitmap = favicon,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        else -> UnmatchedIconFallback(
+                            strategy = takagi.ru.monica.data.UnmatchedIconHandlingStrategy.WEBSITE_OR_TITLE_INITIAL,
+                            primaryText = passkey.rpId,
+                            secondaryText = passkey.rpName,
+                            defaultIcon = Icons.Default.VpnKey,
+                            iconSize = 42.dp
+                        )
+                    }
                 }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Default.Language,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = passkey.rpId,
+                        text = passkey.userDisplayName.ifBlank { passkey.userName },
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = passkey.rpName.ifBlank { passkey.rpId },
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                PasskeyMetaPill(label = if (hasBoundPassword) "Bound" else "Unbound")
-                PasskeyMetaPill(label = passkey.syncStatus.toReadableSyncLabel())
-                if (passkey.isDiscoverable) {
-                    PasskeyMetaPill(label = stringResource(R.string.passkey_discoverable))
+                Text(
+                    text = passkey.rpId,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (onEditRemark != null) {
+                    TextButton(onClick = onEditRemark) {
+                        Text(stringResource(R.string.passkey_edit_remark))
+                    }
                 }
             }
         }
@@ -419,7 +423,7 @@ private fun PasskeyBindingCard(
         modifier = Modifier.fillMaxWidth(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     ) {
         Column(
@@ -444,7 +448,7 @@ private fun PasskeyBindingCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Passkeys cannot be edited, so linked password actions live here.",
+                        text = stringResource(R.string.passkey_binding_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

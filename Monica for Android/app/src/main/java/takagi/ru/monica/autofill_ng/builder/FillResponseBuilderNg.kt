@@ -339,6 +339,13 @@ class FillResponseBuilderNg(
     private fun buildStrongPasswordSuggestionDataset(
         request: AutofillRequest.Fillable,
     ): android.service.autofill.Dataset? {
+        val passwordHints = request.partition.views
+            .filterIsInstance<AutofillView.Login.Password>()
+            .map { it.data.hint }
+        if (!StrongPasswordSuggestionPolicy.shouldOffer(passwordHints)) {
+            return null
+        }
+
         val newPasswordIds = request.partition.views
             .filterIsInstance<AutofillView.Login.Password>()
             .filter { it.data.hint == FieldHint.NEW_PASSWORD }

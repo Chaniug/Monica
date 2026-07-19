@@ -235,7 +235,8 @@ fun PasskeyListScreen(
                 passkey.rpId.contains(searchQuery, ignoreCase = true) ||
                     passkey.rpName.contains(searchQuery, ignoreCase = true) ||
                     passkey.userName.contains(searchQuery, ignoreCase = true) ||
-                    passkey.userDisplayName.contains(searchQuery, ignoreCase = true)
+                    passkey.userDisplayName.contains(searchQuery, ignoreCase = true) ||
+                    passkey.notes.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -2037,7 +2038,6 @@ private fun PasskeyListItem(
                             if (selectionMode) {
                                 onToggleSelect()
                             } else {
-                                expanded = !expanded
                                 onClick()
                             }
                         },
@@ -2124,7 +2124,7 @@ private fun PasskeyListItem(
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = passkey.userDisplayName.ifBlank { passkey.userName },
+                            text = passkey.displayTitle(),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -2156,12 +2156,8 @@ private fun PasskeyListItem(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
-                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (expanded) {
-                                stringResource(R.string.collapse)
-                            } else {
-                                stringResource(R.string.expand)
-                            },
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = stringResource(R.string.passkey_view_details),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

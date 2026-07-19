@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.passkey.managementRecordIdOrNull
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.ListPane
 import takagi.ru.monica.ui.screens.PasskeyListScreen
@@ -21,6 +22,7 @@ internal fun PasskeyPane(
     passkeyViewModel: PasskeyViewModel,
     passwordViewModel: PasswordViewModel,
     onNavigateToPasswordDetail: (Long) -> Unit,
+    onNavigateToPasskeyDetail: (Long) -> Unit,
     onPasskeyOpen: (PasskeyEntry) -> Unit,
     selectedPasskey: PasskeyEntry?,
     passkeyTotalCount: Int,
@@ -37,7 +39,9 @@ internal fun PasskeyPane(
             viewModel = passkeyViewModel,
             passwordViewModel = passwordViewModel,
             onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-            onPasskeyClick = {},
+            onPasskeyClick = { passkey ->
+                passkey.managementRecordIdOrNull()?.let(onNavigateToPasskeyDetail)
+            },
             showStandaloneSettingsEntry = showStandaloneSettingsEntry,
             onOpenStandaloneSettings = onOpenStandaloneSettings
         )

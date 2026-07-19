@@ -282,10 +282,10 @@ object AutofillDatasetBuilder {
         }
 
         fun createPasswordSuggestion(context: Context): RemoteViews {
-            return RemoteViews(context.packageName, R.layout.autofill_suggestion_item).apply {
-                setTextViewText(R.id.title, context.getString(R.string.password_suggestion_title))
-                setTextViewText(R.id.subtitle, context.getString(R.string.password_suggestion_subtitle))
-                setImageViewResource(R.id.icon, R.drawable.ic_key_24dp)
+            return RemoteViews(context.packageName, R.layout.autofill_dataset_card).apply {
+                setTextViewText(R.id.text_title, context.getString(R.string.password_suggestion_title))
+                setTextViewText(R.id.text_username, context.getString(R.string.password_suggestion_subtitle))
+                setImageViewResource(R.id.icon_app, R.drawable.ic_key_24dp)
             }
         }
     }

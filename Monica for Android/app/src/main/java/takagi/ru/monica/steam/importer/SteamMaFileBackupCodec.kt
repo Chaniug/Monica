@@ -109,9 +109,15 @@ object SteamMaFileBackupCodec {
     }
 
     fun fileName(account: SteamAccount): String {
-        val rawName = account.visibleSteamId
-            .ifBlank { account.accountName }
-            .ifBlank { account.displayName }
+        val remarkName = account.displayName.trim().takeIf {
+            it.isNotBlank() &&
+                it != account.accountName.trim() &&
+                it != account.steamId.trim()
+        }
+        val rawName = remarkName
+            .orEmpty()
+            .ifBlank { account.accountName.trim() }
+            .ifBlank { account.visibleSteamId }
             .ifBlank { "steam_${account.id}" }
         val safeName = rawName.filter { it.isLetterOrDigit() || it == '_' || it == '-' }
             .ifBlank { "steam_${account.id}" }

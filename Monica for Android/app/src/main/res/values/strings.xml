@@ -133,7 +133,7 @@
     <string name="password_suggestion">Strong Password Suggestion</string>
     <string name="password_suggestion_title">Generate Strong Password</string>
     <string name="password_suggestion_subtitle">Monica will create a secure password for you</string>
-    <string name="password_suggestion_accept">Use This Password</string>
+    <string name="password_suggestion_accept">Use</string>
     <string name="password_suggestion_decline">No, Thanks</string>
     <string name="password_suggestion_copied">Password copied to clipboard</string>
     
@@ -1345,7 +1345,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.295</string>
+    <string name="settings_version_number">V1.0.296</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -4147,4 +4147,18 @@
     <string name="extensions_steam_settings">Steam</string>
     <string name="steam_mini_profile_background_title">Mini profile backgrounds</string>
     <string name="steam_mini_profile_background_description">Show the Steam mini profile background on token and account detail cards. Dynamic backgrounds play only while visible; cached media is limited to 64 MB.</string>
+    <string name="passkey_remark">Remark</string>
+    <string name="passkey_add_remark">Add remark</string>
+    <string name="passkey_edit_remark">Edit remark</string>
+    <string name="passkey_remark_hint">Shown in Monica and the system passkey selector. Clear it to restore the original name.</string>
+    <string name="passkey_detail_account">Account</string>
+    <string name="passkey_detail_security">Security and storage</string>
+    <string name="passkey_detail_activity">Activity</string>
+    <string name="passkey_detail_technical">Technical details</string>
+    <string name="passkey_detail_sync_status">Sync status</string>
+    <string name="passkey_detail_storage">Storage format</string>
+    <string name="passkey_detail_algorithm">Algorithm</string>
+    <string name="passkey_detail_transports">Transports</string>
+    <string name="passkey_detail_user_verification">User verification</string>
+    <string name="passkey_binding_description">Linking keeps the passkey and its related account together.</string>
 </resources>

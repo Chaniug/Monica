@@ -302,6 +302,36 @@ class SteamMaFileParserTest {
     }
 
     @Test
+    fun usesRemarkAsExportFileNameWhenPresent() {
+        val account = exportFileNameAccount(
+            accountName = "steam_login_name",
+            displayName = "主账号 备用/测试"
+        )
+
+        assertEquals("主账号备用测试.maFile", SteamMaFileBackupCodec.fileName(account))
+    }
+
+    @Test
+    fun fallsBackToAccountNameWhenRemarkIsMissing() {
+        val account = exportFileNameAccount(
+            accountName = "steam_login_name",
+            displayName = "steam_login_name"
+        )
+
+        assertEquals("steam_login_name.maFile", SteamMaFileBackupCodec.fileName(account))
+    }
+
+    @Test
+    fun steamIdDisplayNameIsNotTreatedAsRemark() {
+        val account = exportFileNameAccount(
+            accountName = "steam_login_name",
+            displayName = "76561198000000003"
+        )
+
+        assertEquals("steam_login_name.maFile", SteamMaFileBackupCodec.fileName(account))
+    }
+
+    @Test
     fun encodesCodeOnlyAccountWithoutFakeSteamId() {
         val account = SteamAccount(
             id = 9L,
@@ -334,6 +364,29 @@ class SteamMaFileParserTest {
         assertFalse(account.canUseConfirmations)
         assertFalse(account.canApproveLogins)
     }
+
+    private fun exportFileNameAccount(
+        accountName: String,
+        displayName: String,
+    ) = SteamAccount(
+        id = 10L,
+        steamId = "76561198000000003",
+        accountName = accountName,
+        displayName = displayName,
+        deviceId = "android:test-device",
+        sharedSecret = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=",
+        identitySecret = null,
+        revocationCode = null,
+        tokenGid = null,
+        accessToken = null,
+        refreshToken = null,
+        steamLoginSecure = null,
+        rawSteamGuardJson = "{}",
+        selected = false,
+        sortOrder = 0,
+        createdAt = 1L,
+        updatedAt = 2L,
+    )
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
