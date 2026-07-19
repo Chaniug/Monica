@@ -3,7 +3,6 @@ package takagi.ru.monica.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -35,8 +34,13 @@ class BillingAddressViewModel(
 
     private val safeLogTitle = "账单地址"
 
-    val allBillingAddresses: Flow<List<SecureItem>> =
+    val allBillingAddresses: StateFlow<List<SecureItem>> =
         repository.getItemsByType(ItemType.BILLING_ADDRESS)
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = emptyList()
+            )
 
     val parsedBillingAddresses: StateFlow<List<ParsedBillingAddressItem>> = allBillingAddresses
         .map { items ->

@@ -92,6 +92,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
@@ -134,6 +136,7 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.PasswordListCategoryChipMenu
+import takagi.ru.monica.ui.passwordPageContentTypeSetSaver
 import takagi.ru.monica.ui.buildCategoryMenuQuickFilterBindings
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
@@ -228,7 +231,7 @@ internal data class VaultV2Item(
 	val subtitle: String,
 	val isFavorite: Boolean,
 	val sortKey: String,
-	val searchText: String,
+	val searchableValues: List<String>,
 	val passwordEntry: PasswordEntry? = null,
 	val totpItem: SecureItem? = null,
 	val secureItem: SecureItem? = null,
@@ -323,6 +326,36 @@ internal data class VaultV2VisibleSnapshotKey(
 	val isArchiveView: Boolean,
 )
 
+private data class VaultV2SecondaryLists(
+	val totp: List<VaultV2Item>,
+	val notes: List<VaultV2Item>,
+	val passkeys: List<VaultV2Item>,
+	val bankCards: List<VaultV2Item>,
+	val documents: List<VaultV2Item>,
+)
+
+internal data class VaultV2VisibleListConfig(
+	val storageSelection: UnifiedCategoryFilterSelection,
+	val displayedContentTypes: Set<PasswordPageContentType>,
+	val configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
+	val quickFilterFavorite: Boolean,
+	val quickFilter2fa: Boolean,
+	val quickFilterNotes: Boolean,
+	val quickFilterPasskey: Boolean,
+	val quickFilterBoundNote: Boolean,
+	val quickFilterAttachments: Boolean,
+	val activeAttachmentParentIds: Set<Long>,
+	val quickFilterUncategorized: Boolean,
+	val quickFilterLocalOnly: Boolean,
+	val quickFilterManualStackOnly: Boolean,
+	val quickFilterNeverStack: Boolean,
+	val quickFilterUnstacked: Boolean,
+	val manualStackGroupByEntryId: Map<Long, String>,
+	val noStackEntryIds: Set<Long>,
+	val normalizedQuery: String,
+	val isArchiveView: Boolean,
+)
+
 private const val VAULT_V2_FAST_SCROLL_LOG_TAG = "VaultV2FastScroll"
 private const val VAULT_V2_EMPTY_STATE_DEBOUNCE_MS = 220L
 private const val VAULT_V2_CATEGORY_FILTER_SCOPE = "vault_v2"
@@ -338,16 +371,12 @@ internal fun shouldShowVaultV2InitialLoading(
 	hasRetainedSnapshot: Boolean,
 	passwordEntriesReady: Boolean,
 	computedListIsComputing: Boolean,
-	visibleListIsComputing: Boolean,
-	visibleListHasComputed: Boolean,
 	hasPendingItems: Boolean,
 ): Boolean {
 	if (!queryIsBlank || hasVisibleSections || hasRetainedSnapshot) return false
 
 	return !passwordEntriesReady ||
 		computedListIsComputing ||
-		visibleListIsComputing ||
-		!visibleListHasComputed ||
 		hasPendingItems
 }
 
@@ -1203,6 +1232,64 @@ private fun VaultV2Item.matchesUncategorizedQuickFilter(
 	}
 }
 
+internal fun buildVaultV2VisibleListState(
+	allItems: List<VaultV2Item>,
+	config: VaultV2VisibleListConfig,
+): VaultV2VisibleListState {
+	val filteredItems = allItems.asSequence().filter { item ->
+		config.isArchiveView || item.matchesStorageFilter(config.storageSelection)
+	}.filter { item ->
+		if (!item.matchesDisplayedTypes(config.displayedContentTypes)) return@filter false
+		if (
+			!config.isArchiveView &&
+			!item.matchesPasswordQuickFilters(
+				configuredQuickFilterItems = config.configuredQuickFilterItems,
+				storageSelection = config.storageSelection,
+				quickFilterFavorite = config.quickFilterFavorite,
+				quickFilter2fa = config.quickFilter2fa,
+				quickFilterNotes = config.quickFilterNotes,
+				quickFilterPasskey = config.quickFilterPasskey,
+				quickFilterBoundNote = config.quickFilterBoundNote,
+				quickFilterAttachments = config.quickFilterAttachments,
+				activeAttachmentParentIds = config.activeAttachmentParentIds,
+				quickFilterUncategorized = config.quickFilterUncategorized,
+				quickFilterLocalOnly = config.quickFilterLocalOnly,
+				quickFilterManualStackOnly = config.quickFilterManualStackOnly,
+				quickFilterNeverStack = config.quickFilterNeverStack,
+				quickFilterUnstacked = config.quickFilterUnstacked,
+				manualStackGroupByEntryId = config.manualStackGroupByEntryId,
+				noStackEntryIds = config.noStackEntryIds,
+			)
+		) return@filter false
+
+		config.normalizedQuery.isBlank() || item.searchableValues.any { value ->
+			value.contains(config.normalizedQuery, ignoreCase = true)
+		}
+	}.toList()
+	val groupedItems = filteredItems.groupBy { item -> firstLetterGroup(item.sortKey) }
+	val sectionedItems = groupedItems.keys
+		.sortedWith(compareBy<String> { if (it == "#") 1 else 0 }.thenBy { it })
+		.map { section -> section to groupedItems[section].orEmpty() }
+	var itemStartIndex = 0
+	var lazyIndex = 0
+	val sectionLayouts = sectionedItems.map { (sectionTitle, itemsInSection) ->
+		VaultV2SectionLayout(
+			title = sectionTitle,
+			items = itemsInSection,
+			itemStartIndex = itemStartIndex,
+			firstItemLazyIndex = lazyIndex + 1,
+		).also {
+			itemStartIndex += itemsInSection.size
+			lazyIndex += itemsInSection.size + 1
+		}
+	}
+	return VaultV2VisibleListState(
+		filteredItems = filteredItems,
+		sectionedItems = sectionedItems,
+		sectionLayouts = sectionLayouts,
+	)
+}
+
 @OptIn(
 	ExperimentalMaterial3Api::class,
 	ExperimentalFoundationApi::class,
@@ -1287,7 +1374,11 @@ fun VaultV2Pane(
 	var quickFilterManualStackOnly by rememberSaveable { mutableStateOf(false) }
 	var quickFilterNeverStack by rememberSaveable { mutableStateOf(false) }
 	var quickFilterUnstacked by rememberSaveable { mutableStateOf(false) }
-	var selectedAggregateTypes by remember { mutableStateOf<Set<PasswordPageContentType>>(emptySet()) }
+	var selectedAggregateTypes by rememberSaveable(
+		stateSaver = passwordPageContentTypeSetSaver
+	) {
+		mutableStateOf(emptySet())
+	}
 	val selectedKeys = remember { mutableStateListOf<String>() }
 	var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 	LaunchedEffect(state.isArchiveView) {
@@ -1656,9 +1747,6 @@ fun VaultV2Pane(
 			takagi.ru.monica.ui.shouldShowQuickFilterItem(item, quickFilterVisibleTypes)
 		}
 	}
-	var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
-	var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-	var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
 	val shouldLoadManualStackMetadata = remember(
 		quickFilterManualStackOnly,
 		quickFilterNeverStack,
@@ -1669,24 +1757,58 @@ fun VaultV2Pane(
 			(quickFilterNeverStack && PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) ||
 			(quickFilterUnstacked && PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems)
 	}
-	LaunchedEffect(visiblePasswordEntries, shouldLoadManualStackMetadata) {
+	val manualStackEntryRevisions = remember(visiblePasswordEntries) {
+		visiblePasswordEntries.map { entry ->
+			VaultV2PasswordRevision(
+				id = entry.id,
+				updatedAtMillis = entry.updatedAt?.time ?: Long.MIN_VALUE,
+			)
+		}
+	}
+	val retainedManualStackMetadata = remember(
+		manualStackEntryRevisions,
+		shouldLoadManualStackMetadata,
+	) {
+		if (shouldLoadManualStackMetadata) {
+			state.seedManualStackMetadata(manualStackEntryRevisions)
+		} else {
+			null
+		}
+	}
+	var manualStackGroupByEntryId by remember(
+		manualStackEntryRevisions,
+		shouldLoadManualStackMetadata,
+	) {
+		mutableStateOf(retainedManualStackMetadata?.manualStackGroupByEntryId.orEmpty())
+	}
+	var noStackEntryIds by remember(
+		manualStackEntryRevisions,
+		shouldLoadManualStackMetadata,
+	) {
+		mutableStateOf(retainedManualStackMetadata?.noStackEntryIds.orEmpty())
+	}
+	var lastCustomFieldEntryRevisions by remember(
+		manualStackEntryRevisions,
+		shouldLoadManualStackMetadata,
+	) {
+		mutableStateOf(retainedManualStackMetadata?.revisions.orEmpty())
+	}
+	LaunchedEffect(manualStackEntryRevisions, shouldLoadManualStackMetadata) {
 		if (!shouldLoadManualStackMetadata) {
 			manualStackGroupByEntryId = emptyMap()
 			noStackEntryIds = emptySet()
-			lastCustomFieldEntryIds = emptyList()
+			lastCustomFieldEntryRevisions = emptyList()
 			return@LaunchedEffect
 		}
-		val allIds = withContext(Dispatchers.Default) {
-			visiblePasswordEntries.asSequence().map(PasswordEntry::id).toList()
-		}
+		val allIds = manualStackEntryRevisions.map(VaultV2PasswordRevision::id)
 		if (allIds.isEmpty()) {
 			manualStackGroupByEntryId = emptyMap()
 			noStackEntryIds = emptySet()
-			lastCustomFieldEntryIds = emptyList()
+			lastCustomFieldEntryRevisions = emptyList()
 			return@LaunchedEffect
 		}
-		if (allIds == lastCustomFieldEntryIds) return@LaunchedEffect
-		lastCustomFieldEntryIds = allIds
+		if (manualStackEntryRevisions == lastCustomFieldEntryRevisions) return@LaunchedEffect
+		lastCustomFieldEntryRevisions = manualStackEntryRevisions
 		val fieldMap = withContext(Dispatchers.IO) {
 			passwordViewModel.getCustomFieldsByEntryIds(allIds)
 		}
@@ -1707,6 +1829,13 @@ fun VaultV2Pane(
 		}
 		manualStackGroupByEntryId = manualStackMap
 		noStackEntryIds = noStackIds
+		state.updateManualStackMetadata(
+			VaultV2ManualStackMetadata(
+				revisions = manualStackEntryRevisions,
+				manualStackGroupByEntryId = manualStackMap,
+				noStackEntryIds = noStackIds,
+			)
+		)
 	}
 	val baseQuickFolderPasswordCountByCategoryId = rememberVaultV2AsyncComputed(
 		visiblePasswordEntries,
@@ -1840,15 +1969,16 @@ fun VaultV2Pane(
 				subtitle = subtitle,
 				isFavorite = entry.isFavorite,
 				sortKey = normalizedVaultV2SortKey(displayTitle),
-				searchText = listOf(displayTitle, entry.username, entry.website, entry.appName, entry.notes)
-					.filter { it.isNotBlank() }
-					.joinToString("\n"),
+				searchableValues = listOf(displayTitle, entry.username, entry.website, entry.appName, entry.notes)
+					.filter { it.isNotBlank() },
 				passwordEntry = entry,
 			)
 		}
 		val visiblePasswordIds = visiblePasswordEntries.mapTo(hashSetOf()) { it.id }
 
-		val totpList = visibleTotpItems.mapNotNull { item ->
+		val secondaryLists = coroutineScope {
+			val totpDeferred = async(Dispatchers.Default) {
+				visibleTotpItems.mapNotNull { item ->
 			val data = parseVaultV2TotpItemData(item, securityManager)
 			val boundPasswordId = data?.boundPasswordId
 			if (boundPasswordId != null && boundPasswordId in visiblePasswordIds) return@mapNotNull null
@@ -1867,15 +1997,16 @@ fun VaultV2Pane(
 				subtitle = subtitle,
 				isFavorite = item.isFavorite,
 				sortKey = normalizedVaultV2SortKey(displayTitle),
-				searchText = listOf(displayTitle, subtitle, item.notes, item.itemData)
-					.filter { it.isNotBlank() }
-					.joinToString("\n"),
+				searchableValues = listOf(displayTitle, subtitle, item.notes, item.itemData)
+					.filter { it.isNotBlank() },
 				totpItem = item,
 				boundPasswordId = data?.boundPasswordId,
 			)
-		}
+				}
+			}
 
-		val noteList = visibleNoteItems.map { item ->
+			val noteDeferred = async(Dispatchers.Default) {
+				visibleNoteItems.map { item ->
 			val displayTitle = item.title.ifBlank { "(Untitled)" }
 			val decoded = NoteContentCodec.decodeFromItem(item)
 			val previewText = vaultV2PlainSingleLine(
@@ -1888,14 +2019,19 @@ fun VaultV2Pane(
 				subtitle = previewText.ifBlank { item.notes.ifBlank { "-" } },
 				isFavorite = item.isFavorite,
 				sortKey = normalizedVaultV2SortKey(displayTitle),
-				searchText = listOf(displayTitle, decoded.content, decoded.tags.joinToString(" "), item.notes)
-					.filter { it.isNotBlank() }
-					.joinToString("\n"),
+				searchableValues = buildList {
+					add(displayTitle)
+					add(decoded.content)
+					addAll(decoded.tags)
+					add(item.notes)
+				}.filter { it.isNotBlank() },
 				secureItem = item,
 			)
-		}
+				}
+			}
 
-		val passkeyList = visiblePasskeyItems.map { passkey ->
+			val passkeyDeferred = async(Dispatchers.Default) {
+				visiblePasskeyItems.map { passkey ->
 			val displayTitle = passkey.rpName.ifBlank { passkey.rpId }.ifBlank { "(Untitled)" }
 			val subtitle = listOf(
 				passkey.userDisplayName.ifBlank { passkey.userName },
@@ -1915,19 +2051,21 @@ fun VaultV2Pane(
 				subtitle = subtitle,
 				isFavorite = false,
 				sortKey = normalizedVaultV2SortKey(displayTitle),
-				searchText = listOf(
+				searchableValues = listOf(
 					displayTitle,
 					passkey.rpId,
 					passkey.userName,
 					passkey.userDisplayName,
 					passkey.notes,
-				).filter { it.isNotBlank() }.joinToString("\n"),
+				).filter { it.isNotBlank() },
 				passkeyEntry = passkey,
 				boundPasswordId = passkey.boundPasswordId,
 			)
-		}
+				}
+			}
 
-		val bankCardList = visibleBankCardItems.map { item ->
+			val bankCardDeferred = async(Dispatchers.Default) {
+				visibleBankCardItems.map { item ->
 			val data = parseVaultV2BankCardData(item, securityManager)
 			val displayTitle = item.title.ifBlank { data?.bankName ?: "(Untitled)" }
 			val subtitle = vaultV2BankCardSubtitle(data = data, fallbackNotes = item.notes)
@@ -1938,18 +2076,20 @@ fun VaultV2Pane(
 				subtitle = subtitle,
 				isFavorite = item.isFavorite,
 				sortKey = normalizedVaultV2SortKey(displayTitle),
-				searchText = listOf(
+				searchableValues = listOf(
 					displayTitle,
 					data?.bankName.orEmpty(),
 					data?.cardholderName.orEmpty(),
 					data?.cardNumber.orEmpty(),
 					item.notes,
-				).filter { it.isNotBlank() }.joinToString("\n"),
+				).filter { it.isNotBlank() },
 				secureItem = item,
 			)
-		}
+				}
+			}
 
-		val documentList = visibleDocumentItems.map { item ->
+			val documentDeferred = async(Dispatchers.Default) {
+				visibleDocumentItems.map { item ->
 			val data = parseVaultV2DocumentData(item, securityManager)
 			val displayTitle = item.title.ifBlank { data?.fullName ?: "(Untitled)" }
 			val subtitle = vaultV2DocumentSubtitle(data = data, fallbackNotes = item.notes)
@@ -1960,19 +2100,34 @@ fun VaultV2Pane(
 				subtitle = subtitle,
 				isFavorite = item.isFavorite,
 				sortKey = normalizedVaultV2SortKey(displayTitle),
-				searchText = listOf(
+				searchableValues = listOf(
 					displayTitle,
 					data?.fullName.orEmpty(),
 					data?.documentNumber.orEmpty(),
 					data?.issuedBy.orEmpty(),
 					item.notes,
-				).filter { it.isNotBlank() }.joinToString("\n"),
+				).filter { it.isNotBlank() },
 				secureItem = item,
+			)
+				}
+			}
+
+			VaultV2SecondaryLists(
+				totp = totpDeferred.await(),
+				notes = noteDeferred.await(),
+				passkeys = passkeyDeferred.await(),
+				bankCards = bankCardDeferred.await(),
+				documents = documentDeferred.await(),
 			)
 		}
 
 		val allItemsRaw = dedupeExactVaultItems(
-			passwordList + totpList + noteList + passkeyList + bankCardList + documentList
+			passwordList +
+				secondaryLists.totp +
+				secondaryLists.notes +
+				secondaryLists.passkeys +
+				secondaryLists.bankCards +
+				secondaryLists.documents
 		).sortedWith(
 				compareBy<VaultV2Item> { it.sortKey.lowercase(Locale.ROOT) }
 					.thenBy { it.type.ordinal }
@@ -2084,8 +2239,24 @@ fun VaultV2Pane(
 			)
 		}
 	}
-	val visibleListStateAsync = rememberVaultV2AsyncComputedValue(
+	val allItemsForVisibleList = remember(
 		allItems,
+		allItemsRaw,
+		pendingAllItems,
+		listState.isScrollInProgress,
+	) {
+		if (
+			allItems.isEmpty() &&
+			allItemsRaw.isNotEmpty() &&
+			pendingAllItems == null &&
+			!listState.isScrollInProgress
+		) {
+			allItemsRaw
+		} else {
+			allItems
+		}
+	}
+	val visibleListConfig = remember(
 		storageSelection,
 		displayedContentTypes,
 		configuredQuickFilterItems,
@@ -2105,84 +2276,70 @@ fun VaultV2Pane(
 		noStackEntryIds,
 		normalizedQuery,
 		state.isArchiveView,
-		initialValue = visibleSnapshotSeed.value,
-		initialHasComputed = visibleSnapshotSeed.hasSnapshot,
 	) {
-		val filteredItems = allItems.asSequence().filter { item ->
-			state.isArchiveView || item.matchesStorageFilter(storageSelection)
-		}.filter { item ->
-			if (!item.matchesDisplayedTypes(displayedContentTypes)) return@filter false
-			if (
-				!state.isArchiveView &&
-				!item.matchesPasswordQuickFilters(
-					configuredQuickFilterItems = configuredQuickFilterItems,
-					storageSelection = storageSelection,
-					quickFilterFavorite = quickFilterFavorite,
-					quickFilter2fa = quickFilter2fa,
-					quickFilterNotes = quickFilterNotes,
-					quickFilterPasskey = quickFilterPasskey,
-					quickFilterBoundNote = quickFilterBoundNote,
-					quickFilterAttachments = quickFilterAttachments,
-					activeAttachmentParentIds = activeAttachmentParentIds,
-					quickFilterUncategorized = quickFilterUncategorized,
-					quickFilterLocalOnly = quickFilterLocalOnly,
-					quickFilterManualStackOnly = quickFilterManualStackOnly,
-					quickFilterNeverStack = quickFilterNeverStack,
-					quickFilterUnstacked = quickFilterUnstacked,
-					manualStackGroupByEntryId = manualStackGroupByEntryId,
-					noStackEntryIds = noStackEntryIds
-				)
-			) return@filter false
-
-			if (normalizedQuery.isBlank()) {
-				true
-			} else {
-				item.searchText.contains(normalizedQuery, ignoreCase = true)
-			}
-		}.toList()
-		val groupedItems = filteredItems.groupBy { item -> firstLetterGroup(item.sortKey) }
-		val sectionedItems = groupedItems.keys
-			.sortedWith(compareBy<String> { if (it == "#") 1 else 0 }.thenBy { it })
-			.map { section -> section to groupedItems[section].orEmpty() }
-		var itemStartIndex = 0
-		var lazyIndex = 0
-		val sectionLayouts = sectionedItems.map { (sectionTitle, itemsInSection) ->
-			VaultV2SectionLayout(
-				title = sectionTitle,
-				items = itemsInSection,
-				itemStartIndex = itemStartIndex,
-				firstItemLazyIndex = lazyIndex + 1,
-			).also {
-				itemStartIndex += itemsInSection.size
-				lazyIndex += itemsInSection.size + 1
-			}
-		}
-		VaultV2VisibleListState(
-			filteredItems = filteredItems,
-			sectionedItems = sectionedItems,
-			sectionLayouts = sectionLayouts,
+		VaultV2VisibleListConfig(
+			storageSelection = storageSelection,
+			displayedContentTypes = displayedContentTypes,
+			configuredQuickFilterItems = configuredQuickFilterItems,
+			quickFilterFavorite = quickFilterFavorite,
+			quickFilter2fa = quickFilter2fa,
+			quickFilterNotes = quickFilterNotes,
+			quickFilterPasskey = quickFilterPasskey,
+			quickFilterBoundNote = quickFilterBoundNote,
+			quickFilterAttachments = quickFilterAttachments,
+			activeAttachmentParentIds = activeAttachmentParentIds,
+			quickFilterUncategorized = quickFilterUncategorized,
+			quickFilterLocalOnly = quickFilterLocalOnly,
+			quickFilterManualStackOnly = quickFilterManualStackOnly,
+			quickFilterNeverStack = quickFilterNeverStack,
+			quickFilterUnstacked = quickFilterUnstacked,
+			manualStackGroupByEntryId = manualStackGroupByEntryId,
+			noStackEntryIds = noStackEntryIds,
+			normalizedQuery = normalizedQuery,
+			isArchiveView = state.isArchiveView,
 		)
 	}
-	LaunchedEffect(
-		visibleSnapshotKey,
-		visibleListStateAsync.value,
-		visibleListStateAsync.hasComputed,
+	val visibleListState = remember(
+		allItemsForVisibleList,
+		visibleListConfig,
+		computedListStateAsync.hasComputed,
+		visibleSnapshotSeed,
 	) {
-		if (visibleListStateAsync.hasComputed && normalizedQuery.isBlank()) {
-			state.visibleListSnapshots.update(
-				key = visibleSnapshotKey,
-				value = visibleListStateAsync.value,
+		if (
+			allItemsForVisibleList.isEmpty() &&
+			!computedListStateAsync.hasComputed &&
+			visibleSnapshotSeed.hasSnapshot
+		) {
+			visibleSnapshotSeed.value
+		} else {
+			buildVaultV2VisibleListState(
+				allItems = allItemsForVisibleList,
+				config = visibleListConfig,
 			)
 		}
 	}
-	val visibleListState = visibleListStateAsync.value
+	LaunchedEffect(
+		visibleSnapshotKey,
+		visibleListState,
+		computedListStateAsync.hasComputed,
+		selectedPasswordEntriesReady,
+	) {
+		if (
+			computedListStateAsync.hasComputed &&
+			selectedPasswordEntriesReady &&
+			normalizedQuery.isBlank()
+		) {
+			state.visibleListSnapshots.update(
+				key = visibleSnapshotKey,
+				value = visibleListState,
+			)
+		}
+	}
 	val filteredItems = visibleListState.filteredItems
 	val sectionedItems = visibleListState.sectionedItems
 	val sectionLayouts = visibleListState.sectionLayouts
 	val isVaultListLoading = remember(
 		computedListStateAsync.isComputing,
-		visibleListStateAsync.isComputing,
-		visibleListStateAsync.hasComputed,
 		pendingAllItems,
 		sectionedItems,
 		normalizedQuery,
@@ -2195,8 +2352,6 @@ fun VaultV2Pane(
 			hasRetainedSnapshot = visibleSnapshotSeed.hasSnapshot,
 			passwordEntriesReady = selectedPasswordEntriesReady,
 			computedListIsComputing = computedListStateAsync.isComputing,
-			visibleListIsComputing = visibleListStateAsync.isComputing,
-			visibleListHasComputed = visibleListStateAsync.hasComputed,
 			hasPendingItems = pendingAllItems != null,
 		)
 	}
@@ -4196,7 +4351,7 @@ private fun buildVaultV2ExactDisplayKey(item: VaultV2Item): String {
 private fun pickBestVaultV2Item(candidates: List<VaultV2Item>): VaultV2Item? {
 	return candidates.maxWithOrNull(
 		compareBy<VaultV2Item> { it.subtitle.length }
-			.thenBy { it.searchText.length }
+			.thenBy { item -> item.searchableValues.sumOf(String::length) }
 			.thenBy { if (it.isFavorite) 1 else 0 }
 			.thenBy { vaultV2UpdatedAtMillis(it) }
 	)
@@ -4263,9 +4418,23 @@ private fun firstLetterGroup(raw: String): String {
 	return if (first in 'A'..'Z') first.toString() else "#"
 }
 
-private fun normalizedVaultV2SortKey(raw: String): String {
+internal fun normalizeAsciiVaultV2SortKey(raw: String): String? {
 	val trimmed = raw.trim()
 	if (trimmed.isEmpty()) return "#"
+	if (trimmed.any { char -> char.code > 0x7F }) return null
+	return buildString(trimmed.length) {
+		trimmed.forEach { char ->
+			when {
+				char.isLetterOrDigit() -> append(char)
+				char.isWhitespace() && isNotEmpty() && last() != ' ' -> append(' ')
+			}
+		}
+	}.trim().ifEmpty { trimmed }
+}
+
+private fun normalizedVaultV2SortKey(raw: String): String {
+	normalizeAsciiVaultV2SortKey(raw)?.let { return it }
+	val trimmed = raw.trim()
 	val latin = vaultV2Transliterator.transliterate(trimmed)
 	val normalized = buildString(latin.length) {
 		latin.forEach { char ->

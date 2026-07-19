@@ -42,6 +42,13 @@ class DedupMergeService(
     private val securityManager: SecurityManager
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val mergeExecutor = DedupMergeExecutor(
+        RepositoryDedupMergeWriter(
+            passwordRepository = passwordRepository,
+            secureItemRepository = secureItemRepository,
+            customFieldRepository = customFieldRepository
+        )
+    )
 
     suspend fun getSourceOptions(): List<DedupMergeSourceOption> {
         val entries = passwordRepository.getAllPasswordEntries().first()
@@ -116,6 +123,7 @@ class DedupMergeService(
             add(
                 DedupMergeTargetOption(
                     target = DedupMergeTarget.MonicaLocal,
+                    sourceKey = SOURCE_MONICA,
                     label = "Monica 本地",
                     passwordCount = entries.count { it.isLocalOnlyEntry() },
                     secureItemCount = secureItems.count { it.isLocalOnlyItem() },
@@ -129,6 +137,7 @@ class DedupMergeService(
                             databaseId = database.id,
                             label = database.name.ifBlank { "MDBX ${database.id}" }
                         ),
+                        sourceKey = mdbxSourceKey(database.id),
                         label = database.name.ifBlank { "MDBX ${database.id}" },
                         passwordCount = entries.count { it.mdbxDatabaseId == database.id },
                         secureItemCount = secureItems.count { it.mdbxDatabaseId == database.id },
@@ -141,7 +150,8 @@ class DedupMergeService(
 
     suspend fun buildPlan(
         selectedSourceKeys: Set<String>,
-        target: DedupMergeTarget?
+        target: DedupMergeTarget?,
+        conflictPolicy: DedupConflictPolicy = DedupConflictPolicy.MOST_COMPLETE
     ): DedupMergePlan {
         val sourceOptions = getSourceOptions()
         val selectedOptions = sourceOptions.filter { it.key in selectedSourceKeys }
@@ -162,7 +172,7 @@ class DedupMergeService(
             (sourceEntries + targetEntries).map { it.id }.distinct()
         )
         val targetExistingKeys = targetEntries
-            .map(::mergeIdentityKey)
+            .map { entry -> mergeIdentityKey(entry, customFieldsByEntry[entry.id].orEmpty()) }
             .toSet()
         val targetExistingFingerprints = targetEntries
             .map { entry -> exactContentFingerprint(entry, customFieldsByEntry[entry.id].orEmpty()) }
@@ -175,9 +185,9 @@ class DedupMergeService(
             .toSet()
 
         val resolvedPasswords = sourceEntries
-            .groupBy(::mergeIdentityKey)
+            .groupBy { entry -> mergeIdentityKey(entry, customFieldsByEntry[entry.id].orEmpty()) }
             .map { (mergeKey, group) ->
-                val keeper = selectBestPassword(group, customFieldsByEntry)
+                val keeper = selectBestPassword(group, customFieldsByEntry, conflictPolicy)
                 val mergedEntry = mergePasswordGroup(keeper, group)
                 val mergedCustomFields = mergeCustomFields(keeper, group, customFieldsByEntry)
                 val existsInTarget = mergeKey in targetExistingKeys ||
@@ -205,7 +215,7 @@ class DedupMergeService(
         val resolvedSecureItems = sourceSecureItems
             .groupBy(::mergeIdentityKey)
             .map { (mergeKey, group) ->
-                val keeper = selectBestSecureItem(group)
+                val keeper = selectBestSecureItem(group, conflictPolicy)
                 val mergedItem = mergeSecureItemGroup(keeper, group)
                 val existsInTarget = mergeKey in targetExistingSecureKeys ||
                     exactContentFingerprint(mergedItem) in targetExistingSecureFingerprints
@@ -229,7 +239,9 @@ class DedupMergeService(
             )
 
         val warnings = buildList {
-            if (selectedSourceKeys.isEmpty()) add("请选择至少一个源数据库")
+            if (selectedSourceKeys.size < DedupMergeSelection.MINIMUM_SOURCE_DATABASES) {
+                add("请至少选择两个源数据库")
+            }
             if (target == null) add("请选择一个目标数据库")
             if (sourceEntries.isEmpty() && sourceSecureItems.isEmpty() && selectedSourceKeys.isNotEmpty()) {
                 add("选中的源数据库没有可写入的密码或安全项")
@@ -251,13 +263,19 @@ class DedupMergeService(
         return DedupMergePlan(
             selectedSources = selectedOptions,
             target = target,
+            conflictPolicy = conflictPolicy,
             totalSourcePasswords = sourceEntries.size,
             totalSourceSecureItems = sourceSecureItems.size,
             unsupportedSourcePasskeys = sourcePasskeys.size,
             uniquePasswords = resolvedPasswords.size,
             uniqueSecureItems = resolvedSecureItems.size,
-            duplicateGroups = sourceEntries.groupBy(::mergeIdentityKey).values.count { it.size > 1 },
+            duplicateGroups = sourceEntries
+                .groupBy { entry -> mergeIdentityKey(entry, customFieldsByEntry[entry.id].orEmpty()) }
+                .values
+                .count { it.size > 1 },
             duplicateSecureItemGroups = sourceSecureItems.groupBy(::mergeIdentityKey).values.count { it.size > 1 },
+            passwordConflictGroups = resolvedPasswords.count { it.conflictFields.isNotEmpty() },
+            secureItemConflictGroups = resolvedSecureItems.count { it.conflictFields.isNotEmpty() },
             targetExistingDuplicates = resolvedPasswords.count { it.existsInTarget },
             targetExistingSecureItems = resolvedSecureItems.count { it.existsInTarget },
             previewPasswords = resolvedPasswords,
@@ -266,14 +284,27 @@ class DedupMergeService(
         )
     }
 
-    suspend fun executePlan(plan: DedupMergePlan): DedupMergeExecutionResult {
+    suspend fun executePlan(
+        plan: DedupMergePlan,
+        onProgress: (DedupMergeExecutionProgress) -> Unit = {}
+    ): DedupMergeExecutionResult {
         val target = plan.target ?: error("No dedup merge target selected")
+        require(plan.selectedSources.size >= DedupMergeSelection.MINIMUM_SOURCE_DATABASES) {
+            "At least two source databases are required"
+        }
+        require(target.sourceKey() !in plan.selectedSources.map { it.key }.toSet()) {
+            "The target database cannot also be a source"
+        }
         val freshPlan = buildPlan(
             selectedSourceKeys = plan.selectedSources.map { it.key }.toSet(),
-            target = target
+            target = target,
+            conflictPolicy = plan.conflictPolicy
         )
         val rowsToInsert = freshPlan.previewPasswords.filterNot { it.existsInTarget }
         val secureItemsToInsert = freshPlan.previewSecureItems.filterNot { it.existsInTarget }
+        require(freshPlan.selectedSources.size >= DedupMergeSelection.MINIMUM_SOURCE_DATABASES) {
+            "One or more source databases are no longer available"
+        }
         if (rowsToInsert.isEmpty() && secureItemsToInsert.isEmpty()) {
             return DedupMergeExecutionResult(
                 insertedPasswords = 0,
@@ -285,51 +316,30 @@ class DedupMergeService(
             )
         }
 
-        val ids = passwordRepository.insertPasswordEntries(rowsToInsert.map { it.entry })
-        val fieldsToInsert = rowsToInsert.zip(ids).flatMap { (resolved, newEntryId) ->
-            resolved.customFields.map { field ->
-                field.copy(id = 0, entryId = newEntryId)
-            }
-        }
-        if (fieldsToInsert.isNotEmpty()) {
-            customFieldRepository.insertFields(fieldsToInsert)
-        }
-
-        if (target is DedupMergeTarget.MdbxDatabase && ids.isNotEmpty()) {
-            val persistedEntries = rowsToInsert.zip(ids).map { (resolved, newEntryId) ->
-                resolved.entry.copy(id = newEntryId)
-            }
-            passwordRepository.updatePasswordEntries(persistedEntries)
-        }
-
-        val insertedSecureItemIds = secureItemsToInsert.mapNotNull { resolved ->
-            runCatching {
-                secureItemRepository.insertItem(resolved.item)
-            }.getOrNull()
-        }
-
-        val failedCount = (rowsToInsert.size - ids.size).coerceAtLeast(0)
-        return DedupMergeExecutionResult(
-            insertedPasswords = ids.size,
-            insertedSecureItems = insertedSecureItemIds.size,
+        return mergeExecutor.execute(
+            passwords = rowsToInsert,
+            secureItems = secureItemsToInsert,
             skippedExistingPasswords = freshPlan.targetExistingDuplicates,
             skippedExistingSecureItems = freshPlan.targetExistingSecureItems,
             skippedUnsupportedPasskeys = freshPlan.unsupportedSourcePasskeys,
-            failedPasswords = failedCount,
-            failedSecureItems = (secureItemsToInsert.size - insertedSecureItemIds.size).coerceAtLeast(0),
-            targetLabel = target.label()
+            targetLabel = target.label(),
+            onProgress = onProgress
         )
     }
 
     private fun selectBestPassword(
         entries: List<PasswordEntry>,
-        customFieldsByEntry: Map<Long, List<CustomField>>
+        customFieldsByEntry: Map<Long, List<CustomField>>,
+        conflictPolicy: DedupConflictPolicy
     ): PasswordEntry {
-        return entries.maxWithOrNull(
-            compareBy<PasswordEntry> { if (it.isFavorite) 1 else 0 }
+        val comparator = when (conflictPolicy) {
+            DedupConflictPolicy.MOST_COMPLETE -> compareBy<PasswordEntry> { if (it.isFavorite) 1 else 0 }
                 .thenBy { fieldCompletenessScore(it, customFieldsByEntry[it.id].orEmpty()) }
                 .thenBy { it.updatedAt.time }
-        ) ?: entries.first()
+            DedupConflictPolicy.NEWEST -> compareBy<PasswordEntry> { it.updatedAt.time }
+                .thenBy { fieldCompletenessScore(it, customFieldsByEntry[it.id].orEmpty()) }
+        }
+        return entries.maxWithOrNull(comparator) ?: entries.first()
     }
 
     private fun mergePasswordGroup(
@@ -557,12 +567,18 @@ class DedupMergeService(
         }
     }
 
-    private fun selectBestSecureItem(items: List<SecureItem>): SecureItem {
-        return items.maxWithOrNull(
-            compareBy<SecureItem> { if (it.isFavorite) 1 else 0 }
+    private fun selectBestSecureItem(
+        items: List<SecureItem>,
+        conflictPolicy: DedupConflictPolicy
+    ): SecureItem {
+        val comparator = when (conflictPolicy) {
+            DedupConflictPolicy.MOST_COMPLETE -> compareBy<SecureItem> { if (it.isFavorite) 1 else 0 }
                 .thenBy { secureItemCompletenessScore(it) }
                 .thenBy { it.updatedAt.time }
-        ) ?: items.first()
+            DedupConflictPolicy.NEWEST -> compareBy<SecureItem> { it.updatedAt.time }
+                .thenBy { secureItemCompletenessScore(it) }
+        }
+        return items.maxWithOrNull(comparator) ?: items.first()
     }
 
     private fun mergeSecureItemGroup(
@@ -794,17 +810,12 @@ class DedupMergeService(
         }
     }
 
-    private fun mergeIdentityKey(entry: PasswordEntry): String {
-        val site = normalizeWebsite(entry.website)
-        val username = normalizeText(entry.username)
-        val title = normalizeText(entry.title)
-        val packageName = normalizeText(entry.appPackageName)
-        val loginType = entry.loginType.uppercase(Locale.ROOT).ifBlank { "PASSWORD" }
-        return when {
-            site.isNotBlank() && username.isNotBlank() -> "site|$loginType|$site|$username"
-            packageName.isNotBlank() && username.isNotBlank() -> "app|$loginType|$packageName|$username"
-            title.isNotBlank() && username.isNotBlank() -> "title_user|$loginType|$title|$username"
-            else -> "entry|${entry.id}"
+    private fun mergeIdentityKey(entry: PasswordEntry, customFields: List<CustomField>): String {
+        val identity = DedupPasswordIdentity.key(entry)
+        return if (identity.startsWith("entry|")) {
+            "exact|${exactContentFingerprint(entry, customFields)}"
+        } else {
+            identity
         }
     }
 

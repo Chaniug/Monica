@@ -198,6 +198,7 @@ import takagi.ru.monica.ui.password.getPasswordGroupTitle
 import takagi.ru.monica.ui.password.getPasswordInfoKey
 import takagi.ru.monica.ui.vaultv2.VaultV2Pane
 import takagi.ru.monica.ui.vaultv2.VaultV2PaneState
+import takagi.ru.monica.ui.vaultv2.VaultV2RetainedStateViewModel
 import takagi.ru.monica.ui.vaultv2.rememberVaultV2PaneState
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
@@ -820,7 +821,8 @@ fun SimpleMainScreen(
     var passwordListShowBackToTop by remember { mutableStateOf(false) }
     var passwordScrollToTopRequestKey by remember { mutableIntStateOf(0) }
     var showPasswordQuickAccessSheet by rememberSaveable { mutableStateOf(false) }
-    val vaultV2PaneState = rememberVaultV2PaneState()
+    val retainedStateViewModel: VaultV2RetainedStateViewModel = viewModel()
+    val vaultV2PaneState = rememberVaultV2PaneState(retainedStateViewModel.retainedState)
     val isPasswordVaultAuthenticated by passwordViewModel.isAuthenticated.collectAsState()
 
     LaunchedEffect(isPasswordVaultAuthenticated) {

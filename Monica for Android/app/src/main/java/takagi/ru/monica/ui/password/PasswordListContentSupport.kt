@@ -43,11 +43,14 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
+import takagi.ru.monica.ui.password.PasswordAggregateRetainedState
+import takagi.ru.monica.ui.password.PasswordAggregateSnapshotKey
 import takagi.ru.monica.ui.password.PasswordAggregateWalletItemType
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
 import takagi.ru.monica.ui.password.buildPasswordAggregateItems
+import takagi.ru.monica.ui.password.filterPasswordAggregateItemsByContentTypes
 import takagi.ru.monica.ui.password.getGroupKeyForMode
 import takagi.ru.monica.ui.password.getPasswordInfoKey
 import takagi.ru.monica.ui.password.passwordSelectionKey
@@ -507,7 +510,8 @@ internal fun rememberPasswordAggregateUiState(
     aggregateConfig: PasswordListAggregateConfig?,
     searchQuery: String,
     currentFilter: CategoryFilter,
-    appSettings: AppSettings
+    appSettings: AppSettings,
+    retainedState: PasswordAggregateRetainedState,
 ): PasswordListAggregateUiState {
     val emptySecureItems = remember { emptyList<SecureItem>() }
     val emptyPasskeys = remember { emptyList<PasskeyEntry>() }
@@ -515,16 +519,16 @@ internal fun rememberPasswordAggregateUiState(
         aggregateConfig?.totpViewModel?.totpItems?.collectAsState()
             ?: remember { mutableStateOf(emptySecureItems) }
     val aggregateBankCardsState =
-        aggregateConfig?.bankCardViewModel?.allCards?.collectAsState(initial = emptySecureItems)
+        aggregateConfig?.bankCardViewModel?.allCards?.collectAsState()
             ?: remember { mutableStateOf(emptySecureItems) }
     val aggregateDocumentsState =
-        aggregateConfig?.documentViewModel?.allDocuments?.collectAsState(initial = emptySecureItems)
+        aggregateConfig?.documentViewModel?.allDocuments?.collectAsState()
             ?: remember { mutableStateOf(emptySecureItems) }
     val aggregateBillingAddressesState =
-        aggregateConfig?.billingAddressViewModel?.allBillingAddresses?.collectAsState(initial = emptySecureItems)
+        aggregateConfig?.billingAddressViewModel?.allBillingAddresses?.collectAsState()
             ?: remember { mutableStateOf(emptySecureItems) }
     val aggregateNotesState =
-        aggregateConfig?.noteViewModel?.allNotes?.collectAsState(initial = emptySecureItems)
+        aggregateConfig?.noteViewModel?.allNotes?.collectAsState()
             ?: remember { mutableStateOf(emptySecureItems) }
     val aggregatePasskeysState =
         aggregateConfig?.passkeyViewModel?.allPasskeys?.collectAsState()
@@ -627,9 +631,24 @@ internal fun rememberPasswordAggregateUiState(
             smoothAuthenticatorProgress = appSettings.validatorSmoothProgress
         )
     }
-    val aggregateVisibleItems = remember(
+    val aggregateSnapshotKey = remember(
         aggregateDisplayedContentTypes,
-        aggregateContentTypeFilterTypes,
+        searchQuery,
+        currentFilter,
+    ) {
+        PasswordAggregateSnapshotKey(
+            displayedContentTypes = aggregateDisplayedContentTypes,
+            searchQuery = searchQuery,
+            categoryFilter = currentFilter,
+        )
+    }
+    val aggregateSnapshotSeed = remember(retainedState, aggregateSnapshotKey) {
+        retainedState.seed(aggregateSnapshotKey)
+    }
+    val aggregateSnapshotGeneration = remember(retainedState, aggregateSnapshotKey) {
+        retainedState.currentGeneration()
+    }
+    val aggregateAllVisibleItemsAsync = rememberPasswordAggregateAsyncItems(
         aggregateBankCards,
         aggregateDocuments,
         aggregateBillingAddresses,
@@ -637,47 +656,63 @@ internal fun rememberPasswordAggregateUiState(
         aggregateTotpItems,
         aggregatePasskeys,
         searchQuery,
-        currentFilter
+        currentFilter,
+        aggregateDisplayedContentTypes,
+        stateKey = aggregateSnapshotKey,
+        initialValue = aggregateSnapshotSeed.items,
+        onComputed = { items ->
+            retainedState.updateIfCurrent(
+                expectedGeneration = aggregateSnapshotGeneration,
+                key = aggregateSnapshotKey,
+                items = items,
+            )
+        },
     ) {
-        val allVisibleItems = buildPasswordAggregateItems(
-            selectedContentTypes = aggregateDisplayedContentTypes,
-            bankCards = aggregateBankCards,
-            documents = aggregateDocuments,
-            billingAddresses = aggregateBillingAddresses,
-            notes = aggregateNotes,
-            totpItems = aggregateTotpItems,
-            passkeys = aggregatePasskeys,
-            searchQuery = searchQuery,
-            categoryFilter = currentFilter,
-            parseBankCardData = aggregateConfig?.bankCardViewModel?.let { viewModel ->
-                { item: SecureItem -> viewModel.parseCardData(item.itemData) }
-            } ?: {
-                takagi.ru.monica.data.model.CardWalletDataCodec.parseBankCardData(it.itemData)
-            },
-            parseDocumentData = aggregateConfig?.documentViewModel?.let { viewModel ->
-                { item: SecureItem -> viewModel.parseDocumentData(item.itemData) }
-            } ?: {
-                takagi.ru.monica.data.model.CardWalletDataCodec.parseDocumentData(it.itemData)
-            },
-            parseBillingAddressData = aggregateConfig?.billingAddressViewModel?.let { viewModel ->
-                { item: SecureItem -> viewModel.parseAddressData(item.itemData) }
-            } ?: {
-                takagi.ru.monica.data.model.CardWalletDataCodec.parseBillingAddressData(it.itemData)
-            },
-            parseTotpData = aggregateConfig?.totpViewModel?.let { viewModel ->
-                { item: SecureItem -> viewModel.parseTotpDataForDisplay(item) }
-            } ?: {
-                takagi.ru.monica.util.TotpDataResolver.parseStoredItemData(
-                    itemData = it.itemData,
-                    fallbackIssuer = it.title
-                )
-            }
-        )
-        if (aggregateContentTypeFilterTypes.isEmpty()) {
-            allVisibleItems
-        } else {
-            allVisibleItems.filter { item -> item.type in aggregateContentTypeFilterTypes }
+        withContext(Dispatchers.Default) {
+            buildPasswordAggregateItems(
+                selectedContentTypes = aggregateDisplayedContentTypes,
+                bankCards = aggregateBankCards,
+                documents = aggregateDocuments,
+                billingAddresses = aggregateBillingAddresses,
+                notes = aggregateNotes,
+                totpItems = aggregateTotpItems,
+                passkeys = aggregatePasskeys,
+                searchQuery = searchQuery,
+                categoryFilter = currentFilter,
+                parseBankCardData = aggregateConfig?.bankCardViewModel?.let { viewModel ->
+                    { item: SecureItem -> viewModel.parseCardData(item.itemData) }
+                } ?: {
+                    takagi.ru.monica.data.model.CardWalletDataCodec.parseBankCardData(it.itemData)
+                },
+                parseDocumentData = aggregateConfig?.documentViewModel?.let { viewModel ->
+                    { item: SecureItem -> viewModel.parseDocumentData(item.itemData) }
+                } ?: {
+                    takagi.ru.monica.data.model.CardWalletDataCodec.parseDocumentData(it.itemData)
+                },
+                parseBillingAddressData = aggregateConfig?.billingAddressViewModel?.let { viewModel ->
+                    { item: SecureItem -> viewModel.parseAddressData(item.itemData) }
+                } ?: {
+                    takagi.ru.monica.data.model.CardWalletDataCodec.parseBillingAddressData(it.itemData)
+                },
+                parseTotpData = aggregateConfig?.totpViewModel?.let { viewModel ->
+                    { item: SecureItem -> viewModel.parseTotpDataForDisplay(item) }
+                } ?: {
+                    takagi.ru.monica.util.TotpDataResolver.parseStoredItemData(
+                        itemData = it.itemData,
+                        fallbackIssuer = it.title
+                    )
+                }
+            )
         }
+    }
+    val aggregateVisibleItems = remember(
+        aggregateAllVisibleItemsAsync,
+        aggregateContentTypeFilterTypes,
+    ) {
+        filterPasswordAggregateItemsByContentTypes(
+            items = aggregateAllVisibleItemsAsync,
+            selectedTypes = aggregateContentTypeFilterTypes,
+        )
     }
 
     return PasswordListAggregateUiState(
@@ -702,6 +737,27 @@ internal fun rememberPasswordAggregateUiState(
         noteViewModel = aggregateConfig?.noteViewModel,
         passkeyViewModel = aggregateConfig?.passkeyViewModel
     )
+}
+
+@Composable
+internal fun rememberPasswordAggregateAsyncItems(
+    vararg keys: Any?,
+    stateKey: Any?,
+    initialValue: List<PasswordAggregateListItemUi>,
+    onComputed: (List<PasswordAggregateListItemUi>) -> Unit,
+    compute: suspend () -> List<PasswordAggregateListItemUi>,
+): List<PasswordAggregateListItemUi> {
+    var value by remember(stateKey) { mutableStateOf(initialValue) }
+    val latestCompute by rememberUpdatedState(compute)
+    val latestOnComputed by rememberUpdatedState(onComputed)
+
+    LaunchedEffect(*keys) {
+        val computed = latestCompute()
+        value = computed
+        latestOnComputed(computed)
+    }
+
+    return value
 }
 
 // Centralizes list scroll bookkeeping so the main screen body stays readable.

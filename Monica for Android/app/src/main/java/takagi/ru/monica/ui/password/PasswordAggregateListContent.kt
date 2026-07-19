@@ -119,6 +119,14 @@ internal fun buildPasswordAggregateItems(
     return items.sortedByDescending(PasswordAggregateListItemUi::sortTime)
 }
 
+internal fun filterPasswordAggregateItemsByContentTypes(
+    items: List<PasswordAggregateListItemUi>,
+    selectedTypes: Set<PasswordPageContentType>,
+): List<PasswordAggregateListItemUi> {
+    if (selectedTypes.isEmpty()) return items
+    return items.filter { item -> item.type in selectedTypes }
+}
+
 internal fun resolveNonEmptyAggregateContentTypes(
     configuredTypes: List<PasswordPageContentType>,
     bankCards: List<SecureItem>,

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,13 +28,11 @@ class VaultV2PaneState internal constructor(
     archiveReturnStorageFilterType: String?,
     archiveReturnStorageFilterPrimaryId: Long?,
     archiveReturnStorageFilterSecondaryKey: String?,
+    retainedState: VaultV2RetainedState = VaultV2RetainedState(),
 ) {
-    internal val computedListSnapshots =
-        VaultV2RetainedSnapshotStore<VaultV2ComputedSnapshotKey, VaultV2ComputedListState>()
-    internal val visibleListSnapshots =
-        VaultV2RetainedSnapshotStore<VaultV2VisibleSnapshotKey, VaultV2VisibleListState>(
-            maxEntries = 8
-        )
+    internal val computedListSnapshots = retainedState.computedListSnapshots
+    internal val visibleListSnapshots = retainedState.visibleListSnapshots
+    private val retainedListState = retainedState
 
     var scrollIndex by mutableIntStateOf(scrollIndex)
         private set
@@ -72,11 +71,11 @@ class VaultV2PaneState internal constructor(
     var isArchiveView by mutableStateOf(isArchiveView)
         private set
 
-    private var archiveReturnStorageFilterType by mutableStateOf(archiveReturnStorageFilterType)
+    internal var archiveReturnStorageFilterType by mutableStateOf(archiveReturnStorageFilterType)
 
-    private var archiveReturnStorageFilterPrimaryId by mutableStateOf(archiveReturnStorageFilterPrimaryId)
+    internal var archiveReturnStorageFilterPrimaryId by mutableStateOf(archiveReturnStorageFilterPrimaryId)
 
-    private var archiveReturnStorageFilterSecondaryKey by mutableStateOf(archiveReturnStorageFilterSecondaryKey)
+    internal var archiveReturnStorageFilterSecondaryKey by mutableStateOf(archiveReturnStorageFilterSecondaryKey)
 
     fun updateScrollPosition(index: Int, offset: Int) {
         val safeIndex = index.coerceAtLeast(0)
@@ -131,8 +130,15 @@ class VaultV2PaneState internal constructor(
     }
 
     fun clearRetainedListSnapshots() {
-        computedListSnapshots.clear()
-        visibleListSnapshots.clear()
+        retainedListState.clear()
+    }
+
+    internal fun seedManualStackMetadata(
+        revisions: List<VaultV2PasswordRevision>,
+    ): VaultV2ManualStackMetadata? = retainedListState.seedManualStackMetadata(revisions)
+
+    internal fun updateManualStackMetadata(metadata: VaultV2ManualStackMetadata) {
+        retainedListState.updateManualStackMetadata(metadata)
     }
 
     fun updateSelectionCount(count: Int) {
@@ -164,51 +170,56 @@ class VaultV2PaneState internal constructor(
         requestScrollToTop()
     }
 
-    companion object {
-        val Saver: Saver<VaultV2PaneState, Any> = listSaver(
-            save = {
-                listOf(
-                    it.scrollIndex,
-                    it.scrollOffset,
-                    it.fastScrollRequestKey,
-                    it.fastScrollProgress,
-                    it.scrollToTopRequestKey,
-                    it.storageFilterType,
-                    it.storageFilterPrimaryId,
-                    it.storageFilterSecondaryKey,
-                    it.hasInitializedStorageFilter,
-                    it.selectionCount,
-                    it.isArchiveView,
-                    it.archiveReturnStorageFilterType,
-                    it.archiveReturnStorageFilterPrimaryId,
-                    it.archiveReturnStorageFilterSecondaryKey,
-                )
-            },
-            restore = { restored ->
-                VaultV2PaneState(
-                    scrollIndex = restored[0] as Int,
-                    scrollOffset = restored[1] as Int,
-                    fastScrollRequestKey = restored[2] as Int,
-                    fastScrollProgress = restored[3] as Float,
-                    scrollToTopRequestKey = restored[4] as Int,
-                    storageFilterType = restored[5] as String,
-                    storageFilterPrimaryId = restored[6] as Long?,
-                    storageFilterSecondaryKey = restored[7] as String?,
-                    hasInitializedStorageFilter = restored.getOrNull(8) as? Boolean ?: false,
-                    selectionCount = restored.getOrNull(9) as? Int ?: 0,
-                    isArchiveView = restored.getOrNull(10) as? Boolean ?: false,
-                    archiveReturnStorageFilterType = restored.getOrNull(11) as? String,
-                    archiveReturnStorageFilterPrimaryId = restored.getOrNull(12) as? Long,
-                    archiveReturnStorageFilterSecondaryKey = restored.getOrNull(13) as? String,
-                )
-            }
-        )
-    }
 }
 
+internal fun vaultV2PaneStateSaver(
+    retainedState: VaultV2RetainedState,
+): Saver<VaultV2PaneState, Any> = listSaver(
+    save = {
+        listOf(
+            it.scrollIndex,
+            it.scrollOffset,
+            it.fastScrollRequestKey,
+            it.fastScrollProgress,
+            it.scrollToTopRequestKey,
+            it.storageFilterType,
+            it.storageFilterPrimaryId,
+            it.storageFilterSecondaryKey,
+            it.hasInitializedStorageFilter,
+            it.selectionCount,
+            it.isArchiveView,
+            it.archiveReturnStorageFilterType,
+            it.archiveReturnStorageFilterPrimaryId,
+            it.archiveReturnStorageFilterSecondaryKey,
+        )
+    },
+    restore = { restored ->
+        VaultV2PaneState(
+            scrollIndex = restored[0] as Int,
+            scrollOffset = restored[1] as Int,
+            fastScrollRequestKey = restored[2] as Int,
+            fastScrollProgress = restored[3] as Float,
+            scrollToTopRequestKey = restored[4] as Int,
+            storageFilterType = restored[5] as String,
+            storageFilterPrimaryId = restored[6] as Long?,
+            storageFilterSecondaryKey = restored[7] as String?,
+            hasInitializedStorageFilter = restored.getOrNull(8) as? Boolean ?: false,
+            selectionCount = restored.getOrNull(9) as? Int ?: 0,
+            isArchiveView = restored.getOrNull(10) as? Boolean ?: false,
+            archiveReturnStorageFilterType = restored.getOrNull(11) as? String,
+            archiveReturnStorageFilterPrimaryId = restored.getOrNull(12) as? Long,
+            archiveReturnStorageFilterSecondaryKey = restored.getOrNull(13) as? String,
+            retainedState = retainedState,
+        )
+    },
+)
+
 @Composable
-fun rememberVaultV2PaneState(): VaultV2PaneState {
-    return rememberSaveable(saver = VaultV2PaneState.Saver) {
+internal fun rememberVaultV2PaneState(
+    retainedState: VaultV2RetainedState,
+): VaultV2PaneState {
+    val saver = remember(retainedState) { vaultV2PaneStateSaver(retainedState) }
+    return rememberSaveable(saver = saver) {
         VaultV2PaneState(
             scrollIndex = 0,
             scrollOffset = 0,
@@ -224,6 +235,7 @@ fun rememberVaultV2PaneState(): VaultV2PaneState {
             archiveReturnStorageFilterType = null,
             archiveReturnStorageFilterPrimaryId = null,
             archiveReturnStorageFilterSecondaryKey = null,
+            retainedState = retainedState,
         )
     }
 }

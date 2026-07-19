@@ -3668,8 +3668,14 @@ fun MonicaContent(
                 onCreateMdbxTarget = {
                     navController.navigate(Screen.MdbxLocalCreate.route)
                 },
+                onConflictPolicyChange = { policy ->
+                    dedupViewModel.updateConflictPolicy(policy)
+                },
                 onExecuteMerge = {
                     dedupViewModel.executeMerge()
+                },
+                onCancelMerge = {
+                    dedupViewModel.cancelMerge()
                 },
                 onConsumeMessage = {
                     dedupViewModel.consumeMessage()

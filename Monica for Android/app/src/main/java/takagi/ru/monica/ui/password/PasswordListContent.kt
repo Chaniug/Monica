@@ -202,6 +202,7 @@ import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
+import takagi.ru.monica.ui.password.PasswordAggregateRetainedStateViewModel
 import takagi.ru.monica.ui.password.PasswordAggregateWalletItemType
 import takagi.ru.monica.ui.password.PasswordListCardBadge
 import takagi.ru.monica.ui.password.PasswordGroupListItemUi
@@ -348,6 +349,13 @@ fun PasswordListContent(
     val categories by viewModel.categories.collectAsState()
     val categoriesReady by viewModel.categoriesReady.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
+    val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+    val aggregateRetainedStateViewModel: PasswordAggregateRetainedStateViewModel = viewModel()
+    LaunchedEffect(isAuthenticated) {
+        if (!isAuthenticated) {
+            aggregateRetainedStateViewModel.retainedState.clear()
+        }
+    }
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
     val mdbxDatabasesLoaded by remember(mdbxViewModel) {
@@ -357,7 +365,8 @@ fun PasswordListContent(
         aggregateConfig = aggregateConfig,
         searchQuery = searchQuery,
         currentFilter = currentFilter,
-        appSettings = appSettings
+        appSettings = appSettings,
+        retainedState = aggregateRetainedStateViewModel.retainedState,
     )
     val fastScrollRequestKey by viewModel.fastScrollRequestKey.collectAsState()
     val fastScrollProgress by viewModel.fastScrollProgress.collectAsState()
@@ -671,7 +680,6 @@ fun PasswordListContent(
     // Top actions menu and display options sheet state
     var topActionsMenuExpanded by remember { mutableStateOf(false) }
     var showDisplayOptionsSheet by remember { mutableStateOf(false) }
-    val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     LaunchedEffect(isAuthenticated) {
         if (!isAuthenticated) {
             topActionsMenuExpanded = false

@@ -16,10 +16,10 @@ class VaultV2EntryCacheIntegrationGuardTest {
         assertTrue(pane.contains("state.visibleListSnapshots.seed("))
         assertTrue(pane.contains("state.visibleListSnapshots.update("))
         assertTrue(pane.contains("initialHasComputed = computedSnapshotSeed.hasSnapshot"))
-        assertTrue(pane.contains("initialHasComputed = visibleSnapshotSeed.hasSnapshot"))
+        assertTrue(pane.contains("visibleSnapshotSeed.value"))
         assertTrue(
             pane.contains(
-                "visibleListStateAsync.hasComputed && normalizedQuery.isBlank()"
+                "computedListStateAsync.hasComputed &&"
             )
         )
         assertTrue(
@@ -29,17 +29,23 @@ class VaultV2EntryCacheIntegrationGuardTest {
         )
         assertTrue(pane.contains("shouldShowVaultV2InitialLoading("))
         assertTrue(pane.contains("hasRetainedSnapshot = visibleSnapshotSeed.hasSnapshot"))
-        assertTrue(pane.contains("visibleListHasComputed = visibleListStateAsync.hasComputed"))
+        assertTrue(pane.contains("value = visibleListState"))
+        assertTrue(pane.contains("val allItemsForVisibleList = remember("))
     }
 
     @Test
     fun `retained snapshots are memory only and cleared when vault locks`() {
         val state = source("ui/vaultv2/VaultV2PaneState.kt")
+        val retainedState = source("ui/vaultv2/VaultV2RetainedStateViewModel.kt")
         val mainScreen = source("ui/SimpleMainScreen.kt")
 
-        val saverBlock = state.substringAfter("val Saver:").substringBefore("restore =")
+        val saverBlock = state
+            .substringAfter("internal fun vaultV2PaneStateSaver(")
+            .substringBefore("@Composable")
         assertFalse(saverBlock.contains("computedListSnapshots"))
         assertFalse(saverBlock.contains("visibleListSnapshots"))
+        assertTrue(retainedState.contains("override fun onCleared()"))
+        assertTrue(retainedState.contains("retainedState.clear()"))
         assertTrue(mainScreen.contains("vaultV2PaneState.clearRetainedListSnapshots()"))
         assertTrue(mainScreen.contains("if (!isPasswordVaultAuthenticated)"))
     }

@@ -15,15 +15,13 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = false,
                 passwordEntriesReady = false,
                 computedListIsComputing = false,
-                visibleListIsComputing = false,
-                visibleListHasComputed = true,
                 hasPendingItems = false,
             )
         )
     }
 
     @Test
-    fun `first load remains loading while either derived stage is unfinished`() {
+    fun `first load remains loading while the computed stage is unfinished`() {
         assertTrue(
             shouldShowVaultV2InitialLoading(
                 queryIsBlank = true,
@@ -31,8 +29,6 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = false,
                 passwordEntriesReady = true,
                 computedListIsComputing = true,
-                visibleListIsComputing = false,
-                visibleListHasComputed = true,
                 hasPendingItems = false,
             )
         )
@@ -43,9 +39,7 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = false,
                 passwordEntriesReady = true,
                 computedListIsComputing = false,
-                visibleListIsComputing = false,
-                visibleListHasComputed = false,
-                hasPendingItems = false,
+                hasPendingItems = true,
             )
         )
     }
@@ -59,8 +53,6 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = false,
                 passwordEntriesReady = true,
                 computedListIsComputing = false,
-                visibleListIsComputing = false,
-                visibleListHasComputed = true,
                 hasPendingItems = false,
             )
         )
@@ -71,8 +63,6 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = true,
                 passwordEntriesReady = false,
                 computedListIsComputing = true,
-                visibleListIsComputing = true,
-                visibleListHasComputed = true,
                 hasPendingItems = true,
             )
         )
@@ -87,8 +77,6 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = false,
                 passwordEntriesReady = false,
                 computedListIsComputing = true,
-                visibleListIsComputing = true,
-                visibleListHasComputed = false,
                 hasPendingItems = true,
             )
         )
@@ -99,8 +87,6 @@ class VaultV2InitialLoadingPolicyTest {
                 hasRetainedSnapshot = false,
                 passwordEntriesReady = false,
                 computedListIsComputing = true,
-                visibleListIsComputing = true,
-                visibleListHasComputed = false,
                 hasPendingItems = true,
             )
         )
