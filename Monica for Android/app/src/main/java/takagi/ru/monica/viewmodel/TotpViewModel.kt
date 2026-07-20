@@ -920,14 +920,14 @@ class TotpViewModel(
             passwordIds
                 .filter { it > 0L }
                 .distinct()
-                .forEach { passwordId ->
+                .forEachIndexed { index, passwordId ->
                     savePasswordBoundTotpInternal(
                         passwordId = passwordId,
                         title = title,
                         notes = notes,
                         totpData = totpData,
                         isFavorite = isFavorite,
-                        preferredTotpId = preferredTotpId
+                        preferredTotpId = preferredTotpId.takeIf { index == 0 }
                     )
                 }
         }
@@ -969,15 +969,22 @@ class TotpViewModel(
             }
             val selectedSourceItem = activeStoredItems
                 .firstOrNull { (item, _) -> preferredTotpId != null && item.id == preferredTotpId }
-            val preferredItem = selectedSourceItem
-                ?.takeIf { it.isInBoundPasswordStorage() }
-                ?: activeBoundItems.firstOrNull {
+            val preferredItem = selectedSourceItem ?: activeBoundItems.firstOrNull {
                     it.isInBoundPasswordStorage() && buildTotpIdentityKey(it.second) == identityKey
                 }
                 ?: activeBoundItems.firstOrNull { it.isInBoundPasswordStorage() }
-            val metadataSource = preferredItem ?: selectedSourceItem
-            val resolvedCategoryId = boundPassword?.categoryId ?: normalizedInput.categoryId
-            val resolvedKeepassDatabaseId = boundPassword?.keepassDatabaseId ?: normalizedInput.keepassDatabaseId
+            val metadataSource = preferredItem
+            val preserveSelectedSourceStorage = selectedSourceItem?.first?.id == preferredItem?.first?.id
+            val resolvedCategoryId = if (preserveSelectedSourceStorage) {
+                preferredItem?.first?.categoryId
+            } else {
+                boundPassword?.categoryId ?: normalizedInput.categoryId
+            }
+            val resolvedKeepassDatabaseId = if (preserveSelectedSourceStorage) {
+                preferredItem?.first?.keepassDatabaseId
+            } else {
+                boundPassword?.keepassDatabaseId ?: normalizedInput.keepassDatabaseId
+            }
             val resolvedData = normalizedInput.copy(
                 categoryId = resolvedCategoryId,
                 keepassDatabaseId = resolvedKeepassDatabaseId
@@ -991,12 +998,26 @@ class TotpViewModel(
                 isFavorite = metadataSource?.first?.isFavorite ?: isFavorite,
                 categoryId = resolvedCategoryId,
                 keepassDatabaseId = resolvedKeepassDatabaseId,
-                keepassGroupPath = boundPassword?.keepassGroupPath,
-                mdbxDatabaseId = boundPassword?.mdbxDatabaseId,
-                mdbxFolderId = boundPassword?.mdbxFolderId,
-                bitwardenVaultId = null,
-                bitwardenFolderId = null,
-                followBoundPasswordStorage = true
+                keepassGroupPath = if (preserveSelectedSourceStorage) {
+                    preferredItem?.first?.keepassGroupPath
+                } else {
+                    boundPassword?.keepassGroupPath
+                },
+                mdbxDatabaseId = if (preserveSelectedSourceStorage) {
+                    preferredItem?.first?.mdbxDatabaseId
+                } else {
+                    boundPassword?.mdbxDatabaseId
+                },
+                mdbxFolderId = if (preserveSelectedSourceStorage) {
+                    preferredItem?.first?.mdbxFolderId
+                } else {
+                    boundPassword?.mdbxFolderId
+                },
+                bitwardenVaultId = preferredItem?.first?.bitwardenVaultId
+                    .takeIf { preserveSelectedSourceStorage },
+                bitwardenFolderId = preferredItem?.first?.bitwardenFolderId
+                    .takeIf { preserveSelectedSourceStorage },
+                followBoundPasswordStorage = !preserveSelectedSourceStorage
             )
             if (savedItemId == null) {
                 Log.e(

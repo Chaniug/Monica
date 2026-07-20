@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.View
 import android.view.autofill.AutofillId
 import androidx.autofill.HintConstants
+import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.core.safeTextOrNull
 import android.util.Log
 import java.net.URL
@@ -602,7 +603,7 @@ class EnhancedAutofillStructureParserV2 {
                     structureItems = structureItems.filter { it.hint != InternalHint.USERNAME }
                 }
 
-                val selectedItem = structureItems
+                val rankedItems = structureItems
                     .groupBy { it.hint }
                     .mapNotNull { groupedByHint ->
                         val score = groupedByHint.value.fold(0f) { acc, item ->
@@ -627,8 +628,34 @@ class EnhancedAutofillStructureParserV2 {
                             traversalIndex = best.traversalIndex,
                         )
                     }
-                    .maxByOrNull { it.score }
+                val fieldRoleSelection = AutofillFieldRolePolicy.selectWithDiagnostics(
+                    rankedItems.mapNotNull { item ->
+                        val mappedHint = mapHint(item.hint) ?: return@mapNotNull null
+                        AutofillFieldRoleCandidate(
+                            value = item,
+                            hint = mappedHint,
+                            score = item.score,
+                            strongestAccuracy = item.accuracy,
+                        )
+                    }
+                )
                     ?: return@forEach
+                val selectedItem = fieldRoleSelection.value
+                if (fieldRoleSelection.resolvedExplicitAccountPasswordConflict) {
+                    AutofillLogger.w(
+                        "PARSING",
+                        "Explicit account evidence overrode conflicting password evidence",
+                        metadata = mapOf(
+                            "selectedHint" to (mapHint(selectedItem.hint)?.name ?: "none"),
+                            "candidateRoles" to rankedItems.joinToString(separator = ",") { item ->
+                                "${mapHint(item.hint)?.name ?: "ignored"}:${item.score}:${item.accuracy.name}"
+                            },
+                            "focused" to selectedItem.isFocused,
+                            "visible" to selectedItem.isVisible,
+                            "traversalIndex" to selectedItem.traversalIndex,
+                        ),
+                    )
+                }
 
                 if (selectedItem.score <= Accuracy.LOWEST.score + 0.1f) {
                     val shouldSkip = rawStructure?.items.orEmpty().any {

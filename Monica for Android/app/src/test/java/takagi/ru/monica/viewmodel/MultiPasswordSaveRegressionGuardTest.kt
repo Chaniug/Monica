@@ -2586,8 +2586,8 @@ class MultiPasswordSaveRegressionGuardTest {
 
         assertTrue(
             "Editing a password with an authenticator must go through the bound-TOTP save path, which searches persisted rows by password id before updating.",
-            saveTotpSection.contains("totpViewModel.savePasswordBoundTotp(") &&
-                saveTotpSection.contains("passwordId = firstPasswordId") &&
+            saveTotpSection.contains("totpViewModel.savePasswordBoundTotps(") &&
+                saveTotpSection.contains("passwordIds = savedPasswordIds.ifEmpty { listOf(firstPasswordId) }") &&
                 savePasswordBoundTotpBody.contains("repository.getItemsByType(ItemType.TOTP).first()") &&
                 savePasswordBoundTotpBody.contains("data.boundPasswordId == passwordId")
         )
@@ -2598,10 +2598,10 @@ class MultiPasswordSaveRegressionGuardTest {
         assertTrue(
             "The password editor must reuse a selected real TOTP first and create the first real bound TOTP when none exists, so the authenticator page can display and edit the saved name/key instead of opening an empty virtual item.",
             savePasswordBoundTotpBody.contains("val activeStoredItems = existingStoredTotps.mapNotNull") &&
-                savePasswordBoundTotpBody.contains("val preferredItem = activeStoredItems") &&
+                savePasswordBoundTotpBody.contains("val preferredItem = selectedSourceItem") &&
                 savePasswordBoundTotpBody.contains("preferredTotpId != null && item.id == preferredTotpId") &&
                 savePasswordBoundTotpBody.contains("id = preferredItem?.first?.id") &&
-                savePasswordBoundTotpBody.contains("title = preferredItem?.first?.title ?: title") &&
+                savePasswordBoundTotpBody.contains("title = metadataSource?.first?.title ?: title") &&
                 !savePasswordBoundTotpBody.contains("No persisted bound TOTP for passwordId=")
         )
         assertTrue(

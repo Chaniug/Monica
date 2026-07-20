@@ -284,7 +284,6 @@ fun AddEditPasswordScreen(
     var existingSshKeyData by rememberSaveable { mutableStateOf("") }
     var existingTotpId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedExistingTotpTitle by rememberSaveable { mutableStateOf("") }
-    var selectedExistingTotpStorageTarget by remember { mutableStateOf<StorageTarget?>(null) }
     var authenticatorPayloadOverride by rememberSaveable { mutableStateOf<String?>(null) }
     var authenticatorEditedByUser by rememberSaveable(passwordId) { mutableStateOf(false) }
     var notes by rememberSaveable { mutableStateOf("") }
@@ -537,7 +536,6 @@ fun AddEditPasswordScreen(
         val trimmed = rawValue.trim()
         existingTotpId = null
         selectedExistingTotpTitle = ""
-        selectedExistingTotpStorageTarget = null
         val parsed = if (trimmed.contains("://")) {
             TotpDataResolver.fromAuthenticatorKey(
                 rawKey = trimmed,
@@ -563,7 +561,6 @@ fun AddEditPasswordScreen(
                 authenticatorEditedByUser = true
                 existingTotpId = null
                 selectedExistingTotpTitle = ""
-                selectedExistingTotpStorageTarget = null
                 val imported = scanResult.item.totpData
                 authenticatorSecret = imported.secret
                 selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
@@ -586,7 +583,6 @@ fun AddEditPasswordScreen(
                     authenticatorEditedByUser = true
                     existingTotpId = null
                     selectedExistingTotpTitle = ""
-                    selectedExistingTotpStorageTarget = null
                     val imported = first.totpData
                     authenticatorSecret = imported.secret
                     selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
@@ -640,7 +636,6 @@ fun AddEditPasswordScreen(
         selectedExistingTotpTitle = candidate.item.title
             .ifBlank { normalized.issuer }
             .ifBlank { normalized.accountName }
-        selectedExistingTotpStorageTarget = candidate.item.toStorageTarget()
         authenticatorSecret = normalized.secret
         selectedAuthenticatorOtpTypeName = normalized.otpType.toPasswordScreenOtpType().name
         authenticatorPayloadOverride = payload.takeIf { it.isNotBlank() && it != normalized.secret }
@@ -732,18 +727,8 @@ fun AddEditPasswordScreen(
         setSelectedStorageTargets(selectedStorageTargets.withoutStorageTarget(target))
     }
 
-    fun buildStorageTargetsForSave(authenticatorKey: String): List<StorageTarget> {
-        val currentTargets = selectedStorageTargets.toList().normalizedStorageTargets()
-        val authenticatorTarget = selectedExistingTotpStorageTarget
-            ?.takeIf { authenticatorKey.isNotBlank() }
-            ?: return currentTargets
-
-        val alreadyHasAuthenticatorDatabase = currentTargets.any { target ->
-            target.storageScopeKey() == authenticatorTarget.storageScopeKey()
-        }
-        if (alreadyHasAuthenticatorDatabase) return currentTargets
-
-        return (currentTargets + authenticatorTarget).normalizedStorageTargets()
+    fun buildStorageTargetsForSave(): List<StorageTarget> {
+        return selectedStorageTargets.toList().normalizedStorageTargets()
     }
 
     fun normalizeCommonTemplateType(raw: String): String {
@@ -1265,7 +1250,6 @@ fun AddEditPasswordScreen(
                             .takeIf { it.isNotBlank() && it != authenticatorDraft.secret }
                         existingTotpId = null
                         selectedExistingTotpTitle = ""
-                        selectedExistingTotpStorageTarget = null
                     }
                     passkeyBindings = entry.passkeyBindings
                     existingSshKeyData = entry.sshKeyData
@@ -1513,7 +1497,7 @@ fun AddEditPasswordScreen(
             val currentWebsite = website
             val currentBindWebsite = bindWebsite
             val currentBindTitle = bindTitle
-            val storageTargetsForSave = buildStorageTargetsForSave(currentAuthKey)
+            val storageTargetsForSave = buildStorageTargetsForSave()
 
             // Create common entry without password
             val commonEntry = PasswordEntry(
@@ -2612,7 +2596,6 @@ fun AddEditPasswordScreen(
                                                 selectedAuthenticatorOtpTypeName = type.name
                                                 existingTotpId = null
                                                 selectedExistingTotpTitle = ""
-                                                selectedExistingTotpStorageTarget = null
                                                 authenticatorPayloadOverride = null
                                                 authenticatorTypeExpanded = false
                                             }

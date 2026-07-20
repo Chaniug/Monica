@@ -373,6 +373,11 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "fieldSignatureKey" to (fieldSignatureKey ?: "none"),
                 "focusedTargetCount" to fillableTargets.count { it.isFocused },
                 "visibleTargetCount" to fillableTargets.count { it.isVisible },
+                "targetRolePreview" to fillableTargets.take(12).mapIndexed { index, target ->
+                    "$index:${target.hint.name}:${target.accuracy.name}:" +
+                        "${if (target.isFocused) "focused" else "idle"}:" +
+                        if (target.isVisible) "visible" else "hidden"
+                }.joinToString(separator = ","),
             )
         )
         if (!fieldSignatureKey.isNullOrBlank() &&

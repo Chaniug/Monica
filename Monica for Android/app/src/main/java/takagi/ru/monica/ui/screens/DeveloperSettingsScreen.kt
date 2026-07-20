@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -1000,7 +1001,8 @@ private object DeveloperLogDebugHelper {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.developer_share_subject))
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, context.getString(R.string.developer_share_file_hint))
+            putExtra(Intent.EXTRA_TEXT, buildDeveloperLogShareFallback(report))
+            clipData = ClipData.newRawUri(fileName, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -1081,7 +1083,22 @@ private object DeveloperLogDebugHelper {
     }
 }
 
+private const val DEVELOPER_LOG_SHARE_TEXT_LIMIT = 48_000
+private const val DEVELOPER_LOG_SHARE_HEADER_LIMIT = 4_000
 
+internal fun buildDeveloperLogShareFallback(
+    report: String,
+    maxChars: Int = DEVELOPER_LOG_SHARE_TEXT_LIMIT,
+): String {
+    val normalized = report.trim()
+    if (normalized.length <= maxChars) return normalized
 
-
-
+    val marker = "\n\n=== Share text truncated; full report is attached ===\n\n"
+    val headerLength = minOf(DEVELOPER_LOG_SHARE_HEADER_LIMIT, maxChars / 3)
+    val tailLength = (maxChars - headerLength - marker.length).coerceAtLeast(0)
+    return buildString(maxChars) {
+        append(normalized.take(headerLength))
+        append(marker)
+        append(normalized.takeLast(tailLength))
+    }.take(maxChars)
+}

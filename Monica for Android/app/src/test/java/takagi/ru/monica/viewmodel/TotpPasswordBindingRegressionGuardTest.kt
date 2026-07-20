@@ -33,8 +33,8 @@ class TotpPasswordBindingRegressionGuardTest {
 
         assertTrue(
             "Password editor must save authenticator data through the bound TOTP path.",
-            saveTotpSection.contains("totpViewModel.savePasswordBoundTotp(") &&
-                saveTotpSection.contains("passwordId = firstPasswordId") &&
+            saveTotpSection.contains("totpViewModel.savePasswordBoundTotps(") &&
+                saveTotpSection.contains("passwordIds = savedPasswordIds.ifEmpty { listOf(firstPasswordId) }") &&
                 saveTotpSection.contains("totpData = totpData")
         )
         assertTrue(
@@ -42,15 +42,20 @@ class TotpPasswordBindingRegressionGuardTest {
             savePasswordBoundTotpBody.contains("repository.getItemsByType(ItemType.TOTP).first()") &&
                 savePasswordBoundTotpBody.contains("val activeStoredItems = existingStoredTotps.mapNotNull") &&
                 savePasswordBoundTotpBody.contains("data.boundPasswordId == passwordId") &&
-                savePasswordBoundTotpBody.contains("val preferredItem = activeStoredItems") &&
+                savePasswordBoundTotpBody.contains("val preferredItem = selectedSourceItem") &&
                 savePasswordBoundTotpBody.contains("preferredTotpId != null && item.id == preferredTotpId") &&
                 savePasswordBoundTotpBody.contains("id = preferredItem?.first?.id")
         )
         assertTrue(
             "When no persisted binding exists, saveTotpItemInternal must be allowed to create one so the authenticator page opens a real item instead of an empty virtual entry.",
-            savePasswordBoundTotpBody.contains("title = preferredItem?.first?.title ?: title") &&
-                savePasswordBoundTotpBody.contains("notes = preferredItem?.first?.notes ?: notes") &&
-                savePasswordBoundTotpBody.contains("isFavorite = preferredItem?.first?.isFavorite ?: isFavorite")
+            savePasswordBoundTotpBody.contains("title = metadataSource?.first?.title ?: title") &&
+                savePasswordBoundTotpBody.contains("notes = metadataSource?.first?.notes ?: notes") &&
+                savePasswordBoundTotpBody.contains("isFavorite = metadataSource?.first?.isFavorite ?: isFavorite")
+        )
+        assertTrue(
+            "A selected persisted authenticator must keep its storage source while only the binding metadata changes.",
+            savePasswordBoundTotpBody.contains("val preserveSelectedSourceStorage") &&
+                savePasswordBoundTotpBody.contains("followBoundPasswordStorage = !preserveSelectedSourceStorage")
         )
         assertFalse(
             "Do not return early to rely only on virtual password.authenticatorKey entries; virtual entries have negative ids and cannot be edited as real TOTP rows.",

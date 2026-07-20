@@ -1,28 +1,29 @@
 package takagi.ru.monica.viewmodel
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PasswordTotpCrossDatabaseBindingGuardTest {
 
     @Test
-    fun passwordEditorAddsAuthenticatorSourceDatabaseToSaveTargets() {
+    fun passwordEditorDoesNotAddAuthenticatorSourceDatabaseToSaveTargets() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt"
         ).readText()
+        val targetResolutionBody = source
+            .substringAfter("fun buildStorageTargetsForSave(")
+            .substringBefore("fun normalizeCommonTemplateType(")
 
         assertTrue(
-            "Password editor must remember the selected authenticator storage target.",
-            source.contains("selectedExistingTotpStorageTarget")
+            "Password save targets must still be normalized from the storage sources explicitly selected for the password.",
+            targetResolutionBody.contains("selectedStorageTargets.toList().normalizedStorageTargets()")
         )
-        assertTrue(
-            "Cross-database TOTP binding should compare database scope, not folder/category.",
-            source.contains("target.storageScopeKey() == authenticatorTarget.storageScopeKey()")
-        )
-        assertTrue(
-            "Cross-database TOTP binding must add the authenticator source database to password save targets.",
-            source.contains("currentTargets + authenticatorTarget")
+        assertFalse(
+            "Selecting an existing authenticator must not add its database to password save targets; doing so creates an unintended password replica.",
+            targetResolutionBody.contains("selectedExistingTotpStorageTarget") ||
+                targetResolutionBody.contains("currentTargets + authenticatorTarget")
         )
     }
 
@@ -43,23 +44,32 @@ class PasswordTotpCrossDatabaseBindingGuardTest {
     }
 
     @Test
-    fun boundTotpDoesNotMoveTheOriginalAuthenticatorAcrossDatabases() {
+    fun boundTotpReusesTheSelectedAuthenticatorAcrossDatabases() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/viewmodel/TotpViewModel.kt"
         ).readText()
+        val bindingBody = source
+            .substringAfter("private suspend fun savePasswordBoundTotpInternal(")
+            .substringBefore("/**\r\n     * 根据ID获取TOTP项目")
+            .ifBlank {
+                source
+                    .substringAfter("private suspend fun savePasswordBoundTotpInternal(")
+                    .substringBefore("/**\n     * 根据ID获取TOTP项目")
+            }
 
         assertTrue(
-            "Password page must bind TOTP for every saved password replica.",
-            source.contains("fun savePasswordBoundTotps(")
+            "Password replicas explicitly selected by the user may still receive their own binding.",
+            source.contains("fun savePasswordBoundTotps(") &&
+                source.contains("forEachIndexed")
         )
         assertTrue(
-            "A selected authenticator from another database must not be updated in-place.",
-            source.contains("selectedSourceItem") &&
-                source.contains("takeIf { it.isInBoundPasswordStorage() }")
+            "The selected existing authenticator must be reused for the first password instead of being copied into the password database.",
+            bindingBody.contains("val preferredItem = selectedSourceItem") &&
+                bindingBody.contains("followBoundPasswordStorage = !preserveSelectedSourceStorage")
         )
-        assertTrue(
-            "TOTP binding must compare the authenticator target with the bound password target.",
-            source.contains("first.toStorageTarget().storageScopeKey() == boundTargetScopeKey")
+        assertFalse(
+            "A selected authenticator from another database must not be rejected solely because its storage differs from the password.",
+            bindingBody.contains("selectedSourceItem\n                ?.takeIf { it.isInBoundPasswordStorage() }")
         )
         assertTrue(
             "Duplicate cleanup must preserve the actual saved TOTP item, including newly copied items.",

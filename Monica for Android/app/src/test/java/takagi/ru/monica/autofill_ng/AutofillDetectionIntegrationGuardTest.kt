@@ -38,6 +38,52 @@ class AutofillDetectionIntegrationGuardTest {
         assertTrue(parser.contains("matchesUsernameLabel(hint)"))
     }
 
+    @Test
+    fun parserAndAuthenticationCallbackShareTheConflictPolicy() {
+        val parser = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/EnhancedAutofillStructureParserV2.kt"
+        ).readText()
+        val callback = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillCipherCallbackActivity.kt"
+        ).readText()
+
+        assertTrue(parser.contains("AutofillFieldRolePolicy.selectWithDiagnostics("))
+        assertTrue(callback.contains("val parser = EnhancedAutofillStructureParserV2()"))
+        assertTrue(callback.contains("source = \"assist_structure\""))
+    }
+
+    @Test
+    fun phoneLoginFieldsUseTheSavedAccountAcrossEveryPickerPath() {
+        val modernPicker = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPickerActivityV2.kt"
+        ).readText()
+        val authenticatedCallback = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillCipherCallbackActivity.kt"
+        ).readText()
+        val legacyPicker = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPickerActivity.kt"
+        ).readText()
+
+        assertTrue(
+            modernPicker.contains("FieldHint.PHONE_NUMBER.name.lowercase()") &&
+                modernPicker.contains("normalizedHint.contains(\"phone\")") &&
+                modernPicker.contains("normalizedHint.contains(\"tel\") -> accountValue")
+        )
+        assertTrue(
+            authenticatedCallback.contains("FieldHint.PHONE_NUMBER.name.lowercase()") &&
+                authenticatedCallback.contains("normalizedHint.contains(\"phone\")") &&
+                authenticatedCallback.contains("normalizedHint.contains(\"tel\") -> accountValue")
+        )
+        assertTrue(
+            "The legacy picker must also treat an explicit phone login field as the saved account identifier.",
+            legacyPicker.contains("FieldHint.PHONE_NUMBER.name -> accountValue")
+        )
+        assertFalse(
+            "A phone login field must never receive the password value.",
+            legacyPicker.contains("FieldHint.PHONE_NUMBER.name -> decryptedPassword")
+        )
+    }
+
     private fun projectFile(relativePath: String): File {
         var directory = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         while (

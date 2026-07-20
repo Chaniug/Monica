@@ -283,6 +283,10 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
                 "applicationId" to (callbackArgs.applicationId ?: "none"),
                 "webDomain" to (callbackArgs.webDomain ?: "none"),
                 "targetSource" to resolvedTargets.source,
+                "targetHintPreview" to resolvedTargets.hints
+                    .take(12)
+                    .mapIndexed { index, hint -> "$index:${hint.trim().uppercase()}" }
+                    .joinToString(separator = ","),
             )
         )
 

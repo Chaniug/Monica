@@ -2157,7 +2157,7 @@ private fun BasicInfoCard(
             } else {
                 if (entry.username.isNotEmpty()) {
                     InfoFieldWithCopy(
-                        label = stringResource(R.string.username),
+                        label = stringResource(R.string.field_account),
                         value = entry.username,
                         context = context,
                         onCreateSend = onCreateSend
