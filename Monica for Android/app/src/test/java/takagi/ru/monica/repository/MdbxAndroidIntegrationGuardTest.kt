@@ -597,8 +597,8 @@ class MdbxAndroidIntegrationGuardTest {
         val viewModelSource = projectFile(
             "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
         ).readText()
-        val mapperFactorySource = projectFile(
-            "app/src/main/java/takagi/ru/monica/bitwarden/mapper/MapperFactory.kt"
+        val cipherUploadProcessorSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/bitwarden/service/CipherUploadProcessor.kt"
         ).readText()
 
         assertTrue(
@@ -615,8 +615,9 @@ class MdbxAndroidIntegrationGuardTest {
                 viewModelSource.contains("ItemType.PAYMENT_ACCOUNT -> \"payment-account\"")
         )
         assertTrue(
-            "Bitwarden has no first-class payment-account cipher in Monica, so the mapper boundary must stay explicit.",
-            mapperFactorySource.contains("ItemType.PAYMENT_ACCOUNT -> null")
+            "Bitwarden has no first-class payment-account cipher in Monica, so the live upload boundary must reject unsupported item types explicitly.",
+            cipherUploadProcessorSource.contains("else -> return UploadItemResult.Error(\"Unsupported item type: \${item.itemType}\")") &&
+                !cipherUploadProcessorSource.contains("ItemType.PAYMENT_ACCOUNT ->")
         )
     }
 
