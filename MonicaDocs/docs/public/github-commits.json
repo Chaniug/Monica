@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-20T21:31:33.486Z",
+  "generatedAt": "2026-07-21T21:32:13.014Z",
   "range": {
-    "from": "2025-07-21",
-    "to": "2026-07-20"
+    "from": "2025-07-22",
+    "to": "2026-07-21"
   },
   "activity": [
-    {
-      "date": "2025-07-21",
-      "count": 0
-    },
     {
       "date": "2025-07-22",
       "count": 0
@@ -1466,9 +1462,31 @@
     {
       "date": "2026-07-20",
       "count": 1
+    },
+    {
+      "date": "2026-07-21",
+      "count": 2
     }
   ],
   "latest": [
+    {
+      "sha": "467f04c4d7035977feb8d3e0de39eb32b2f8a40e",
+      "shortSha": "467f04c",
+      "message": "refactor(android): remove unused legacy code and resources",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-21T13:29:51Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/467f04c4d7035977feb8d3e0de39eb32b2f8a40e"
+    },
+    {
+      "sha": "ca917af0edc3007c6eb0132c867ba080ef0f75d3",
+      "shortSha": "ca917af",
+      "message": "fix(android): improve search and autofill reliability",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-21T02:38:48Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/ca917af0edc3007c6eb0132c867ba080ef0f75d3"
+    },
     {
       "sha": "97ba156849f251268d791eb4cefb2d0af3dec81d",
       "shortSha": "97ba156",
@@ -1540,24 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-17T08:45:13Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/5ecdaabcda29b04bfc62211e452c437ae408d5ad"
-    },
-    {
-      "sha": "b9a5eed6f98e90a93d68364d5937673eb6007077",
-      "shortSha": "b9a5eed",
-      "message": "feat(android): unify Steam top bar search and menu",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-17T06:18:29Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/b9a5eed6f98e90a93d68364d5937673eb6007077"
-    },
-    {
-      "sha": "a97efafcf58266044bf7c773ff62f6e426e881b3",
-      "shortSha": "a97efaf",
-      "message": "fix(android): make update dialog content scrollable",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-16T13:36:51Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/a97efafcf58266044bf7c773ff62f6e426e881b3"
     }
   ]
 }
