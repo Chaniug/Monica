@@ -77,4 +77,19 @@ class AutofillDetectionPolicyTest {
         assertFalse(AutofillDetectionPolicy.matchesUsernameLabel("validity period"))
         assertFalse(AutofillDetectionPolicy.matchesUsernameLabel("paid amount"))
     }
+
+    @Test
+    fun explicitPhoneMetadataIsRecognizedWithoutPromotingGenericNumericFields() {
+        assertTrue(AutofillDetectionPolicy.matchesPhoneFieldName("mobilePhone"))
+        assertTrue(AutofillDetectionPolicy.matchesPhoneFieldName("请输入手机号码"))
+        assertFalse(AutofillDetectionPolicy.matchesPhoneFieldName("quantity"))
+        assertTrue(
+            AutofillDetectionPolicy.shouldKeepTarget(
+                hint = FieldHint.PHONE_NUMBER,
+                accuracy = Accuracy.MEDIUM,
+                hasPasswordTarget = false,
+                manualRequest = false,
+            )
+        )
+    }
 }

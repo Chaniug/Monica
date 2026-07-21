@@ -4,6 +4,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,7 +30,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -40,6 +45,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+
+internal fun initialSearchTextFieldValue(searchQuery: String): TextFieldValue =
+    TextFieldValue(
+        text = searchQuery,
+        selection = TextRange(searchQuery.length)
+    )
+
+internal fun reconcileSearchTextFieldValue(
+    currentValue: TextFieldValue,
+    searchQuery: String
+): TextFieldValue = if (currentValue.text == searchQuery) {
+    currentValue
+} else {
+    initialSearchTextFieldValue(searchQuery)
+}
 
 /**
  * M3E 风格的顶部标题栏
@@ -61,7 +81,28 @@ fun ExpressiveTopBar(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val searchInteractionSource = remember { MutableInteractionSource() }
+    var searchFieldValueState by remember {
+        mutableStateOf(initialSearchTextFieldValue(searchQuery))
+    }
+    val searchFieldValue = reconcileSearchTextFieldValue(searchFieldValueState, searchQuery)
     val resolvedSearchHint = searchHint ?: stringResource(R.string.topbar_search_hint)
+
+    SideEffect {
+        if (searchFieldValueState != searchFieldValue) {
+            searchFieldValueState = searchFieldValue
+        }
+    }
+
+    LaunchedEffect(searchInteractionSource) {
+        searchInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            }
+        }
+    }
 
     // 动画状态：使用 Alpha 而不是 Visibility，避免布局重排导致挤压搜索框
     val titleAlpha by animateFloatAsState(
@@ -189,12 +230,18 @@ fun ExpressiveTopBar(
                                     )
                                 }
                                 BasicTextField(
-                                    value = searchQuery,
-                                    onValueChange = onSearchQueryChange,
+                                    value = searchFieldValue,
+                                    onValueChange = { newValue ->
+                                        searchFieldValueState = newValue
+                                        if (newValue.text != searchQuery) {
+                                            onSearchQueryChange(newValue.text)
+                                        }
+                                    },
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurface
                                     ),
                                     singleLine = true,
+                                    interactionSource = searchInteractionSource,
                                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                     modifier = Modifier.focusRequester(focusRequester)
                                 )
@@ -228,6 +275,7 @@ fun ExpressiveTopBar(
                         
                          LaunchedEffect(Unit) {
                             focusRequester.requestFocus()
+                            keyboardController?.show()
                         }
                     } else {
                         // 折叠状态：Action Buttons

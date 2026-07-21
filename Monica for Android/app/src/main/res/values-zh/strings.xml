@@ -1892,6 +1892,7 @@
     <string name="autofill_fill_suggestions_desc">自动显示匹配的密码建议</string>
     <string name="autofill_fill_manual_selection">手动选择</string>
     <string name="autofill_fill_manual_selection_desc">允许手动选择要填充的密码</string>
+    <string name="autofill_password_suggestion_setting_desc">在注册和修改密码表单中显示生成强密码选项</string>
     
     <!-- 自动填充设置 - 保存行为 -->
     <string name="autofill_save_behavior_title">保存行为</string>

@@ -21,6 +21,8 @@ class AutofillDetectionIntegrationGuardTest {
         assertTrue(service.contains("manualRequest = isManualRequest"))
         assertTrue(service.contains("if (!isManualRequest && loginTargetCount == 0"))
         assertTrue(parser.contains("if (allowWeakTargets) return@let list"))
+        assertTrue(service.contains("AutofillRequestContextPolicy.allowPackageMatching("))
+        assertTrue(service.contains("allowPackageMatch = allowPackageMatch"))
     }
 
     @Test
@@ -36,6 +38,9 @@ class AutofillDetectionIntegrationGuardTest {
         assertFalse(numberBranch.contains("Accuracy.MEDIUM"))
         assertTrue(parser.contains("shouldIncludeHiddenCredential("))
         assertTrue(parser.contains("matchesUsernameLabel(hint)"))
+        assertTrue(parser.contains("matchesPhoneFieldName"))
+        assertTrue(parser.contains("placeholder"))
+        assertTrue(parser.contains("inputmode"))
     }
 
     @Test

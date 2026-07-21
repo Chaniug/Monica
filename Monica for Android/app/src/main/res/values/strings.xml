@@ -2047,6 +2047,7 @@
     <string name="autofill_fill_suggestions_desc">Automatically show matching password suggestions</string>
     <string name="autofill_fill_manual_selection">Manual Selection</string>
     <string name="autofill_fill_manual_selection_desc">Allow manual selection of password to fill</string>
+    <string name="autofill_password_suggestion_setting_desc">Show the strong password generator in registration and password-change forms</string>
     <string name="autofill_respect_disabled_flag_title">Respect Autofill disabled flag</string>
     <string name="autofill_respect_disabled_flag_desc">Skip browser fields that disable autofill</string>
     

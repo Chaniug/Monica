@@ -55,6 +55,25 @@ internal object AutofillDetectionPolicy {
         }
     }
 
+    fun matchesPhoneFieldName(value: String): Boolean {
+        val normalized = value.lowercase(Locale.ENGLISH).trim()
+        if (normalized.isBlank()) return false
+        if (
+            "phone" in normalized ||
+            "mobile" in normalized ||
+            "telephone" in normalized ||
+            "手机号" in normalized ||
+            "手機號" in normalized ||
+            "电话号码" in normalized ||
+            "電話號碼" in normalized
+        ) {
+            return true
+        }
+        return normalized
+            .split(Regex("[^\\p{L}\\p{N}]+"))
+            .any { token -> token == "tel" }
+    }
+
     private fun isAccountHint(hint: FieldHint): Boolean =
         hint == FieldHint.USERNAME ||
             hint == FieldHint.EMAIL_ADDRESS ||

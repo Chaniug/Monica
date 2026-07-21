@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DoNotDisturb
@@ -130,6 +131,7 @@ fun AutofillSettingsV2Screen(
     val autoCopyOtpEnabled by preferences.isAutoCopyOtpEnabled.collectAsState(initial = false)
     val respectOffEnabled by preferences.isV2RespectAutofillOffEnabled.collectAsState(initial = true)
     val inlineSuggestionsEnabled by preferences.isInlineSuggestionsEnabled.collectAsState(initial = true)
+    val passwordSuggestionEnabled by preferences.isPasswordSuggestionEnabled.collectAsState(initial = true)
     val blacklistEnabled by preferences.isBlacklistEnabled.collectAsState(initial = true)
     val blacklistPackages by preferences.blacklistPackages.collectAsState(initial = emptySet())
     val saveBlockedTargetRecords by preferences.saveBlockedTargetRecords.collectAsState(initial = emptyList())
@@ -568,6 +570,16 @@ fun AutofillSettingsV2Screen(
                     checked = inlineSuggestionsEnabled,
                     onCheckedChange = { enabled ->
                         scope.launch { preferences.setInlineSuggestionsEnabled(enabled) }
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.AutoAwesome,
+                    title = stringResource(R.string.password_suggestion_title),
+                    subtitle = stringResource(R.string.autofill_password_suggestion_setting_desc),
+                    checked = passwordSuggestionEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch { preferences.setPasswordSuggestionEnabled(enabled) }
                     },
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

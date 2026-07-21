@@ -15,6 +15,7 @@ class BitwardenLikeAutofillMatcherNg {
         val allowSubdomainMatch: Boolean = true,
         val allowBaseDomainMatch: Boolean = true,
         val exactDomainOnly: Boolean = false,
+        val allowPackageMatch: Boolean = true,
         val maxSuggestions: Int = 20,
     )
 
@@ -110,6 +111,7 @@ class BitwardenLikeAutofillMatcherNg {
         val entryRoots = entryHosts.map(::extractBaseDomain).toSet()
 
         if (!preferDomainSignals &&
+            config.allowPackageMatch &&
             !targetPackage.isNullOrBlank() &&
             entryPackages.contains(targetPackage)
         ) {
@@ -120,6 +122,7 @@ class BitwardenLikeAutofillMatcherNg {
         val entryTitle = normalizeLabel(entry.title)
         val entryAppName = normalizeLabel(entry.appName)
         if (!preferDomainSignals &&
+            config.allowPackageMatch &&
             !targetAppDisplayName.isNullOrBlank() &&
             (
                 entryTitle == targetAppDisplayName ||
@@ -130,7 +133,7 @@ class BitwardenLikeAutofillMatcherNg {
             reasons += Reason.EXACT_APP_TITLE
         }
 
-        if (!preferDomainSignals && !targetPackageToken.isNullOrBlank()) {
+        if (!preferDomainSignals && config.allowPackageMatch && !targetPackageToken.isNullOrBlank()) {
             val token = targetPackageToken.lowercase(Locale.ROOT)
             val tokenMatched = entryTitle.contains(token) || entryAppName.contains(token)
             if (tokenMatched) {
@@ -183,7 +186,7 @@ class BitwardenLikeAutofillMatcherNg {
         if (!config.strictOnly && score == 0) {
             score = heuristicFallbackScore(
                 entry = entry,
-                targetPackage = if (preferDomainSignals) null else targetPackage,
+                targetPackage = if (preferDomainSignals || !config.allowPackageMatch) null else targetPackage,
                 targetHost = targetHost,
             )
             if (score > 0) {

@@ -28,6 +28,26 @@ class BitwardenLikeAutofillMatcherNgTest {
     }
 
     @Test
+    fun `domainless browser request does not use shared browser package bindings`() {
+        val entries = listOf(
+            entry(id = 1, title = "Feijipan", website = "https://www.feijipan.com", appPackage = "com.android.chrome"),
+            entry(id = 2, title = "123 Pan", website = "https://www.123pan.com", appPackage = "com.android.chrome"),
+        )
+
+        val result = matcher.match(
+            entries = entries,
+            packageName = "com.android.chrome",
+            webDomain = null,
+            config = BitwardenLikeAutofillMatcherNg.Config(
+                strictOnly = true,
+                allowPackageMatch = false,
+            ),
+        )
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
     fun `strict mode should normalize androidapp package prefix`() {
         val entries = listOf(
             entry(id = 1, title = "Target", appPackage = "androidapp://com.example.app"),
@@ -106,7 +126,7 @@ class BitwardenLikeAutofillMatcherNgTest {
     }
 
     @Test
-    fun `should prioritize package plus domain combo over domain only`() {
+    fun `domain match does not depend on browser package ordering`() {
         val entries = listOf(
             entry(
                 id = 1,
@@ -125,8 +145,7 @@ class BitwardenLikeAutofillMatcherNgTest {
         )
 
         assertEquals(2, result.size)
-        assertEquals(1L, result.first().id)
-        assertTrue(result.any { it.id == 2L })
+        assertEquals(setOf(1L, 2L), result.map { it.id }.toSet())
     }
 
     @Test

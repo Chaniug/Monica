@@ -922,6 +922,16 @@ class EnhancedAutofillStructureParserV2 {
                             extractOfType(type).let(out::addAll)
                         }
 
+                        "inputmode" -> {
+                            if (attribute.second.equals("tel", ignoreCase = true)) {
+                                out += ParsedItemBuilder(
+                                    accuracy = Accuracy.MEDIUM,
+                                    hint = InternalHint.PHONE_NUMBER,
+                                    reason = "inputmode",
+                                )
+                            }
+                        }
+
                         "name" -> {
                             val type = attribute.second.orEmpty()
                             extractOfId(type).let(out::addAll)
@@ -933,6 +943,13 @@ class EnhancedAutofillStructureParserV2 {
                         }
 
                         "label" -> {
+                            val label = attribute.second.orEmpty()
+                            extractOfLabel(label).let(out::addAll)
+                        }
+
+                        "placeholder",
+                        "aria-label",
+                        -> {
                             val label = attribute.second.orEmpty()
                             extractOfLabel(label).let(out::addAll)
                         }
@@ -1068,6 +1085,12 @@ class EnhancedAutofillStructureParserV2 {
                 reason = "id",
             )
 
+            AutofillDetectionPolicy.matchesPhoneFieldName(id) -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.PHONE_NUMBER,
+                reason = "id",
+            )
+
             "username" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.MEDIUM,
                 hint = InternalHint.USERNAME,
@@ -1195,6 +1218,13 @@ class EnhancedAutofillStructureParserV2 {
                 ParsedItemBuilder(
                     accuracy = Accuracy.MEDIUM,
                     hint = InternalHint.EMAIL_ADDRESS,
+                    reason = "label:$hint",
+                )
+
+            AutofillDetectionPolicy.matchesPhoneFieldName(hint) ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.PHONE_NUMBER,
                     reason = "label:$hint",
                 )
 
