@@ -27,7 +27,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-@ExperimentalGetImage
 internal class QrCameraScanSession(
     context: Context,
     private val lifecycleOwner: LifecycleOwner,
@@ -57,6 +56,7 @@ internal class QrCameraScanSession(
         }
     }
 
+    @ExperimentalGetImage
     fun start() {
         check(active.compareAndSet(false, true)) { "QR camera session already started" }
         val startedAt = SystemClock.elapsedRealtime()
@@ -122,6 +122,7 @@ internal class QrCameraScanSession(
 
     fun isProcessingFrame(): Boolean = processingFrame.get()
 
+    @ExperimentalGetImage
     private fun analyzeFrame(imageProxy: ImageProxy) {
         if (!active.get()) {
             imageProxy.close()
