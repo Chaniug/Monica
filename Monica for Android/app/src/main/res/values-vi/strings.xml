@@ -2763,12 +2763,6 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="free_donation_toggle">自由打赏</string>
     <string name="payment_kofi_link">ko-fi.com/joyinjoester</string>
     <string name="payment_paid_button">我已付款,激活plus</string>
-    <string name="payment_activated_message">感谢您的支持!Plus功能已激活</string>
-    <string name="plus_activation_cdk_label">激活码(CDK)</string>
-    <string name="plus_activation_cdk_placeholder">例如 MONICA-XXXX-XXXX-XXXX</string>
-    <string name="plus_activation_cdk_hint">付款后输入激活码,系统将连接云端进行校验并绑定当前设备。</string>
-    <string name="plus_activation_empty_cdk">请输入激活码</string>
-    <string name="plus_activation_verify_button">激活 Plus</string>
     <string name="cd_back">返回</string>
     <string name="association_options">Tùy chọn liên kết</string>
     <string name="associated_link">Liên kết liên kết</string>

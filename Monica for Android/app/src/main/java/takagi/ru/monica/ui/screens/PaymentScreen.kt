@@ -23,19 +23,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import takagi.ru.monica.plus.PlusActivationUiResult
 import takagi.ru.monica.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaymentScreen(
     onNavigateBack: () -> Unit,
-    onActivatePlus: suspend () -> PlusActivationUiResult
+    onActivatePlus: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var isActivating by remember { mutableStateOf(false) }
     var isFreeDonation by remember { mutableStateOf(false) }
     
     Scaffold(
@@ -193,34 +190,12 @@ fun PaymentScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            isActivating = true
-                            scope.launch {
-                                try {
-                                    val result = onActivatePlus()
-                                    snackbarHostState.showSnackbar(
-                                        message = result.message,
-                                        duration = SnackbarDuration.Short
-                                    )
-                                    if (result.success) {
-                                        onNavigateBack()
-                                    }
-                                } finally {
-                                    isActivating = false
-                                }
-                            }
+                            onActivatePlus()
+                            onNavigateBack()
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isActivating
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (isActivating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Text(stringResource(R.string.plus_activation_verify_button))
-                        }
+                        Text(stringResource(R.string.payment_paid_button))
                     }
                 }
             }

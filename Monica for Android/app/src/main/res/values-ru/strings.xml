@@ -2125,12 +2125,6 @@
     <string name="free_donation_toggle">Произвольная сумма</string>
     <string name="payment_kofi_link">ko-fi.com/joyinjoester</string>
     <string name="payment_paid_button">Я оплатил, активировать Plus</string>
-    <string name="payment_activated_message">Спасибо за поддержку! Plus активирован</string>
-    <string name="plus_activation_cdk_label">Код активации (CDK)</string>
-    <string name="plus_activation_cdk_placeholder">Например MONICA-XXXX-XXXX-XXXX</string>
-    <string name="plus_activation_cdk_hint">Введите код после оплаты. Система проверит и привяжет к устройству.</string>
-    <string name="plus_activation_empty_cdk">Введите код активации</string>
-    <string name="plus_activation_verify_button">Активировать Plus</string>
 
     <!-- Saison Plus Copy -->
     <string name="plus_title">Monica Plus</string>

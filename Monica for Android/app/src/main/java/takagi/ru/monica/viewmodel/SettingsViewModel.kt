@@ -280,12 +280,6 @@ class SettingsViewModel(
             settingsManager.updatePlusActivated(activated)
         }
     }
-
-    fun clearPlusLicenseData() {
-        viewModelScope.launch {
-            settingsManager.clearPlusLicenseData()
-        }
-    }
     
     fun updateUseDraggableBottomNav(enabled: Boolean) {
         viewModelScope.launch {

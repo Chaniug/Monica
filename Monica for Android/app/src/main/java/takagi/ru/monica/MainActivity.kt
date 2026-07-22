@@ -157,8 +157,6 @@ import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.util.PhotoPickerHelper
 import takagi.ru.monica.utils.SettingsManager
-import takagi.ru.monica.plus.PlusLicenseManager
-import takagi.ru.monica.plus.PlusActivationUiResult
 import takagi.ru.monica.utils.AutoBackupManager
 
 private data class PendingAddStorageDefaults(
@@ -3861,10 +3859,6 @@ fun MonicaContent(
                 },
                 onActivatePlus = {
                     settingsViewModel.updatePlusActivated(true)
-                    PlusActivationUiResult(
-                        success = true,
-                        message = "Plus 激活成功"
-                    )
                 }
             )
         }

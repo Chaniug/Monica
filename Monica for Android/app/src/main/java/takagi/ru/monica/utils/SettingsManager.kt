@@ -196,11 +196,6 @@ class SettingsManager(private val context: Context) {
         private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
-        private val PLUS_LICENSE_CDK_KEY = stringPreferencesKey("plus_license_cdk")
-        private val PLUS_LICENSE_DEVICE_FINGERPRINT_KEY =
-            stringPreferencesKey("plus_license_device_fingerprint")
-        private val PLUS_LICENSE_LAST_VERIFIED_AT_KEY =
-            longPreferencesKey("plus_license_last_verified_at")
         private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
         private val PASSWORD_GROUP_MODE_KEY = stringPreferencesKey("password_group_mode")
         private val PASSWORD_WEBSITE_STACK_MATCH_MODE_KEY =
@@ -932,67 +927,6 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePlusActivated(activated: Boolean) {
         dataStore.edit { preferences ->
             preferences[IS_PLUS_ACTIVATED_KEY] = activated
-        }
-    }
-
-    suspend fun updatePlusLicenseCdk(cdk: String?) {
-        dataStore.edit { preferences ->
-            val normalized = cdk?.trim()?.takeIf { it.isNotBlank() }
-            if (normalized == null) {
-                preferences.remove(PLUS_LICENSE_CDK_KEY)
-            } else {
-                preferences[PLUS_LICENSE_CDK_KEY] = normalized
-            }
-        }
-    }
-
-    suspend fun updatePlusLicenseDeviceFingerprint(fingerprint: String?) {
-        dataStore.edit { preferences ->
-            val normalized = fingerprint?.trim()?.takeIf { it.isNotBlank() }
-            if (normalized == null) {
-                preferences.remove(PLUS_LICENSE_DEVICE_FINGERPRINT_KEY)
-            } else {
-                preferences[PLUS_LICENSE_DEVICE_FINGERPRINT_KEY] = normalized
-            }
-        }
-    }
-
-    suspend fun updatePlusLicenseLastVerifiedAt(epochSeconds: Long) {
-        dataStore.edit { preferences ->
-            if (epochSeconds <= 0L) {
-                preferences.remove(PLUS_LICENSE_LAST_VERIFIED_AT_KEY)
-            } else {
-                preferences[PLUS_LICENSE_LAST_VERIFIED_AT_KEY] = epochSeconds
-            }
-        }
-    }
-
-    suspend fun getPlusLicenseCdk(): String? {
-        return dataStore.data
-            .map { it[PLUS_LICENSE_CDK_KEY] }
-            .first()
-            ?.takeIf { value -> value.isNotBlank() }
-    }
-
-    suspend fun getPlusLicenseDeviceFingerprint(): String? {
-        return dataStore.data
-            .map { it[PLUS_LICENSE_DEVICE_FINGERPRINT_KEY] }
-            .first()
-            ?.takeIf { value -> value.isNotBlank() }
-    }
-
-    suspend fun getPlusLicenseLastVerifiedAt(): Long {
-        return dataStore.data
-            .map { it[PLUS_LICENSE_LAST_VERIFIED_AT_KEY] ?: 0L }
-            .first()
-    }
-
-    suspend fun clearPlusLicenseData() {
-        dataStore.edit { preferences ->
-            preferences[IS_PLUS_ACTIVATED_KEY] = false
-            preferences.remove(PLUS_LICENSE_CDK_KEY)
-            preferences.remove(PLUS_LICENSE_DEVICE_FINGERPRINT_KEY)
-            preferences.remove(PLUS_LICENSE_LAST_VERIFIED_AT_KEY)
         }
     }
 
