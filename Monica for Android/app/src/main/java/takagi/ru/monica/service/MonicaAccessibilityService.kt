@@ -590,14 +590,33 @@ class MonicaAccessibilityService : AccessibilityService() {
 
     private fun setNodeText(node: AccessibilityNodeInfo?, text: String): Boolean {
         if (node == null || text.isBlank()) return false
+        if (!node.isFocused) {
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+
+        // WebView (H5 / X5·TBS 等内核) 的 HTML <input> 对 ACTION_SET_TEXT
+        // 常表现为"接受命令但不刷新界面"——它只改无障碍节点的 text 属性，
+        // 不触发 JS input 事件，框架(React/Vue)因此读不到新值、界面仍空白。
+        // 优先用 ACTION_PASTE：粘贴会触发 input 事件，HTML 框架才能捕获并刷新 UI。
+        // 副作用：临时覆盖系统剪贴板（主流密码管理器的通用做法）。
+        runCatching {
+            val clipboard =
+                getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(
+                android.content.ClipData.newPlainText("monica_fill", text)
+            )
+        }
+        val pasted = runCatching {
+            node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+        }.getOrDefault(false)
+        if (pasted) return true
+
+        // 原生 EditText 等不支持 paste 的场景，回退 SET_TEXT（原生控件能正确刷新）。
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return runCatching {
-            if (!node.isFocused) {
-                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-            }
-            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         }.getOrDefault(false)
     }
