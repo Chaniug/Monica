@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Smartphone
@@ -115,6 +116,7 @@ fun AutofillSettingsV2Screen(
     }
 
     val autofillEnabled by preferences.isAutofillEnabled.collectAsState(initial = true)
+    val activeFillNotificationEnabled by preferences.isActiveFillNotificationEnabled.collectAsState(initial = false)
     val appSettings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
     val autofillAuthRequired = appSettings.autofillAuthRequired
     val strictMode by preferences.isBitwardenStrictModeEnabled.collectAsState(initial = true)
@@ -513,6 +515,16 @@ fun AutofillSettingsV2Screen(
                     checked = autofillEnabled,
                     onCheckedChange = { enabled ->
                         scope.launch { preferences.setAutofillEnabled(enabled) }
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Notifications,
+                    title = stringResource(R.string.autofill_active_fill_notification_title),
+                    subtitle = stringResource(R.string.autofill_active_fill_notification_desc),
+                    checked = activeFillNotificationEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch { preferences.setActiveFillNotificationEnabled(enabled) }
                     },
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

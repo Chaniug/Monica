@@ -2,29 +2,68 @@ package takagi.ru.monica.service
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.AccessibilityService
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.PersistableBundle
 import android.util.Log
 import android.text.InputType
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import takagi.ru.monica.autofill_ng.ActiveFillPromptThrottle
+import takagi.ru.monica.autofill_ng.AutofillPreferences
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.isLinkedToApp
+import takagi.ru.monica.data.linkedAppBindings
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.autofill_ng.ActiveFillNotificationHelper
+
+internal data class TemporaryClipboardSnapshot(
+    val text: String?,
+    val label: String?,
+    val canVerify: Boolean,
+)
+
+internal fun shouldRestoreTemporaryClipboard(
+    snapshot: TemporaryClipboardSnapshot,
+    expectedLabel: String,
+    expectedText: String,
+): Boolean {
+    return !snapshot.canVerify ||
+        (snapshot.label == expectedLabel && snapshot.text == expectedText)
+}
 
 class MonicaAccessibilityService : AccessibilityService() {
     private var lastPackageName: String = ""
     private var lastUrl: String = ""
     private var lastScanTime = 0L
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private lateinit var passwordRepository: PasswordRepository
-    private var lastActiveFillPackage: String = ""
-    private var lastActiveFillTime = 0L
+    private val passwordRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        PasswordRepository(PasswordDatabase.getDatabase(applicationContext).passwordEntryDao())
+    }
+    private val autofillPreferences by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AutofillPreferences(applicationContext)
+    }
+    private val activeFillPromptThrottle = ActiveFillPromptThrottle(ACTIVE_FILL_THROTTLE_MS)
+    @Volatile
+    private var activeFillNotificationEnabled = false
+    private val clipboardHandler = Handler(Looper.getMainLooper())
+    private val temporaryClipboardLock = Any()
+    private var temporaryClipboardRestoreRunnable: Runnable? = null
+    private var temporaryClipboardGeneration = 0L
+    private var temporaryClipboardOriginal: ClipData? = null
+    private var temporaryClipboardOriginalWasReadable = false
+    private var temporaryClipboardActive = false
+    private var temporaryClipboardExpectedText: String? = null
 
     companion object {
         private const val TAG = "MonicaAccessibility"
@@ -38,6 +77,8 @@ class MonicaAccessibilityService : AccessibilityService() {
         private const val SCORE_PASSWORD_FLAG = 90
         private const val SCORE_CONFIRM_PENALTY = 35
         private const val ACTIVE_FILL_THROTTLE_MS = 5000L
+        private const val TEMPORARY_CLIPBOARD_LABEL = "Monica autofill"
+        private const val TEMPORARY_CLIPBOARD_RESTORE_DELAY_MS = 500L
 
         @Volatile
         private var activeInstance: MonicaAccessibilityService? = null
@@ -146,14 +187,25 @@ class MonicaAccessibilityService : AccessibilityService() {
         val left: Int
     )
 
+    private data class TemporaryClipboardToken(
+        val generation: Long,
+        val label: String,
+        val text: String,
+    )
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
-        runCatching {
-            passwordRepository = PasswordRepository(PasswordDatabase.getDatabase(this).passwordEntryDao())
-            ActiveFillNotificationHelper.createChannel(this)
-        }.onFailure { e ->
-            Log.w(TAG, "Failed to init active fill repository", e)
+        serviceScope.launch {
+            autofillPreferences.isActiveFillNotificationEnabled.collectLatest { enabled ->
+                activeFillNotificationEnabled = enabled
+                if (enabled) {
+                    ActiveFillNotificationHelper.createChannel(this@MonicaAccessibilityService)
+                } else {
+                    activeFillPromptThrottle.clear()
+                    ActiveFillNotificationHelper.dismissNotification(this@MonicaAccessibilityService)
+                }
+            }
         }
     }
 
@@ -199,6 +251,8 @@ class MonicaAccessibilityService : AccessibilityService() {
         if (activeInstance === this) {
             activeInstance = null
         }
+        ActiveFillNotificationHelper.dismissNotification(this)
+        restoreTemporaryClipboardImmediately()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -213,7 +267,6 @@ class MonicaAccessibilityService : AccessibilityService() {
         val activePackageName = root.packageName?.toString().orEmpty()
         if (
             !targetPackageName.isNullOrBlank() &&
-            activePackageName.isNotBlank() &&
             !activePackageName.equals(targetPackageName, ignoreCase = true)
         ) {
             Log.d(TAG, "Skip accessibility fill: active package mismatch ($activePackageName != $targetPackageName)")
@@ -279,27 +332,28 @@ class MonicaAccessibilityService : AccessibilityService() {
     }.getOrDefault(false)
 
     private fun maybePromptActiveFill(packageName: String, source: AccessibilityNodeInfo?) {
+        if (!activeFillNotificationEnabled) return
         if (packageName.isBlank() || source == null) return
         if (!isLikelyLoginField(source)) return
 
         val now = System.currentTimeMillis()
-        if (packageName == lastActiveFillPackage && now - lastActiveFillTime < ACTIVE_FILL_THROTTLE_MS) return
+        if (!activeFillPromptThrottle.tryAcquire(packageName, now)) return
 
         serviceScope.launch {
             try {
                 val entries = passwordRepository.getAllPasswordEntries().first()
-                val match = entries.firstOrNull { entry ->
-                    entry.appPackageName
-                        .split("[,;| ]".toRegex())
-                        .any { it.equals(packageName, ignoreCase = true) }
-                }
-                if (match != null) {
-                    lastActiveFillPackage = packageName
-                    lastActiveFillTime = now
+                val match = entries.firstOrNull { entry -> entry.isLinkedToApp(packageName) }
+                if (match != null && activeFillNotificationEnabled) {
+                    val linkedAppName = match.linkedAppBindings()
+                        .firstOrNull { binding ->
+                            binding.packageName.equals(packageName, ignoreCase = true)
+                        }
+                        ?.appName
+                        .orEmpty()
                     val shown = ActiveFillNotificationHelper.showActiveFillNotification(
                         this@MonicaAccessibilityService,
                         packageName,
-                        match.appName.ifBlank { packageName }
+                        linkedAppName.ifBlank { packageName }
                     )
                     Log.d(TAG, "Active fill prompt for pkg=$packageName shown=$shown")
                 } else {
@@ -313,24 +367,22 @@ class MonicaAccessibilityService : AccessibilityService() {
 
     private fun isLikelyLoginField(node: AccessibilityNodeInfo): Boolean {
         if (node.isPassword) return true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val inputType = node.inputType
-            val inputClass = inputType and InputType.TYPE_MASK_CLASS
-            val variation = inputType and InputType.TYPE_MASK_VARIATION
-            if (
-                (inputClass == InputType.TYPE_CLASS_TEXT && (
-                    variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
-                        variation == InputType.TYPE_TEXT_VARIATION_PERSON_NAME ||
-                        variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
-                    )) ||
-                (inputClass == InputType.TYPE_CLASS_NUMBER &&
-                    variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
-            ) {
-                return true
-            }
+        val inputType = node.inputType
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        if (
+            (inputClass == InputType.TYPE_CLASS_TEXT && (
+                variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+                    variation == InputType.TYPE_TEXT_VARIATION_PERSON_NAME ||
+                    variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+                )) ||
+            (inputClass == InputType.TYPE_CLASS_NUMBER &&
+                variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        ) {
+            return true
         }
         if (node.isEditable) {
             val signals = buildList {
@@ -461,31 +513,29 @@ class MonicaAccessibilityService : AccessibilityService() {
         if (node.isPassword) {
             passwordScore += SCORE_PASSWORD_FLAG
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val inputType = node.inputType
-            val inputClass = inputType and InputType.TYPE_MASK_CLASS
-            val variation = inputType and InputType.TYPE_MASK_VARIATION
-            if (
-                (inputClass == InputType.TYPE_CLASS_TEXT && (
-                    variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-                        variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                    )) ||
-                (inputClass == InputType.TYPE_CLASS_NUMBER &&
-                    variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
-            ) {
-                passwordScore += SCORE_PASSWORD_FLAG
-            }
-            if (
-                inputClass == InputType.TYPE_CLASS_TEXT &&
-                (
-                    variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
-                        variation == InputType.TYPE_TEXT_VARIATION_PERSON_NAME ||
-                        variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
-                    )
-            ) {
-                usernameScore += SCORE_USERNAME_SIGNAL
-            }
+        val inputType = node.inputType
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        if (
+            (inputClass == InputType.TYPE_CLASS_TEXT && (
+                variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                )) ||
+            (inputClass == InputType.TYPE_CLASS_NUMBER &&
+                variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        ) {
+            passwordScore += SCORE_PASSWORD_FLAG
+        }
+        if (
+            inputClass == InputType.TYPE_CLASS_TEXT &&
+            (
+                variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+                    variation == InputType.TYPE_TEXT_VARIATION_PERSON_NAME ||
+                    variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+                )
+        ) {
+            usernameScore += SCORE_USERNAME_SIGNAL
         }
 
         if (signals.contains("password") || signals.contains("passwd") || signals.contains("pwd")) {
@@ -595,29 +645,161 @@ class MonicaAccessibilityService : AccessibilityService() {
         }
         node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
 
-        // WebView (H5 / X5·TBS 等内核) 的 HTML <input> 对 ACTION_SET_TEXT
-        // 常表现为"接受命令但不刷新界面"——它只改无障碍节点的 text 属性，
-        // 不触发 JS input 事件，框架(React/Vue)因此读不到新值、界面仍空白。
-        // 优先用 ACTION_PASTE：粘贴会触发 input 事件，HTML 框架才能捕获并刷新 UI。
-        // 副作用：临时覆盖系统剪贴板（主流密码管理器的通用做法）。
-        runCatching {
-            val clipboard =
-                getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(
-                android.content.ClipData.newPlainText("monica_fill", text)
-            )
+        val existingText = runCatching { node.text?.toString().orEmpty() }.getOrDefault("")
+        val canPasteWithoutAppending = if (existingText.isEmpty()) {
+            true
+        } else {
+            val selectionArgs = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, existingText.length)
+            }
+            runCatching {
+                node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArgs)
+            }.getOrDefault(false)
         }
-        val pasted = runCatching {
-            node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-        }.getOrDefault(false)
-        if (pasted) return true
 
-        // 原生 EditText 等不支持 paste 的场景，回退 SET_TEXT（原生控件能正确刷新）。
+        if (canPasteWithoutAppending) {
+            val temporaryClipboard = setTemporaryClipboard(text)
+            if (temporaryClipboard != null) {
+                val pasted = runCatching {
+                    node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                }.getOrDefault(false)
+                scheduleTemporaryClipboardRestore(temporaryClipboard)
+                if (pasted) return true
+            }
+        }
+
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return runCatching {
             node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         }.getOrDefault(false)
+    }
+
+    private fun setTemporaryClipboard(text: String): TemporaryClipboardToken? {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: return null
+
+        synchronized(temporaryClipboardLock) {
+            val startedSession = !temporaryClipboardActive
+            if (startedSession) {
+                val originalResult = runCatching { clipboard.primaryClip }
+                temporaryClipboardOriginal = originalResult.getOrNull()
+                temporaryClipboardOriginalWasReadable = originalResult.isSuccess
+                temporaryClipboardActive = true
+            }
+
+            val generation = temporaryClipboardGeneration + 1L
+            val temporaryClip = ClipData.newPlainText(TEMPORARY_CLIPBOARD_LABEL, text).apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    description.extras = PersistableBundle().apply {
+                        putBoolean("android.content.extra.IS_SENSITIVE", true)
+                    }
+                }
+            }
+            val written = runCatching { clipboard.setPrimaryClip(temporaryClip) }.isSuccess
+            if (!written) {
+                if (startedSession) {
+                    resetTemporaryClipboardSessionLocked()
+                }
+                return null
+            }
+
+            temporaryClipboardGeneration = generation
+            temporaryClipboardExpectedText = text
+            return TemporaryClipboardToken(
+                generation = generation,
+                label = TEMPORARY_CLIPBOARD_LABEL,
+                text = text,
+            )
+        }
+    }
+
+    private fun scheduleTemporaryClipboardRestore(token: TemporaryClipboardToken) {
+        val restoreRunnable = Runnable { restoreTemporaryClipboardIfOwned(token) }
+        synchronized(temporaryClipboardLock) {
+            if (!temporaryClipboardActive || token.generation != temporaryClipboardGeneration) return
+            temporaryClipboardRestoreRunnable?.let(clipboardHandler::removeCallbacks)
+            temporaryClipboardRestoreRunnable = restoreRunnable
+            clipboardHandler.postDelayed(
+                restoreRunnable,
+                TEMPORARY_CLIPBOARD_RESTORE_DELAY_MS,
+            )
+        }
+    }
+
+    private fun restoreTemporaryClipboardImmediately() {
+        val token = synchronized(temporaryClipboardLock) {
+            if (!temporaryClipboardActive) return
+            TemporaryClipboardToken(
+                generation = temporaryClipboardGeneration,
+                label = TEMPORARY_CLIPBOARD_LABEL,
+                text = temporaryClipboardExpectedText.orEmpty(),
+            )
+        }
+        restoreTemporaryClipboardIfOwned(token)
+    }
+
+    private fun restoreTemporaryClipboardIfOwned(token: TemporaryClipboardToken) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        synchronized(temporaryClipboardLock) {
+            if (!temporaryClipboardActive || token.generation != temporaryClipboardGeneration) return
+
+            val snapshot = if (clipboard == null) {
+                TemporaryClipboardSnapshot(text = null, label = null, canVerify = false)
+            } else {
+                runCatching {
+                    val currentClip = clipboard.primaryClip
+                    TemporaryClipboardSnapshot(
+                        text = currentClip
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)
+                            ?.coerceToText(this)
+                            ?.toString(),
+                        label = currentClip?.description?.label?.toString(),
+                        canVerify = true,
+                    )
+                }.getOrElse {
+                    TemporaryClipboardSnapshot(text = null, label = null, canVerify = false)
+                }
+            }
+
+            if (
+                clipboard != null &&
+                shouldRestoreTemporaryClipboard(snapshot, token.label, token.text)
+            ) {
+                val restored = if (
+                    temporaryClipboardOriginalWasReadable &&
+                    temporaryClipboardOriginal != null
+                ) {
+                    runCatching {
+                        clipboard.setPrimaryClip(requireNotNull(temporaryClipboardOriginal))
+                    }.isSuccess
+                } else {
+                    false
+                }
+                if (!restored) {
+                    runCatching {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            clipboard.clearPrimaryClip()
+                        } else {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                        }
+                    }
+                }
+            }
+
+            resetTemporaryClipboardSessionLocked()
+        }
+    }
+
+    private fun resetTemporaryClipboardSessionLocked() {
+        temporaryClipboardRestoreRunnable?.let(clipboardHandler::removeCallbacks)
+        temporaryClipboardRestoreRunnable = null
+        temporaryClipboardOriginal = null
+        temporaryClipboardOriginalWasReadable = false
+        temporaryClipboardActive = false
+        temporaryClipboardExpectedText = null
     }
 }

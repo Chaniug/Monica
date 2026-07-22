@@ -1886,6 +1886,13 @@
     
     <!-- 自动填充设置 - 填充行为 -->
     <string name="autofill_fill_behavior_title">填充行为</string>
+    <string name="autofill_active_fill_notification_title">主动填充通知</string>
+    <string name="autofill_active_fill_notification_desc">已绑定密码的应用聚焦登录字段时显示通知。需要启用 Monica 无障碍服务并允许通知。</string>
+    <string name="autofill_active_fill_channel_name">自动填充提示</string>
+    <string name="autofill_active_fill_channel_desc">Monica 检测到已绑定登录字段时显示通知</string>
+    <string name="autofill_active_fill_notification_content_title">Monica 可以填充当前应用</string>
+    <string name="autofill_active_fill_notification_content_text">点击选择用于 %1$s 的登录信息</string>
+    <string name="autofill_active_fill_target_unavailable">请返回检测到的应用后重试</string>
     <string name="autofill_fill_verify_identity">填充前验证身份</string>
     <string name="autofill_fill_verify_identity_desc">选择密码后需要指纹或密码验证才能填充</string>
     <string name="autofill_fill_suggestions">填充建议</string>
