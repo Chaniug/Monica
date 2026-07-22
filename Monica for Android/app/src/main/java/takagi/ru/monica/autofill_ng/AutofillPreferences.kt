@@ -39,6 +39,8 @@ class AutofillPreferences(private val context: Context) {
         
         // 配置键
         private val KEY_AUTOFILL_ENABLED = booleanPreferencesKey("autofill_enabled")
+        private val KEY_ACTIVE_FILL_NOTIFICATION_ENABLED =
+            booleanPreferencesKey("active_fill_notification_enabled")
         private val KEY_DOMAIN_MATCH_STRATEGY = stringPreferencesKey("domain_match_strategy")
         private val KEY_FILL_SUGGESTIONS_ENABLED = booleanPreferencesKey("fill_suggestions_enabled")
         private val KEY_MANUAL_SELECTION_ENABLED = booleanPreferencesKey("manual_selection_enabled")
@@ -120,6 +122,16 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setAutofillEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_AUTOFILL_ENABLED] = enabled
+        }
+    }
+
+    val isActiveFillNotificationEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_ACTIVE_FILL_NOTIFICATION_ENABLED] ?: false
+    }
+
+    suspend fun setActiveFillNotificationEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_ACTIVE_FILL_NOTIFICATION_ENABLED] = enabled
         }
     }
     

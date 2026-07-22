@@ -154,6 +154,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     companion object {
         private const val EXTRA_ARGS = "extra_args"
         const val EXTRA_MANUAL_MODE = "extra_manual_mode"
+        const val EXTRA_MANUAL_TARGET_PACKAGE = "extra_manual_target_package"
         const val EXTRA_IME_MODE = "extra_ime_mode"
         private const val DUPLICATE_LAUNCH_WINDOW_MS = 1500L
         private const val MANUAL_ACCESSIBILITY_FILL_DELAY_MS = 450L
@@ -292,12 +293,19 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         intent.getBooleanExtra(EXTRA_MANUAL_MODE, false)
     }
 
+    private val manualTargetPackage by lazy {
+        intent.getStringExtra(EXTRA_MANUAL_TARGET_PACKAGE)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
     private val imeMode by lazy {
         intent.getBooleanExtra(EXTRA_IME_MODE, false)
     }
 
     private val manualModeReason by lazy {
         when {
+            manualTargetPackage != null -> "active_fill_notification"
             explicitManualMode -> "explicit_manual_extra"
             !args.fieldSignatureKey.isNullOrBlank() -> "framework_context_field_signature"
             !args.applicationId.isNullOrBlank() -> "framework_context_application_id"
@@ -965,6 +973,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         username: String,
         password: String,
         preferPasswordField: Boolean = false,
+        expectedTargetPackage: String? = manualTargetPackage,
     ): Boolean {
         if (!MonicaAccessibilityService.isCredentialFillAvailable(applicationContext)) {
             AutofillLogger.i("PICKER", "Manual accessibility fill unavailable; service is not active")
@@ -977,6 +986,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             requestManualAccessibilityFillWithRetry(
                 appContext = appContext,
                 packageNameToSkip = packageNameToSkip,
+                expectedTargetPackage = expectedTargetPackage,
                 username = username,
                 password = password,
                 preferPasswordField = preferPasswordField,
@@ -993,19 +1003,23 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     private fun requestManualAccessibilityFillWithRetry(
         appContext: Context,
         packageNameToSkip: String,
+        expectedTargetPackage: String?,
         username: String,
         password: String,
         preferPasswordField: Boolean,
         attempt: Int,
     ) {
         val activePackage = MonicaAccessibilityService.getActiveWindowPackageName().orEmpty()
-        val shouldWaitForTargetWindow = activePackage.isBlank() ||
-            activePackage.equals(packageNameToSkip, ignoreCase = true)
-        val filled = if (shouldWaitForTargetWindow) {
+        val resolvedTargetPackage = resolveManualFillTargetPackage(
+            activePackage = activePackage,
+            packageNameToSkip = packageNameToSkip,
+            expectedTargetPackage = expectedTargetPackage,
+        )
+        val filled = if (resolvedTargetPackage == null) {
             false
         } else {
             MonicaAccessibilityService.requestCredentialFill(
-                targetPackageName = activePackage,
+                targetPackageName = resolvedTargetPackage,
                 username = username,
                 password = password,
                 preferPasswordField = preferPasswordField
@@ -1014,12 +1028,18 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         AutofillLogger.i(
             "PICKER",
-            "Manual accessibility fill attempt: attempt=$attempt, filled=$filled, activePackage=${activePackage.ifBlank { "none" }}"
+            "Manual accessibility fill attempt: attempt=$attempt, filled=$filled, activePackage=${activePackage.ifBlank { "none" }}, expectedPackage=${expectedTargetPackage.orEmpty().ifBlank { "any" }}"
         )
 
         if (filled || attempt >= MANUAL_ACCESSIBILITY_MAX_ATTEMPTS) {
             if (!filled) {
-                if (preferPasswordField && username.isBlank()) {
+                if (!expectedTargetPackage.isNullOrBlank()) {
+                    android.widget.Toast.makeText(
+                        appContext,
+                        R.string.autofill_active_fill_target_unavailable,
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                } else if (preferPasswordField && username.isBlank()) {
                     ClipboardUtils.copyToClipboard(
                         context = appContext,
                         text = password,
@@ -1044,6 +1064,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             requestManualAccessibilityFillWithRetry(
                 appContext = appContext,
                 packageNameToSkip = packageNameToSkip,
+                expectedTargetPackage = expectedTargetPackage,
                 username = username,
                 password = password,
                 preferPasswordField = preferPasswordField,

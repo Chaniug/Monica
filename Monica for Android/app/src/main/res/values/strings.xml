@@ -2041,6 +2041,13 @@
     
     <!-- Autofill Settings - Fill Behavior -->
     <string name="autofill_fill_behavior_title">Fill Behavior</string>
+    <string name="autofill_active_fill_notification_title">Proactive fill notification</string>
+    <string name="autofill_active_fill_notification_desc">Show a notification when an app linked to a saved login focuses a sign-in field. Monica Accessibility Service and notification permission are required.</string>
+    <string name="autofill_active_fill_channel_name">Autofill prompts</string>
+    <string name="autofill_active_fill_channel_desc">Notifications for linked sign-in fields detected by Monica</string>
+    <string name="autofill_active_fill_notification_content_title">Monica can fill this app</string>
+    <string name="autofill_active_fill_notification_content_text">Tap to choose a login for %1$s</string>
+    <string name="autofill_active_fill_target_unavailable">Return to the detected app and try again</string>
     <string name="autofill_fill_verify_identity">Verify Before Filling</string>
     <string name="autofill_fill_verify_identity_desc">Verify after choosing a password</string>
     <string name="autofill_fill_suggestions">Fill Suggestions</string>
