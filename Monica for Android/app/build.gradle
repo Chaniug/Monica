@@ -195,6 +195,9 @@ android {
         // lintVital still loads dependency registries even when checkDependencies is false.
         // Disable the broken release gate so Android Studio's normal assembleRelease works.
         checkReleaseBuilds false
+        // TEMP: print ALL 12 NewApi errors instead of aborting on the first one,
+        // so we can locate and fix each. Remove this line after the fixes land.
+        abortOnError false
     }
     packaging {
         resources {
