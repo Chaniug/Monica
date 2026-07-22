@@ -65,17 +65,6 @@ jobs:
       - name: Run lint
         run: ./gradlew :app:lintDebug --stacktrace --no-daemon
 
-      - name: Upload lint report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: lint-report
-          path: |
-            Monica for Android/app/build/reports/lint-results-debug.html
-            Monica for Android/app/build/outputs/lint-results-debug.xml
-          retention-days: 3
-          if-no-files-found: warn
-
       - name: Run unit tests (diagnostic)
         continue-on-error: true
         run: ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon
