@@ -5,10 +5,8 @@ import android.os.SystemClock
 import android.util.Size
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.resolutionselector.ResolutionSelector
-import kotlin.OptIn
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
@@ -56,7 +54,6 @@ internal class QrCameraScanSession(
         }
     }
 
-    @ExperimentalGetImage
     fun start() {
         check(active.compareAndSet(false, true)) { "QR camera session already started" }
         val startedAt = SystemClock.elapsedRealtime()
@@ -122,7 +119,6 @@ internal class QrCameraScanSession(
 
     fun isProcessingFrame(): Boolean = processingFrame.get()
 
-    @ExperimentalGetImage
     private fun analyzeFrame(imageProxy: ImageProxy) {
         if (!active.get()) {
             imageProxy.close()

@@ -150,6 +150,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = '11'
+        // Module-level opt-in for cameraX ExperimentalGetImage so lint's
+        // UnsafeOptInUsageError no longer requires per-call-site annotations
+        // (which would otherwise propagate opt-in requirements to every caller).
+        freeCompilerArgs += ['-opt-in=androidx.camera.core.ExperimentalGetImage']
     }
     buildFeatures {
         compose true
