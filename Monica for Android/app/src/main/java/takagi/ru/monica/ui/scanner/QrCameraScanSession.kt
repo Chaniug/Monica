@@ -122,6 +122,7 @@ internal class QrCameraScanSession(
     fun isProcessingFrame(): Boolean = processingFrame.get()
 
     @OptIn(ExperimentalGetImage::class)
+    @OptIn(ExperimentalGetImage::class)
     private fun analyzeFrame(imageProxy: ImageProxy) {
         if (!active.get()) {
             imageProxy.close()
