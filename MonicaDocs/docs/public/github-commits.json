@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-07-21T21:32:13.014Z",
+  "generatedAt": "2026-07-22T21:34:44.816Z",
   "range": {
-    "from": "2025-07-22",
-    "to": "2026-07-21"
+    "from": "2025-07-23",
+    "to": "2026-07-22"
   },
   "activity": [
-    {
-      "date": "2025-07-22",
-      "count": 0
-    },
     {
       "date": "2025-07-23",
       "count": 0
@@ -1466,9 +1462,67 @@
     {
       "date": "2026-07-21",
       "count": 2
+    },
+    {
+      "date": "2026-07-22",
+      "count": 6
     }
   ],
   "latest": [
+    {
+      "sha": "ef1d9a28e3189c3f2719200739c425651d19ebe5",
+      "shortSha": "ef1d9a2",
+      "message": "feat(navigation): unify authenticator and passkey dock",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-22T16:47:11Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/ef1d9a28e3189c3f2719200739c425651d19ebe5"
+    },
+    {
+      "sha": "4268da3da9c97098b9d4cc44f3fd93e8d482ffa2",
+      "shortSha": "4268da3",
+      "message": "refactor(plus): remove retired remote licensing",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-22T14:38:43Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/4268da3da9c97098b9d4cc44f3fd93e8d482ffa2"
+    },
+    {
+      "sha": "fe47402c3c6e3d021b59647ef2cf90b97971d44c",
+      "shortSha": "fe47402",
+      "message": "Merge pull request #75 from Chaniug/fix/autofill-webview-paste",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-22T14:32:41Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/fe47402c3c6e3d021b59647ef2cf90b97971d44c"
+    },
+    {
+      "sha": "d9ed2bb1c7990ac6182abd52ae1531dc28c195f3",
+      "shortSha": "d9ed2bb",
+      "message": "fix(autofill): harden active fill and WebView paste",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-07-22T14:24:06Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d9ed2bb1c7990ac6182abd52ae1531dc28c195f3"
+    },
+    {
+      "sha": "8fcaf0dd2bd024620415e00462aea7eed4188d84",
+      "shortSha": "8fcaf0d",
+      "message": "fix(autofill): WebView 填充改用 ACTION_PASTE 优先",
+      "authorName": "Chaniug",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/35595273?v=4",
+      "date": "2026-07-22T05:02:59Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/8fcaf0dd2bd024620415e00462aea7eed4188d84"
+    },
+    {
+      "sha": "30f7bd211c4adc2aac013fece1a1aa0667c0ad0c",
+      "shortSha": "30f7bd2",
+      "message": "feat(autofill): 阶段1 主动式无障碍填充通知",
+      "authorName": "Chaniug",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/35595273?v=4",
+      "date": "2026-07-22T04:39:12Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/30f7bd211c4adc2aac013fece1a1aa0667c0ad0c"
+    },
     {
       "sha": "467f04c4d7035977feb8d3e0de39eb32b2f8a40e",
       "shortSha": "467f04c",
@@ -1504,60 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-07-19T16:23:51Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/d738e38e192a6e8b02b115d72732352a1ff2e67f"
-    },
-    {
-      "sha": "d9c70305d2170e3c2ac468f171b5ef23ab371174",
-      "shortSha": "d9c7030",
-      "message": "feat(android): import external authenticators and refine vault cache",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-19T14:06:06Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/d9c70305d2170e3c2ac468f171b5ef23ab371174"
-    },
-    {
-      "sha": "689f70c6c1011018a7eeafa6ead76a046178dfd7",
-      "shortSha": "689f70c",
-      "message": "feat(android): redesign database deduplication and vault loading",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-19T00:11:03Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/689f70c6c1011018a7eeafa6ead76a046178dfd7"
-    },
-    {
-      "sha": "3666e6eb6619f8884ca330efba57c6a2b6096242",
-      "shortSha": "3666e6e",
-      "message": "fix(android): keep vault loading until data is ready",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-18T05:07:18Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/3666e6eb6619f8884ca330efba57c6a2b6096242"
-    },
-    {
-      "sha": "7c46b8212f458794266ddb066557922d1040b70b",
-      "shortSha": "7c46b82",
-      "message": "fix(android): improve vault loading, autofill, and Steam pricing",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-18T04:24:31Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/7c46b8212f458794266ddb066557922d1040b70b"
-    },
-    {
-      "sha": "810f898a5ff1479d85b895a3a7a7aae31758e903",
-      "shortSha": "810f898",
-      "message": "feat(android): add Steam market tools and archive fixes",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-18T01:48:37Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/810f898a5ff1479d85b895a3a7a7aae31758e903"
-    },
-    {
-      "sha": "5ecdaabcda29b04bfc62211e452c437ae408d5ad",
-      "shortSha": "5ecdaab",
-      "message": "docs: add automated Afdian sponsor list",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-07-17T08:45:13Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/5ecdaabcda29b04bfc62211e452c437ae408d5ad"
     }
   ]
 }
