@@ -64,7 +64,7 @@ class SteamBoundaryGuardTest {
         assertEquals(oldVisibleOrder, BottomNavContentTab.DEFAULT_ORDER.take(oldVisibleOrder.size))
         assertEquals(BottomNavContentTab.STEAM, BottomNavContentTab.DEFAULT_ORDER.last())
         assertFalse(BottomNavVisibility().isVisible(BottomNavContentTab.STEAM))
-        assertEquals(5, BottomNavVisibility().visibleCount())
+        assertEquals(4, BottomNavVisibility().visibleCount())
     }
 
     @Test

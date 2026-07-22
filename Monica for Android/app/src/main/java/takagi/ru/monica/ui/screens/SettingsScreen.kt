@@ -460,7 +460,9 @@ fun SettingsScreen(
     val bottomNavSubSettingsSearchTexts = buildList {
         add(context.getString(R.string.bottom_nav_reorder_hint))
         add(context.getString(R.string.bottom_nav_toggle_subtitle))
-        BottomNavContentTab.values().forEach { tab ->
+        BottomNavContentTab.values()
+            .filterNot { it == BottomNavContentTab.PASSKEY }
+            .forEach { tab ->
             add(context.getString(tab.toLabelRes()))
         }
     }.toTypedArray()
@@ -2725,7 +2727,9 @@ fun BottomNavSettingsScreen(
     val settings by viewModel.settings.collectAsState()
     val bottomNavVisibility = settings.bottomNavVisibility
     val listState = rememberLazyListState()
-    var localBottomNavOrder by remember(settings.bottomNavOrder) { mutableStateOf(settings.bottomNavOrder) }
+    var localBottomNavOrder by remember(settings.bottomNavOrder) {
+        mutableStateOf(settings.bottomNavOrder.filterNot { it == BottomNavContentTab.PASSKEY })
+    }
     val reorderableState = rememberReorderableLazyListState(listState) { from, to ->
         localBottomNavOrder = localBottomNavOrder.toMutableList().apply {
             add(to.index, removeAt(from.index))
@@ -2800,7 +2804,11 @@ fun BottomNavSettingsScreen(
                             if (isDragging) 8.dp else 0.dp,
                             label = "bottom_nav_drag_elevation"
                         )
-                        val isVisible = bottomNavVisibility.isVisible(tab)
+                        val isVisible = if (tab == BottomNavContentTab.AUTHENTICATOR) {
+                            bottomNavVisibility.authenticator || bottomNavVisibility.passkey
+                        } else {
+                            bottomNavVisibility.isVisible(tab)
+                        }
                         val switchEnabled = !isVisible || bottomNavVisibility.visibleCount() > 1
                         BottomNavConfigRow(
                             icon = tab.toIcon(),

@@ -104,6 +104,7 @@ internal fun CompactDraggableTabContent(
     timelineViewModel: TimelineViewModel,
     passkeyViewModel: PasskeyViewModel,
     onNavigateToPasswordDetail: (Long) -> Unit,
+    onNavigateToAuthenticator: () -> Unit,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
     onSendBitwardenEvent: (takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent) -> Boolean,
     onNavigateToChangePassword: () -> Unit,
@@ -189,7 +190,8 @@ internal fun CompactDraggableTabContent(
             .fillMaxSize()
             .padding(paddingValues)
     ) {
-        when (currentTab) {
+        AuthenticatorPasskeyAnimatedContent(currentTab = currentTab) { displayedTab ->
+        when (displayedTab) {
             BottomNavItem.VaultV2 -> {
                 VaultV2Pane(
                     passwordViewModel = passwordViewModel,
@@ -344,7 +346,8 @@ internal fun CompactDraggableTabContent(
                     onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                     onPasskeyClick = {},
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                    onOpenStandaloneSettings = onOpenStandaloneSettings
+                    onOpenStandaloneSettings = onOpenStandaloneSettings,
+                    onNavigateToAuthenticator = onNavigateToAuthenticator
                 )
             }
             BottomNavItem.Send -> {
@@ -388,6 +391,7 @@ internal fun CompactDraggableTabContent(
                     onClearAllData = onClearAllData
                 )
             }
+        }
         }
 
         MainScreenSelectionBars(

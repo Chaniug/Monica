@@ -91,6 +91,7 @@ internal fun BoxScope.MainScreenFabOverlay(
     recentOpenedPasswords: List<PasswordQuickAccessItem>,
     frequentOpenedPasswords: List<PasswordQuickAccessItem>,
     onOpenPasswordFromQuickAccess: (Long) -> Unit,
+    onNavigateToPasskey: () -> Unit,
     cardWalletSubTab: CardWalletTab,
     onPasswordAddOpen: () -> Unit,
     onTotpAddOpen: () -> Unit,
@@ -197,6 +198,13 @@ internal fun BoxScope.MainScreenFabOverlay(
             quickAccessEnabled &&
             !isAnySelectionMode &&
             !fastScrollStripVisible
+    val shouldShowPasskeyFab =
+        showFab &&
+            isFabVisible &&
+            !isFabExpanded &&
+            currentTab == BottomNavItem.Authenticator &&
+            !isAnySelectionMode &&
+            !fastScrollStripVisible
 
     LaunchedEffect(showFab) {
         if (!showFab) {
@@ -247,6 +255,41 @@ internal fun BoxScope.MainScreenFabOverlay(
                     Icon(
                         imageVector = Icons.Default.History,
                         contentDescription = stringResource(R.string.password_quick_access_title)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = shouldShowPasskeyFab,
+                enter = scaleIn(
+                    initialScale = 0.25f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    )
+                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+                exit = scaleOut(
+                    targetScale = 0.25f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 16.dp,
+                        bottom = fabBottomOffset + 88.dp
+                    )
+            ) {
+                SmallFloatingActionButton(
+                    onClick = onNavigateToPasskey,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = stringResource(R.string.passkey_title)
                     )
                 }
             }

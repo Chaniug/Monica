@@ -123,12 +123,11 @@ data class BottomNavVisibility(
     fun visibleCount(): Int = listOf(
         vaultV2,
         passwords,
-        authenticator,
+        authenticator || passkey,
         cardWallet,
         generator,
         notes,
         send,
-        passkey,
         steam
     ).count { it }
 }

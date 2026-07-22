@@ -140,6 +140,7 @@ fun PasskeyListScreen(
     hideTopBar: Boolean = false,
     showStandaloneSettingsEntry: Boolean = false,
     onOpenStandaloneSettings: () -> Unit = {},
+    onNavigateToAuthenticator: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1022,6 +1023,15 @@ fun PasskeyListScreen(
                 searchHint = stringResource(R.string.passkey_search_placeholder),
                 onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
+                    onNavigateToAuthenticator?.let { navigateToAuthenticator ->
+                        IconButton(onClick = navigateToAuthenticator) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = stringResource(R.string.authenticator),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
                         IconButton(onClick = { showCategoryFilterDialog = true }) {
                             Icon(

@@ -884,12 +884,21 @@ fun SimpleMainScreen(
 
     val bottomNavVisibility = appSettings.bottomNavVisibility
 
+    val combinedAuthenticatorVisible =
+        bottomNavVisibility.authenticator || bottomNavVisibility.passkey
     val dataTabItems = appSettings.bottomNavOrder
-        .map { it.toBottomNavItem() }
-        .filter { item ->
-            val tab = item.contentTab
-            tab == null || bottomNavVisibility.isVisible(tab)
+        .map { tab ->
+            if (tab == BottomNavContentTab.PASSKEY) BottomNavContentTab.AUTHENTICATOR else tab
         }
+        .distinct()
+        .filter { tab ->
+            if (tab == BottomNavContentTab.AUTHENTICATOR) {
+                combinedAuthenticatorVisible
+            } else {
+                bottomNavVisibility.isVisible(tab)
+            }
+        }
+        .map { it.toBottomNavItem() }
     val shouldHideBottomNavigation = appSettings.autoHideBottomNavWhenSingleTab && dataTabItems.size == 1
 
     val tabs = buildList {
@@ -914,7 +923,10 @@ fun SimpleMainScreen(
     }
 
     LaunchedEffect(tabs) {
-        if (tabs.none { it.key == selectedTabKey }) {
+        val passkeyHostedByAuthenticator =
+            selectedTabKey == BottomNavItem.Passkey.key &&
+                tabs.any { it == BottomNavItem.Authenticator }
+        if (!passkeyHostedByAuthenticator && tabs.none { it.key == selectedTabKey }) {
             selectedTabKey = tabs.first().key
         }
     }
@@ -930,7 +942,23 @@ fun SimpleMainScreen(
         }
     }
 
-    val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
+    val currentTab = if (
+        selectedTabKey == BottomNavItem.Passkey.key &&
+        tabs.any { it == BottomNavItem.Authenticator }
+    ) {
+        BottomNavItem.Passkey
+    } else {
+        tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
+    }
+    val selectedDockTab = if (currentTab == BottomNavItem.Passkey) {
+        BottomNavItem.Authenticator
+    } else {
+        currentTab
+    }
+
+    BackHandler(enabled = currentTab == BottomNavItem.Passkey) {
+        selectedTabKey = BottomNavItem.Authenticator.key
+    }
 
     LaunchedEffect(currentTab.key) {
         if (currentTab != BottomNavItem.CardWallet) {
@@ -1277,13 +1305,13 @@ fun SimpleMainScreen(
     val useDraggableNav = appSettings.useDraggableBottomNav
     
     // 构建导航项列表 (用于可拖拽导航栏)
-    val draggableNavItems = remember(tabs, currentTab) {
+    val draggableNavItems = remember(tabs, selectedDockTab) {
         tabs.map { item ->
             DraggableNavItem(
                 key = item.key,
                 icon = item.icon,
                 labelRes = item.shortLabelRes(),
-                selected = item.key == currentTab.key,
+                selected = item.key == selectedDockTab.key,
                 onClick = { selectedTabKey = item.key }
             )
         }
@@ -1931,6 +1959,9 @@ fun SimpleMainScreen(
                     timelineViewModel = timelineViewModel,
                     passkeyViewModel = passkeyViewModel,
                     onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                    onNavigateToAuthenticator = {
+                        selectedTabKey = BottomNavItem.Authenticator.key
+                    },
                     bitwardenViewModel = bitwardenViewModel,
                     onSendBitwardenEvent = handleSendBitwardenEvent,
                     onNavigateToChangePassword = onNavigateToChangePassword,
@@ -2060,7 +2091,7 @@ fun SimpleMainScreen(
                                         overflow = TextOverflow.Clip
                                     )
                                 },
-                                selected = item.key == currentTab.key,
+                                selected = item.key == selectedDockTab.key,
                                 onClick = { selectedTabKey = item.key }
                             )
                         }
@@ -2077,7 +2108,8 @@ fun SimpleMainScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-            when (currentTab) {
+            AuthenticatorPasskeyAnimatedContent(currentTab = currentTab) { displayedTab ->
+            when (displayedTab) {
                 BottomNavItem.VaultV2 -> {
                     VaultV2Pane(
                         passwordViewModel = passwordViewModel,
@@ -2321,7 +2353,10 @@ fun SimpleMainScreen(
                         onUnbindPasskey = handlePasskeyUnbind,
                         onDeletePasskey = { passkey -> pendingPasskeyDelete = passkey },
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
-                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings,
+                        onNavigateToAuthenticator = {
+                            selectedTabKey = BottomNavItem.Authenticator.key
+                        }
                     )
                 }
                 BottomNavItem.Send -> {
@@ -2399,6 +2434,7 @@ fun SimpleMainScreen(
                     )
                 }
             }
+            }
 
             MainScreenSelectionBars(
                 modifier = Modifier
@@ -2463,7 +2499,7 @@ fun SimpleMainScreen(
                             tabs.forEach { item ->
                                 val label = stringResource(item.shortLabelRes())
                                 NavigationRailItem(
-                                    selected = item.key == currentTab.key,
+                                    selected = item.key == selectedDockTab.key,
                                     onClick = { selectedTabKey = item.key },
                                     icon = { Icon(item.icon, contentDescription = label) },
                                     label = {
@@ -2485,7 +2521,8 @@ fun SimpleMainScreen(
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
-                when (currentTab) {
+                AuthenticatorPasskeyAnimatedContent(currentTab = currentTab) { displayedTab ->
+                when (displayedTab) {
                     BottomNavItem.VaultV2 -> {
                         VaultV2Pane(
                             passwordViewModel = passwordViewModel,
@@ -2729,7 +2766,10 @@ fun SimpleMainScreen(
                             onUnbindPasskey = handlePasskeyUnbind,
                             onDeletePasskey = { passkey -> pendingPasskeyDelete = passkey },
                             showStandaloneSettingsEntry = shouldHideBottomNavigation,
-                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings,
+                            onNavigateToAuthenticator = {
+                                selectedTabKey = BottomNavItem.Authenticator.key
+                            }
                         )
                     }
                     BottomNavItem.Send -> {
@@ -2806,6 +2846,7 @@ fun SimpleMainScreen(
                             onClearAllData = onClearAllData
                         )
                     }
+                }
                 }
 
                 MainScreenSelectionBars(
@@ -2979,6 +3020,9 @@ fun SimpleMainScreen(
         recentOpenedPasswords = recentOpenedPasswords,
         frequentOpenedPasswords = frequentOpenedPasswords,
         onOpenPasswordFromQuickAccess = handlePasswordDetailOpen,
+        onNavigateToPasskey = {
+            selectedTabKey = BottomNavItem.Passkey.key
+        },
         cardWalletSubTab = cardWalletSubTab,
         onPasswordAddOpen = handlePasswordAddOpen,
         onTotpAddOpen = handleTotpAddOpen,
@@ -3132,7 +3176,10 @@ private fun MainScreenTabResetEffects(
         }
     }
     LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Authenticator) {
+        if (
+            isCompactWidth ||
+            (currentTab != BottomNavItem.Authenticator && currentTab != BottomNavItem.Passkey)
+        ) {
             onResetTotpPane()
         }
     }
@@ -3172,7 +3219,10 @@ private fun MainScreenTabResetEffects(
         }
     }
     LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Passkey) {
+        if (
+            isCompactWidth ||
+            (currentTab != BottomNavItem.Authenticator && currentTab != BottomNavItem.Passkey)
+        ) {
             onResetPasskeyPane()
         }
     }

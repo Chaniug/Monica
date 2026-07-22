@@ -72,6 +72,43 @@ class PasskeyRemarkAndNavigationGuardTest {
         )
     }
 
+    @Test
+    fun authenticatorAndPasskeyShareOneDockDestinationWithBidirectionalControls() {
+        val mainScreen = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt"
+        ).readText()
+        val fab = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/MainScreenFab.kt"
+        ).readText()
+        val passkeyList = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/PasskeyListScreen.kt"
+        ).readText()
+        val settings = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/SettingsScreen.kt"
+        ).readText()
+
+        assertTrue(mainScreen.contains("if (tab == BottomNavContentTab.PASSKEY) BottomNavContentTab.AUTHENTICATOR else tab"))
+        assertTrue(mainScreen.contains("val selectedDockTab = if (currentTab == BottomNavItem.Passkey)"))
+        assertTrue(mainScreen.contains("BackHandler(enabled = currentTab == BottomNavItem.Passkey)"))
+        assertTrue(mainScreen.contains("onNavigateToPasskey = {\n            selectedTabKey = BottomNavItem.Passkey.key"))
+        assertTrue(fab.contains("val shouldShowPasskeyFab ="))
+        assertTrue(fab.contains("onClick = onNavigateToPasskey"))
+        assertTrue(passkeyList.contains("onNavigateToAuthenticator: (() -> Unit)? = null"))
+        assertTrue(passkeyList.contains("imageVector = Icons.Default.Security"))
+        assertTrue(settings.contains("filterNot { it == BottomNavContentTab.PASSKEY }"))
+    }
+
+    @Test
+    fun authenticatorPasskeySwitchUsesMonicaDirectionalNavigationMotion() {
+        val transition = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/AuthenticatorPasskeyAnimatedContent.kt"
+        ).readText()
+
+        assertTrue(transition.contains("slideInFromRight() togetherWith parallaxExitToLeft()"))
+        assertTrue(transition.contains("parallaxEnterFromLeft() togetherWith slideOutToRight()"))
+        assertTrue(transition.contains("SizeTransform(clip = false)"))
+    }
+
     private fun testPasskey(notes: String) = PasskeyEntry(
         credentialId = "credential",
         rpId = "github.com",

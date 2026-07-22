@@ -776,7 +776,10 @@ class SettingsManager(private val context: Context) {
                 BottomNavContentTab.VAULT_V2 -> preferences[SHOW_VAULT_V2_TAB_KEY] = visible
                 // BottomNavContentTab.VAULT -> preferences[SHOW_VAULT_TAB_KEY] = visible
                 BottomNavContentTab.PASSWORDS -> preferences[SHOW_PASSWORDS_TAB_KEY] = visible
-                BottomNavContentTab.AUTHENTICATOR -> preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
+                BottomNavContentTab.AUTHENTICATOR -> {
+                    preferences[SHOW_AUTHENTICATOR_TAB_KEY] = visible
+                    preferences[SHOW_PASSKEY_TAB_KEY] = visible
+                }
                 BottomNavContentTab.CARD_WALLET -> preferences[SHOW_CARD_WALLET_TAB_KEY] = visible
                 BottomNavContentTab.GENERATOR -> preferences[SHOW_GENERATOR_TAB_KEY] = visible
                 BottomNavContentTab.NOTES -> preferences[SHOW_NOTES_TAB_KEY] = visible

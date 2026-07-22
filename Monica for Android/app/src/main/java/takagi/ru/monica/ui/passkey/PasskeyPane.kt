@@ -32,7 +32,8 @@ internal fun PasskeyPane(
     onUnbindPasskey: (PasskeyEntry) -> Unit,
     onDeletePasskey: (PasskeyEntry) -> Unit,
     showStandaloneSettingsEntry: Boolean = false,
-    onOpenStandaloneSettings: () -> Unit = {}
+    onOpenStandaloneSettings: () -> Unit = {},
+    onNavigateToAuthenticator: () -> Unit
 ) {
     if (isCompactWidth) {
         PasskeyListScreen(
@@ -43,7 +44,8 @@ internal fun PasskeyPane(
                 passkey.managementRecordIdOrNull()?.let(onNavigateToPasskeyDetail)
             },
             showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-            onOpenStandaloneSettings = onOpenStandaloneSettings
+            onOpenStandaloneSettings = onOpenStandaloneSettings,
+            onNavigateToAuthenticator = onNavigateToAuthenticator
         )
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
@@ -58,7 +60,8 @@ internal fun PasskeyPane(
                     onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                     onPasskeyClick = onPasskeyOpen,
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-                    onOpenStandaloneSettings = onOpenStandaloneSettings
+                    onOpenStandaloneSettings = onOpenStandaloneSettings,
+                    onNavigateToAuthenticator = onNavigateToAuthenticator
                 )
             }
             DetailPane(

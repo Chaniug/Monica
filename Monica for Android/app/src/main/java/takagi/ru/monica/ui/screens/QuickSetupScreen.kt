@@ -333,11 +333,26 @@ fun QuickSetupScreen(
                         )
 
                         QuickSetupStep.BOTTOM_NAV -> BottomNavStep(
-                            visibleTabs = settings.bottomNavOrder.filter {
-                                settings.bottomNavVisibility.isVisible(it)
+                            visibleTabs = settings.bottomNavOrder
+                                .filterNot { it == BottomNavContentTab.PASSKEY }
+                                .filter { tab ->
+                                    if (tab == BottomNavContentTab.AUTHENTICATOR) {
+                                        settings.bottomNavVisibility.authenticator ||
+                                            settings.bottomNavVisibility.passkey
+                                    } else {
+                                        settings.bottomNavVisibility.isVisible(tab)
+                                    }
+                                },
+                            allTabs = settings.bottomNavOrder
+                                .filterNot { it == BottomNavContentTab.PASSKEY },
+                            isVisible = { tab ->
+                                if (tab == BottomNavContentTab.AUTHENTICATOR) {
+                                    settings.bottomNavVisibility.authenticator ||
+                                        settings.bottomNavVisibility.passkey
+                                } else {
+                                    settings.bottomNavVisibility.isVisible(tab)
+                                }
                             },
-                            allTabs = settings.bottomNavOrder,
-                            isVisible = { settings.bottomNavVisibility.isVisible(it) },
                             onVisibilityChange = settingsViewModel::updateBottomNavVisibility
                         )
 
